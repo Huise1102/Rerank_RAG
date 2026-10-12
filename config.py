@@ -1,5 +1,5 @@
 """
-基于混合检索与 Rerank 的 RAG 领域问答系统 —— 全局配置。
+基于混合检索与 Rerank 的领域知识库系统 —— 全局配置。
 分层覆盖：默认值（本文件） < .env < 系统环境变量 < 运行时显式传参。
 路径类字段以 PROJECT_ROOT 为基准展开为绝对路径，与启动目录解耦。
 模块导入时自动创建 data/、indexes/、logs/。
@@ -779,7 +779,7 @@ def _main() -> None:
     cfg.apply_environment()
 
     print("=" * 78)
-    print(" RAG 领域问答系统 —— 配置自检")
+    print(" 领域知识库系统 —— 配置自检")
     print("=" * 78)
     print(f"PROJECT_ROOT : {PROJECT_ROOT}")
     print(f"Python       : {os.sys.version.split()[0]}")

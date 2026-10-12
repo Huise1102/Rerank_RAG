@@ -775,7 +775,7 @@ def build_report(
         elapsed_text = (f"{elapsed / 60:.1f} 分钟"
                         + (f"（抽样前 {limit} 条）" if limit else "（全量）"))
 
-    report = f"""# 实验报告：混合检索与 Rerank 领域问答系统
+    report = f"""# 实验报告：混合检索与 Rerank 领域知识库系统
 
 > 生成时间：{now}　｜　脚本：`scripts/run_all_experiments.py`
 > 总耗时：{elapsed_text}

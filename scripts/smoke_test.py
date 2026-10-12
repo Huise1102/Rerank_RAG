@@ -111,7 +111,7 @@ def _import_misc():
 def _jieba():
     import jieba
 
-    tokens = [t for t in jieba.lcut("混合检索与Rerank的RAG领域问答系统") if t.strip()]
+    tokens = [t for t in jieba.lcut("混合检索与Rerank的领域知识库系统") if t.strip()]
     assert len(tokens) >= 5, tokens
     return " ".join(tokens)
 

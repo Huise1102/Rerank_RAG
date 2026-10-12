@@ -1,4 +1,4 @@
-"""RAG 领域问答系统 —— 源码包。
+"""领域知识库系统 —— 源码包。
 
 ingest/ 数据入库，retrieval/ 检索与精排，generation/ 生成，
 evaluation/ 评估，api/ FastAPI 服务，utils/ 通用工具。

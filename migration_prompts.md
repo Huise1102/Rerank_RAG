@@ -1,4 +1,4 @@
-# RAG 领域问答系统迁移提示词全集
+# 领域知识库系统迁移提示词全集
 
 本文档用于将当前基于 **Streamlit + FastAPI** 的 RAG 问答系统，迁移为基于 **FastAPI + Vue3 + MySQL + Redis + MinIO + Celery** 的产品级领域知识库系统。
 
@@ -665,7 +665,7 @@ CREATE TABLE evaluations (
 
 ```
 请实现 FastAPI 主入口 src/api/main.py：
-1. 创建 FastAPI 实例，title="基于混合检索与Rerank的RAG领域问答系统"
+1. 创建 FastAPI 实例，title="基于混合检索与Rerank的领域知识库系统"
 2. 加 CORS 中间件
 3. 加请求日志中间件
 4. 注册路由：

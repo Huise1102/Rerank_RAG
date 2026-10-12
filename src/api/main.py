@@ -471,7 +471,7 @@ def create_app(*, warmup: bool | None = None) -> FastAPI:
         object.__setattr__(settings.api, "warmup_on_startup", warmup)
 
     app = FastAPI(
-        title="RAG 领域问答系统 API",
+        title="领域知识库系统 API",
         description=(
             "基于混合检索与 Rerank 的领域问答服务。\n\n"
             "- 检索链路：BGE 稠密向量 + BM25 稀疏检索 → RRF 融合 → 交叉编码器精排\n"
@@ -499,7 +499,7 @@ def create_app(*, warmup: bool | None = None) -> FastAPI:
     @app.get("/", include_in_schema=False)
     def index() -> dict[str, Any]:
         return {
-            "service": "RAG 领域问答系统 API",
+            "service": "领域知识库系统 API",
             "version": __version__,
             "docs": "/docs",
             "endpoints": [
