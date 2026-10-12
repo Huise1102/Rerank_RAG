@@ -901,6 +901,3 @@ CREATE TABLE evaluations (
 
 ---
 
-文档结束。
-
-将本文档保存为 `migration_prompts.md`，按章节复制提示词给 AI，即可逐步完成迁移。
