@@ -1,0 +1,94 @@
+# =============================================================================
+# 基于混合检索与 Rerank 的 RAG 领域问答系统 —— 依赖清单
+# =============================================================================
+# 环境：Python 3.11.9 (Windows x64)    已实测安装并验证通过
+#
+# 安装方式（推荐 uv，明显快于 pip）:
+#   uv venv --python 3.11 .venv
+#   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+#
+# GPU 加速：默认装 CPU 版 torch。若有 NVIDIA 显卡，先执行
+#   uv pip install --python .venv\Scripts\python.exe torch --index-url https://download.pytorch.org/whl/cu121
+# 再安装本文件，embedding 与 rerank 会自动使用显存（合计约需 4 GB）。
+#
+# -----------------------------------------------------------------------------
+# ⚠️ 重要版本约束说明（版本矩阵经过依赖求解验证，请勿随意放宽）
+# -----------------------------------------------------------------------------
+# 1) pydantic 必须 <2.10（本文件锁 2.9.x）
+#    langchain-core 0.2.x 的内部模型仍使用 pydantic v1 风格的 `class Config`，
+#    该写法在 pydantic 2.10 中被彻底移除，会直接抛
+#    `PydanticUserError: Please use 'model_config'`。
+#
+# 2) chromadb 必须 <0.6（本文件锁 0.5.x）
+#    所有支持 chromadb 1.x 的 langchain-chroma 版本（>=0.2.4）都要求
+#    langchain-core>=0.3.60，与 LangChain 0.2.x 硬冲突。因此定位到
+#    与 LangChain 0.2.x 兼容的最后一组：langchain-chroma 0.1.4 + chromadb 0.5.20。
+#
+# 3) 不使用 FlagEmbedding
+#    bge-reranker-v2-m3 已被官方标注为 sentence-transformers 库（pipeline:
+#    text-ranking），直接用 sentence_transformers.CrossEncoder 加载即可，
+#    无需引入 FlagEmbedding 及其 datasets/accelerate/peft 等约 1.5 GB 传递依赖。
+# =============================================================================
+
+# --------------------------- 配置与基础工具 ---------------------------------
+python-dotenv>=1.0.1
+pydantic>=2.9.0,<2.10.0                  # ⚠️ 见上方说明 1，不可放宽
+pydantic-settings>=2.3.0,<3.0.0
+numpy>=1.26.0,<2.0.0                     # 与 torch / chromadb 兼容性最稳
+tqdm>=4.66.0
+rich>=13.7.0                             # 终端美化输出（分块预览、检索日志）
+
+# ------------------------------ 文本处理 ------------------------------------
+pypdf>=4.2.0                             # PDF 兜底解析
+pdfplumber>=0.11.0                       # 主解析器：提供词级坐标，页眉页脚识别依赖它
+jieba>=0.42.1                            # BM25 中文分词
+rank_bm25>=0.2.2                         # BM25Okapi 稀疏检索
+
+# ------------------------ LangChain 0.2.x 核心 ------------------------------
+langchain>=0.2.0,<0.3.0
+langchain-core>=0.2.0,<0.3.0
+langchain-community>=0.2.0,<0.3.0
+langchain-text-splitters>=0.2.0,<0.3.0
+
+# --------------------------- 向量库 Chroma ----------------------------------
+langchain-chroma>=0.1.2,<0.2.0           # 0.2.x 要求 langchain-core>=0.3，不可用
+chromadb>=0.5.5,<0.6.0                   # ⚠️ 见上方说明 2，不可放宽
+
+# --------------------- Embedding: BAAI/bge-large-zh-v1.5 --------------------
+torch>=2.2.0
+sentence-transformers>=3.0.0,<4.0.0      # 同时提供 CrossEncoder 用于 Rerank
+transformers>=4.40.0
+langchain-huggingface>=0.0.3,<0.2.0      # 提供 HuggingFaceEmbeddings
+sacremoses>=0.1.1                        # XLM-R tokenizer 所需，缺失会报错
+sentencepiece>=0.2.0
+
+# --------------------- Rerank: BAAI/bge-reranker-v2-m3 ----------------------
+# 由 sentence-transformers（上方已含）提供的 CrossEncoder 直接加载，无需额外依赖
+
+# ------------------------------- LLM 生成 -----------------------------------
+openai>=1.30.0,<2.0.0                    # DeepSeek 走 OpenAI 兼容接口
+
+# ------------------------------- 后端 API -----------------------------------
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9                  # 文件上传表单支持
+
+# ------------------------------- 前端 ---------------------------------------
+streamlit>=1.35.0
+requests>=2.32.0                         # Streamlit 调用 FastAPI（含 SSE 流式解析）
+
+# ------------------------- 评估与数据处理（阶段 5） --------------------------
+pandas>=2.2.0
+matplotlib>=3.8.0                        # 评估结果对比图（静态导出，无需图形界面）
+tabulate>=0.9.0                          # DataFrame -> Markdown 表格（报告与答辩材料用）
+openpyxl>=3.1.2                          # 评估结果导出 Excel
+pytest>=8.2.0
+# 说明：**不使用 RAGAS**。它会引入 datasets / ragas 等较重的依赖（并与 pydantic 2.9
+# 存在兼容风险），且其评分同样依赖 LLM 裁判。本项目改为自建 LLM-as-Judge
+# （见 src/evaluation/judge.py）：评分维度与提示词完全可控，还能把裁判的
+# 原文与打分理由一并存档，便于答辩时展示与人工复核。
+# 若确实需要 RAGAS，可另行安装，但请先实测其与当前 pydantic/chromadb 版本的兼容性。
+
+# ------------------------- 开发/取证辅助（非运行必需） -----------------------
+# 用于生成示例 PDF，以便在 data/raw 为空时也能端到端验证入库链路
+reportlab>=4.0.0

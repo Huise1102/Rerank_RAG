@@ -1,0 +1,42 @@
+# =============================================================================
+# Streamlit 运行配置
+#
+# 关于主题（重要）
+# ----------------
+# 本项目前端的视觉**基本**由 app.py 的 inject_theme() 注入 <style> 实现，
+# 目的是让配色只有一个来源、且不替换任何 Streamlit 组件。
+#
+# 唯一的例外是 primaryColor，原因很具体：
+#   st.toggle 开启时的轨道底色由 Streamlit 的主题令牌 primaryColor 直接决定，
+#   而该控件**没有稳定的 class 可供 CSS 定位**（app.py 里那条结构选择器
+#   曾经匹配不上，导致开关一直显示主题默认的红色 #FF4B4B）。
+#   主题令牌是 Streamlit 为这类控件提供的官方钩子，写在这里不算"替换组件"。
+#   为稳妥起见，app.py 里同时保留了一条同色的 CSS 兜底规则，两者颜色一致。
+#
+# 其余颜色（背景、文字、分隔线、强调色等）仍全部走 app.py 的 CSS。
+# 颜色总表见 app.py 顶部注释：
+#   主背景 #fbf8f2 ｜ 侧边栏 #f5f0e6 ｜ 卡片 #faf8f2 ｜ 分隔线 #e0d8c8
+#   主文字 #2c2c2c ｜ 次要 #6b5f3f ｜ 标签 #8a7a5a
+#   强调 #8b6f47 ｜ 正常 #5a7a4a ｜ 错误 #a02828 ｜ 开关 #3b7dd8
+#
+# client.showSidebarNavigation = false
+#   Streamlit 1.3x 起会把项目里的多页应用导航自动塞进侧边栏。本项目是单页应用，
+#   那一段导航纯属占位，而且会占据高度、把侧边栏内容挤到需要滚动。
+#   关掉后侧边栏空间明显宽裕，可以一次显示全部模块。
+# =============================================================================
+
+[client]
+showSidebarNavigation = false
+toolbarMode = "minimal"        # 隐藏右上角 Deploy/菜单，界面更干净、答辩演示无干扰
+showErrorDetails = true
+
+[theme]
+base = "light"                 # 只保留明暗基调，其余颜色交给 app.py 的 CSS
+primaryColor = "#3b7dd8"       # st.toggle 开启色（唯一需要主题令牌的控件）
+
+[server]
+headless = true
+fileWatcherType = "auto"
+
+[browser]
+gatherUsageStats = false

@@ -1,0 +1,42 @@
+# ---------------------------- 密钥与本地配置 --------------------------------
+.env
+.env.local
+*.key
+
+# ---------------------------- Python ----------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---------------------------- 数据与索引（体积大，不入库） -------------------
+# 仅保留 raw 原始语料可选择性入库，其余一律忽略
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/eval/*
+!data/eval/.gitkeep
+# 测试集含语料文件名与页码标注，不公开
+data/testset.json
+# 测试集构建脚本内嵌全部真实题目，同样不公开
+scripts/build_testset.py
+indexes/chroma/*
+!indexes/chroma/.gitkeep
+indexes/bm25/*
+!indexes/bm25/.gitkeep
+
+# ---------------------------- 运行时产物 ------------------------------------
+logs/
+*.log
+*.tmp
+
+# ---------------------------- 编辑器 / 系统 ---------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
