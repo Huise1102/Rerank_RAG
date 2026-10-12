@@ -196,8 +196,7 @@ backend/
 │   └── create_admin.py
 ├── docker-compose.yml
 ├── Dockerfile
-├── requirements.txt
-└── .env.example
+└── requirements.txt
 ```
 
 ### 2.2 前端目录结构（目标）
@@ -707,7 +706,7 @@ CREATE TABLE evaluations (
 - CHROMA_PERSIST_DIR: indexes/chroma
 - BM25_INDEX_DIR: indexes/bm25
 - 检索链路参数：recall_top_k=50, fusion_top_k=20, rerank_top_k=5, rrf_k=60, context_max_chars=6000
-所有配置从 .env 读取，提供 .env.example。
+所有配置从 .env 读取。
 ```
 
 ---

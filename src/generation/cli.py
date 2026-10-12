@@ -115,7 +115,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"  {key:<16}: {value}")
     print(f"\n  {'✅ 就绪' if ready else '⚠️  未就绪'} —— {why}")
     if not ready:
-        print("\n  配置方式：复制 .env.example 为 .env，写入 RAG_LLM__API_KEY=sk-你的密钥")
+        print("\n  配置方式：在项目根目录新建 .env，写入 RAG_LLM__API_KEY=sk-你的密钥")
         print("  申请地址：https://platform.deepseek.com/api_keys")
     return 0 if ready else 1
 

@@ -226,7 +226,6 @@ demo/
 ├── app.py                          # Streamlit 前端入口
 ├── config.py                       # ⭐ 全局配置（11 个分组，所有可调参数集中于此）
 ├── requirements.txt
-├── .env.example                    # 环境变量模板
 ├── data/
 │   ├── raw/                        # 原始 PDF 语料（放入待入库文件）
 │   ├── processed/                  # 分块 JSON + ingest_manifest.json
@@ -312,8 +311,7 @@ RAG_EMBEDDING__OFFLINE=true
 ### 5.4 配置环境变量
 
 ```powershell
-Copy-Item .env.example .env
-# 编辑 .env，填入 DeepSeek API Key：
+# 在项目根目录手动新建 .env，写入以下内容：
 #   RAG_LLM__API_KEY=sk-xxxxxx
 # 建议同时设置（避免中文乱码与字体缓存权限问题）：
 #   RAG_EMBEDDING__OFFLINE=true
