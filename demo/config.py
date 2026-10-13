@@ -21,7 +21,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-#: project/ 目录的绝对路径（本文件所在目录）
 PROJECT_ROOT: Path = Path(__file__).resolve().parent
 
 
@@ -44,8 +43,6 @@ BM25Tokenizer = Literal["jieba", "char", "whitespace"]
 #: 用正面格式校验而不是"排除占位符"，才能挡住用户自定义的占位文字。
 _API_KEY_RE = re.compile(r"^sk-[A-Za-z0-9]{20,}$")
 
-#: 形如 ``sk-xxxxxxxx…`` 的占位符：密钥体由同一个字符重复组成。
-#: 真实密钥不可能如此，但形状上能通过纯格式校验，因此需要单独排除。
 _API_KEY_PLACEHOLDER_RE = re.compile(r"^sk-([A-Za-z0-9])\1+$")
 
 
@@ -120,13 +117,11 @@ class StrategySpec(_Section):
 
 class ChunkSettings(_Section):
     """阶段 1 使用：PDF -> 文本 -> 分块。
-
     两种可切换策略，参数各自独立保存：``fixed`` 按字符窗口滑动切分；
     ``recursive`` 用 RecursiveCharacterTextSplitter，分隔符
     ["\\n\\n","\\n","。"," ",""]，优先在段落/句子边界断开。
     业务代码用 ``settings.chunk.for_strategy(名称)`` 取参数。
     """
-
     #: 默认策略（可用环境变量 RAG_CHUNK__DEFAULT_STRATEGY=fixed 切换）
     default_strategy: str = Field(default="recursive", description="默认使用的分块策略名")
 
@@ -248,7 +243,6 @@ class ChunkSettings(_Section):
 
 class PDFSettings(_Section):
     """阶段 1 使用：PDF 文本抽取（loader.py）。"""
-
     #: pdfplumber 对中文排版与表格抽取质量最好；PyMuPDF 更快但需额外安装
     engine: PDFEngine = Field(default="pdfplumber", description="PDF 解析后端")
     #: True 为版面流顺序；False 按内容对象顺序，双栏论文可能串行，可切换对比
@@ -268,7 +262,6 @@ class PDFSettings(_Section):
 
 class EmbeddingSettings(_Section):
     """阶段 1 / 阶段 2 使用：BAAI/bge-large-zh-v1.5 本地向量化。"""
-
     provider: EmbeddingProvider = "huggingface"
     model_name: str = Field(default="BAAI/bge-large-zh-v1.5", description="HF 仓库名或本地模型目录")
     device: DeviceType = Field(default="auto", description="auto 会在有 CUDA 时自动使用 GPU")
@@ -314,7 +307,6 @@ class EmbeddingSettings(_Section):
 
 class RerankSettings(_Section):
     """阶段 2 使用：BAAI/bge-reranker-v2-m3 精排。"""
-
     enabled: bool = Field(default=True, description="关闭后退化为纯混合检索结果")
     model_name: str = "BAAI/bge-reranker-v2-m3"
     #: 加载后端：cross_encoder -> sentence_transformers.CrossEncoder（默认，轻量）；
@@ -363,7 +355,6 @@ class RerankSettings(_Section):
 
 class RetrievalSettings(_Section):
     """阶段 2 使用：BM25 稀疏检索 + Chroma 稠密检索 + 融合。"""
-
     #: 融合后返回条数 = 精排候选池大小。
     #: 链路：每路各召回 50（dense_top_k / sparse_top_k）-> RRF 融合取本值（20）
     #: -> 精排 -> rerank.top_k（5）进入 LLM。调大可提升召回上限，
@@ -416,7 +407,6 @@ class RetrievalSettings(_Section):
 
 class LLMSettings(_Section):
     """阶段 3 使用：DeepSeek OpenAI 兼容接口。"""
-
     provider: LLMProvider = "deepseek"
     api_key: str | None = Field(default=None, description="从 .env 的 RAG_LLM__API_KEY 读取")
     base_url: str = "https://api.deepseek.com/v1"
@@ -441,7 +431,6 @@ class LLMSettings(_Section):
     def is_configured(self) -> bool:
         """
         API Key 是否已配置（生成模块启动时用它做前置校验）。
-
         判据是**正面校验密钥格式**（``sk-`` + 20 位以上字母数字），而不是
         "不等于某个占位符" —— 后者防不住用户自定义的占位文字。
         本项目实测：把判据写成"不以 sk-xxx 开头"时，占位符
@@ -453,7 +442,6 @@ class LLMSettings(_Section):
     def looks_like_placeholder(self) -> bool:
         """
         该值是否"形状像占位符"（``sk-`` 后为同一字符重复，如 ``sk-xxxx…``）。
-
         单独作为一个属性而不是并进 ``is_configured``：这类值在格式上其实合法，
         无法 100% 断定它一定是占位符（真实密钥碰巧全同字符的概率极低但不为零）。
         因此只用于**给出更有针对性的报错提示**，不参与判定。
@@ -484,7 +472,6 @@ class LLMSettings(_Section):
 
 class GenerationSettings(_Section):
     """阶段 3 使用：把检索结果拼成上下文并约束 LLM 输出。"""
-
     context_max_chars: int = Field(
         default=6000, ge=500, description="注入 prompt 的上下文字符上限（deepseek-chat 上下文 64K）"
     )
@@ -517,7 +504,6 @@ class GenerationSettings(_Section):
 
 class EvaluationSettings(_Section):
     """阶段 5 使用：检索与生成质量评估。
-
     测试集路径同时支持 ``data/testset.json``（阶段 5 规格）与
     ``data/eval/testset.json``（阶段 0 预置），见 ``resolve_testset_file``。
     """
@@ -577,7 +563,6 @@ class EvaluationSettings(_Section):
 
 class APISettings(_Section):
     """阶段 4 使用：FastAPI 服务。"""
-
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
     reload: bool = False
@@ -597,7 +582,6 @@ class APISettings(_Section):
 
 class FrontendSettings(_Section):
     """阶段 4 使用：Streamlit。"""
-
     api_base_url: str = "http://127.0.0.1:8000"
     page_title: str = "领域知识问答系统"
     #: 用 Streamlit 的 Material 符号（字体连字）而非 emoji
@@ -626,7 +610,6 @@ class LogSettings(_Section):
 
 class AppSettings(BaseSettings):
     """全局配置聚合对象；业务代码统一 ``from config import settings`` 使用。"""
-
     model_config = SettingsConfigDict(
         env_file=(PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
@@ -714,7 +697,6 @@ class AppSettings(BaseSettings):
 
 def _silence_chroma_telemetry_noise() -> None:
     """屏蔽 chromadb 0.5.x 的遥测报错噪音。
-
     chromadb 0.5.20 以三参数调用 ``posthog.capture(user_id, event, props)``，
     而 posthog 7.x 已改为 ``capture(event, **kwargs)``，必然抛 TypeError；
     chromadb 用 ``logger.error`` 打印，其 logger 无 handler，最终由
@@ -727,7 +709,6 @@ def _silence_chroma_telemetry_noise() -> None:
 
 def configure_chroma_telemetry() -> None:
     """双重保险关闭 Chroma 遥测。
-
     apply_environment() 设置的环境变量只在 chromadb 的 Settings 尚未实例化时生效，
     若已被提前加载则失效，故这里再直接改写其单例配置。
     调用时机：使用 Chroma 之前（建库脚本与 API 启动时各调一次）。
@@ -757,7 +738,6 @@ settings: AppSettings = get_settings()
 
 def _configure_console_encoding() -> None:
     """把标准输出切到 UTF-8。
-
     Windows 控制台默认 GBK(cp936)，print 特殊符号会抛 UnicodeEncodeError，
     经管道重定向时中文会乱码；errors="replace" 保证退化为可读文本而非崩溃。
     """
