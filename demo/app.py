@@ -12,10 +12,6 @@ import sys
 
 
 def _setup_io_encoding() -> None:
-    """把 stdout/stderr 切换为 UTF-8；须在任何输出之前执行。
-
-    Windows 控制台默认 GBK(cp936)，print 中文会抛 UnicodeEncodeError。
-    """
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
         reconfigure = getattr(stream, "reconfigure", None)
@@ -37,7 +33,7 @@ import streamlit as st  # noqa: E402
 from config import settings  # noqa: E402
 
 
-#: 配色总表（唯一来源，改色只需改这里与 _CSS）
+#: 配色总表
 #:   背景 #fbf8f2 ｜ 侧边栏 #f5f0e6 ｜ 卡片 #faf8f2 ｜ 分隔线 #e0d8c8 ｜ 文字 #2c2c2c
 #:   次要 #6b5f3f ｜ 标签 #8a7a5a ｜ 强调 #8b6f47 ｜ 正常 #5a7a4a ｜ 错误 #a02828
 #:   开关开启色 #3b7dd8（唯一有意偏离主色调的颜色，见下方 st.toggle 规则）
@@ -443,11 +439,6 @@ _CITE_RE = re.compile(r"\[(\d+(?:\s*[-–,，、]\s*\d+)*)\](?!\()")
 
 
 def highlight_citations(text: str) -> str:
-    """把答案里的引用编号 ``[1]`` 包成 ``<span class="md-cite">``，棕褐色加粗显示。
-
-    只行内插一层 HTML，答案本身仍交给原生 ``st.markdown`` 渲染，保住表格与列表；
-    代价是该处渲染需要 ``unsafe_allow_html=True``。
-    """
     return _CITE_RE.sub(lambda m: f'<span class="md-cite">[{m.group(1)}]</span>', text)
 
 
@@ -455,8 +446,6 @@ TIMEOUT = settings.frontend.request_timeout
 
 
 class BackendError(RuntimeError):
-    """后端调用失败（带可读原因）。"""
-
 
 def _url(path: str) -> str:
     return f"{settings.frontend.api_base_url.rstrip('/')}{path}"
@@ -475,10 +464,7 @@ def api_strategies() -> dict[str, Any]:
 
 
 def api_query(question: str, strategy: str, use_stream: bool = True) -> Iterator[dict[str, Any]]:
-    """调用问答接口，统一 yield 事件字典。
 
-    流式 yield ``meta`` / ``delta`` / ``done``；非流式只 yield 一个 ``done``。
-    """
     payload = {"question": question, "strategy": strategy}
 
     if not use_stream:
@@ -585,10 +571,7 @@ def render_user_bubble(text: str) -> None:
 
 
 def render_citations(citations: dict[str, Any]) -> None:
-    """渲染引用来源：每条可展开查看原文。
 
-    原文用自绘 div + ``st.markdown``，不用 ``st.code``（后者带行号与复制按钮）。
-    """
     items = citations.get("citations", [])
     if not items and not citations.get("is_refusal"):
         return
