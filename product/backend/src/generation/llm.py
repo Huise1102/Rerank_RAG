@@ -144,7 +144,7 @@ class LLMClient:
         if self.api_key or settings.llm.is_configured:
             return True, f"已配置 Key（{self.base_url}）"
         return False, "未配置 DeepSeek API Key（请在 .env 设置 RAG_LLM__API_KEY）"
-    def _params(self, messages: list[dict[str, str]], *, stream: bool, model: str | None = None,
+    def _params(self, messages: list[dict[str, Any]], *, stream: bool, model: str | None = None,
                 temperature: float | None = None, max_tokens: int | None = None) -> dict[str, Any]:
         cfg = settings.llm
         return {
@@ -196,6 +196,7 @@ class LLMClient:
         contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
         *,
         history: Sequence[tuple[str, str]] | None = None,
+        image: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -204,26 +205,30 @@ class LLMClient:
         """生成答案。
 
         :param contexts: 上下文（PromptContext、RetrievalResult 或字典均可）
+        :param image: 图片 data URL；传入后自动改用多模态模型，图片作为资料的一部分
         :param model: 显式指定模型；指定后不再降级（``use_fallback_models`` 随之失效）
         :returns: LLMResponse（``answer`` + ``contexts`` + 用量 + 引用报告）
         """
         items = self._normalize_contexts(contexts)
-        built = self.builder.build(query, items, history=history)
+        built = self.builder.build(query, items, history=history, image=image)
+        default_model = settings.llm.vision_model if image else self.model
         warnings: list[str] = []
 
         # 无上下文不烧 token：没有资料时模型的回答就是幻觉的温床，故直接返回配置话术
-        if not built.contexts:
+        # （附图时例外：图片本身就是资料）
+        if not built.contexts and not built.has_image:
             warnings.append("无检索上下文，返回兜底话术（未调用 LLM）")
             resp = LLMResponse(
-                answer=self.builder.no_context_reply, contexts=[], model=model or self.model,
+                answer=self.builder.no_context_reply, contexts=[], model=model or default_model,
                 usage={}, elapsed=0.0, attempts=0, built_prompt=built, warnings=warnings,
             )
             # 兜底话术本身也是拒答，让引用解析能看到这一点
             object.__setattr__(resp, "_citations", extract_citations(resp.answer, []))
             return resp
 
-        models = [model or self.model]
-        if use_fallback_models and not model:
+        models = [model or default_model]
+        # 图片只能走多模态模型：文本备用模型收到 image_url 块会直接 400
+        if use_fallback_models and not model and not image:
             models += [m for m in settings.llm.fallback_models if m not in models]
 
         t_start = time.perf_counter()
@@ -289,6 +294,7 @@ class LLMClient:
         contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
         *,
         history: Sequence[tuple[str, str]] | None = None,
+        image: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -296,14 +302,15 @@ class LLMClient:
     ) -> Iterator[str]:
         """流式生成，逐段 yield 文本增量。需要完整结果与引用时用 :meth:`stream_response`。"""
         items = self._normalize_contexts(contexts)
-        built = self.builder.build(query, items, history=history)
+        built = self.builder.build(query, items, history=history, image=image)
 
-        if not built.contexts:
+        if not built.contexts and not built.has_image:
             yield self.builder.no_context_reply
             return
 
-        params = self._params(built.messages, stream=True, model=model,
-                             temperature=temperature, max_tokens=max_tokens)
+        params = self._params(built.messages, stream=True,
+                              model=model or (settings.llm.vision_model if image else self.model),
+                              temperature=temperature, max_tokens=max_tokens)
         stream = self._call_with_retry(params, deadline=time.perf_counter() + self.timeout)
         for chunk in stream:
             choices = getattr(chunk, "choices", None)
@@ -324,7 +331,9 @@ class LLMClient:
         """返回 (增量迭代器, 结果容器)；迭代结束后 ``box["response"]`` 是完整 LLMResponse。"""
         items = self._normalize_contexts(contexts)
         history = kwargs.pop("history", None)
-        built = self.builder.build(query, items, history=history)
+        image = kwargs.pop("image", None)
+        built = self.builder.build(query, items, history=history, image=image)
+        default_model = settings.llm.vision_model if image else self.model
         box: dict[str, Any] = {"response": None}
 
         def _iter() -> Iterator[str]:
@@ -333,10 +342,10 @@ class LLMClient:
             pieces: list[str] = []
             warnings: list[str] = []
 
-            if not built.contexts:
+            if not built.contexts and not built.has_image:
                 text = self.builder.no_context_reply
                 yield text
-                resp = LLMResponse(answer=text, contexts=[], model=kwargs.get("model") or self.model,
+                resp = LLMResponse(answer=text, contexts=[], model=kwargs.get("model") or default_model,
                                    elapsed=0.0, attempts=0, built_prompt=built,
                                    warnings=["无检索上下文，返回兜底话术"])
                 object.__setattr__(resp, "_citations", extract_citations(text, []))
@@ -344,7 +353,7 @@ class LLMClient:
                 return
 
             try:
-                for delta in self.stream(query, built.contexts, history=history, **kwargs):
+                for delta in self.stream(query, built.contexts, history=history, image=image, **kwargs):
                     if first is None:
                         first = time.perf_counter() - t0
                     pieces.append(delta)
@@ -356,7 +365,7 @@ class LLMClient:
                 resp = LLMResponse(
                     answer=answer or self.builder.no_context_reply,
                     contexts=built.contexts,
-                    model=kwargs.get("model") or self.model,
+                    model=kwargs.get("model") or default_model,
                     elapsed=time.perf_counter() - t0,
                     first_token_seconds=first,
                     attempts=1,
