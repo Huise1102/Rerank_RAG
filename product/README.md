@@ -257,3 +257,14 @@ npm run dev
 - 预置知识库「法律领域」的语料为只读引用（仓库根 `resource\法律领域\` 下的文件），入库时不复制、不改写原文件。
 - 首次运行需联网或已具备本地模型缓存（bge-large-zh-v1.5 与 bge-reranker-v2-m3）；`RAG_EMBEDDING__OFFLINE=true` 时仅使用本地缓存，不访问 HuggingFace。
 - `.env` 不入库（已被 `product/.gitignore` 忽略），请在本地填写真实密钥。
+
+---
+
+## 许可证
+
+本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，**禁止任何商业用途**。
+
+- 允许：个人学习、研究、教学、实验、业余项目，以及慈善机构、教育院校、公共研究组织等非商业主体使用，可复制、修改与分发（须保留许可证与版权声明）。
+- 禁止：任何以商业获利为目的的使用，包括但不限于商业产品集成、付费服务、对外销售或以此提供商业支持。
+
+完整条款见仓库根目录 [LICENSE](../LICENSE)。
