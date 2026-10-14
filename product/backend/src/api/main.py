@@ -151,6 +151,17 @@ async def health() -> dict:
     }
 
 
+# 前端以 /api/v1 为 baseURL，健康检查调用 /api/v1/health；
+# 这里复用同一处理函数，避免前端判定「后端未连接」。
+app.add_api_route(
+    f"{settings.api.api_prefix}/health",
+    health,
+    methods=["GET"],
+    summary="健康检查（与 /health 等价）",
+    include_in_schema=False,
+)
+
+
 @app.post("/warmup", summary="手动触发热身（幂等）")
 async def warmup() -> dict:
     if not _state.started:
