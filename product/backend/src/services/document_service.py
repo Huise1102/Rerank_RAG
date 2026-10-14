@@ -77,6 +77,22 @@ async def get_document(db: AsyncSession, doc_id: int) -> Document | None:
     return await db.get(Document, doc_id)
 
 
+def read_document_bytes(doc: Document) -> bytes:
+    """读取文档原始内容，供在线预览 / 下载。
+
+    上传的文档落在 storage/（或 MinIO），而预置语料是只读引用 resource/ 下的文件
+    （``file_path`` 为绝对路径），两种形态都要支持。
+
+    :raises FileNotFoundError: 原始文件已不存在或丢失
+    """
+    path = Path(doc.file_path)
+    if path.is_absolute():
+        if not path.exists():
+            raise FileNotFoundError(f"原始文件不存在: {path}")
+        return path.read_bytes()
+    return get_storage().read_bytes(doc.file_path)
+
+
 async def delete_document(db: AsyncSession, doc_id: int) -> bool:
     """删除文档：原始文件 + 索引中的对应分块 + 数据库记录。"""
     doc = await db.get(Document, doc_id)
