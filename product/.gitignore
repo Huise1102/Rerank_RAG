@@ -1,0 +1,25 @@
+# 产品级领域知识库系统 —— 忽略规则
+# 运行时产物、虚拟环境与密钥一律不入库
+
+# 后端运行时数据（索引 / 原始文档 / 上传存储 / 日志）
+backend/data/
+backend/indexes/
+backend/storage/
+backend/logs/
+
+# 虚拟环境与密钥
+backend/.venv/
+backend/.env
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
