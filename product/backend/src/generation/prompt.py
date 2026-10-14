@@ -56,14 +56,22 @@ class PromptContext:
 class BuiltPrompt:
     """组装好的 prompt（消息列表）及其元信息。"""
 
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]
     contexts: list[PromptContext] = field(default_factory=list)
     used_chars: int = 0
     dropped: int = 0  # 因超出预算被丢弃的上下文条数
+    has_image: bool = False  # 是否附带图片（图片问答时无上下文也允许调用模型）
 
     @property
     def context_block(self) -> str:
-        return self.messages[-1]["content"]
+        """最后一条 user 消息的文本部分（附图时该消息是内容块数组）。"""
+        content = self.messages[-1]["content"]
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    return str(block.get("text", ""))
+            return ""
+        return str(content)
 
     def summary(self) -> str:
         return (
@@ -190,11 +198,14 @@ class PromptBuilder:
         contexts: Sequence[PromptContext] | Sequence[Any],
         *,
         history: Sequence[tuple[str, str]] | None = None,
+        image: str | None = None,
     ) -> BuiltPrompt:
         """组装完整 prompt。
 
         :param contexts: ``PromptContext`` 或检索结果列表/字典均可（本方法自行归一化）
         :param history: 多轮对话历史 ``[(role, content), ...]``，只保留最近若干轮
+        :param image: 图片 data URL（``data:image/png;base64,...``）；传入后最后一条
+            user 消息改为内容块数组，图片以 ``image_url`` 块承载
         :returns: BuiltPrompt，``messages`` 可直接喂给 OpenAI SDK
         """
         # 允许直接传检索结果，否则调用方会拿到 AttributeError: no attribute 'header'
@@ -211,7 +222,12 @@ class PromptBuilder:
             # 无上下文：仍然走"不足则说明"的路径，而不是伪造上下文
             user_content = self.user_template.format(context="（无可用参考资料）", question=question.strip())
 
-        messages: list[dict[str, str]] = [{"role": "system", "content": self.build_system_prompt()}]
+        system_text = self.build_system_prompt()
+        if image:
+            user_content = f"{user_content}\n\n{settings.generation.image_user_notice}"
+            system_text = f"{system_text}\n{settings.generation.image_system_rule}"
+
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_text}]
 
         if history:
             turns = max(settings.generation.history_max_turns, 0) * 2
@@ -219,10 +235,24 @@ class PromptBuilder:
                 if role in ("user", "assistant") and content:
                     messages.append({"role": role, "content": content})
 
-        messages.append({"role": "user", "content": user_content})
+        if image:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_content},
+                        {"type": "image_url", "image_url": {"url": image}},
+                    ],
+                }
+            )
+        else:
+            messages.append({"role": "user", "content": user_content})
 
         used = sum(len(ctx.text) + len(ctx.header()) for ctx in selected)
-        return BuiltPrompt(messages=messages, contexts=list(selected), used_chars=used, dropped=dropped)
+        return BuiltPrompt(
+            messages=messages, contexts=list(selected), used_chars=used, dropped=dropped,
+            has_image=bool(image),
+        )
 
     def __call__(self, question: str, contexts: Sequence[Any], **kwargs: Any) -> BuiltPrompt:
         return self.build(question, contexts, **kwargs)
