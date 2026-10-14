@@ -53,7 +53,7 @@ product/
 │   ├── alembic/                数据库迁移脚本（versions/*）
 │   ├── scripts/
 │   │   ├── init_db.py          建库 + 建表（默认走 Alembic，可切 create_all）
-│   │   └── seed_data.py        预置「法律领域」知识库并导入 resource 语料
+│   │   └── seed_data.py        预置「法律领域」知识库并导入 product/resource 语料
 │   ├── src/
 │   │   ├── api/                main.py（应用入口）、deps.py、v1/（kb/document/retrieval/chat/log 路由）
 │   │   ├── core/               config.py（全局配置）、logging.py
@@ -71,6 +71,7 @@ product/
 │   ├── alembic.ini
 │   ├── Dockerfile
 │   └── docker-compose.yml      MySQL + Redis + MinIO + 后端（+ 可选 Celery worker）
+├── resource/                   预置语料（法律领域，只读引用，不复制）
 └── frontend/
     ├── src/
     │   ├── api/                axios 封装与各模块接口（request / kb / document / chat / log）
@@ -125,7 +126,7 @@ docker compose up -d mysql redis minio
 # 5. 初始化数据库（建库 + 迁移建表）
 python scripts\init_db.py
 
-# 6. 灌入预置语料「法律领域」（只读引用仓库根 resource\法律领域\ 下的文件）
+# 6. 灌入预置语料「法律领域」（只读引用 product\resource\法律领域\ 下的文件）
 python scripts\seed_data.py
 
 # 7. 启动后端
@@ -157,7 +158,7 @@ npm run dev
 配置采用 `RAG_<分组>__<字段>` 的命名规则（双下划线表示嵌套层级），默认值写在 `src/core/config.py`，可通过 `.env` 或系统环境变量覆盖。`.env.example` 中涉及的关键字段如下（此处只列字段名，示例文件内为占位值）：
 
 - 应用与语料
-  - `RAG_RESOURCE_DIR`：预置语料目录（默认指向仓库根 `resource`）
+  - `RAG_RESOURCE_DIR`：预置语料目录（默认指向 `product/resource`）
 - LLM（DeepSeek）
   - `RAG_LLM__API_KEY`：DeepSeek 密钥（形如 `sk-` 开头的字符串，**需自行填写**）
   - `RAG_LLM__MODEL`：对话模型（默认 `deepseek-chat`）
@@ -254,7 +255,7 @@ npm run dev
 - Redis 可选：Redis 未运行时不影响问答（检索与生成均在线程池内执行）。仅上传文档后的异步解析入库链路受影响——Celery broker 不可用时，系统会降级为在线程池内同步入库，只是不再异步。
 - 图片不持久化：问答中上传的图片不会落库，重新打开历史会话时仅显示占位。图片以 base64 数据 URL 传递，仅在当次请求中随上下文进入多模态模型。
 - 检索与 LLM 调用为阻塞操作，均在线程池中执行，避免阻塞 FastAPI 事件循环。
-- 预置知识库「法律领域」的语料为只读引用（仓库根 `resource\法律领域\` 下的文件），入库时不复制、不改写原文件。
+- 预置知识库「法律领域」的语料为只读引用（`product\resource\法律领域\` 下的文件），入库时不复制、不改写原文件。
 - 首次运行需联网或已具备本地模型缓存（bge-large-zh-v1.5 与 bge-reranker-v2-m3）；`RAG_EMBEDDING__OFFLINE=true` 时仅使用本地缓存，不访问 HuggingFace。
 - `.env` 不入库（已被 `product/.gitignore` 忽略），请在本地填写真实密钥。
 

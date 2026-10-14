@@ -9,7 +9,7 @@
 
 主流程::
 
-    pages = load_document("resource/法律领域/xxx.pdf")   # -> list[LoadedPage]
+    pages = load_document("product/resource/法律领域/xxx.pdf")   # -> list[LoadedPage]
 """
 
 from __future__ import annotations

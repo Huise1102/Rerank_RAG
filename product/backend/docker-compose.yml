@@ -98,7 +98,7 @@ services:
       - "8000:8000"
     volumes:
       - hf_cache:/app/.hf-cache
-      - ${RESOURCE_DIR:-../../resource}:/app/resource:ro
+      - ${RESOURCE_DIR:-../resource}:/app/resource:ro
     command: >
       sh -c "python scripts/init_db.py && uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
 

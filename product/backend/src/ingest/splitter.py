@@ -11,7 +11,7 @@ strategy。产物以知识库维度落盘：``data/processed/kb_<kb_id>/chunks_<
 
 主流程::
 
-    pages = load_document("resource/法律领域/xxx.pdf")   # -> list[LoadedPage]
+    pages = load_document("product/resource/法律领域/xxx.pdf")   # -> list[LoadedPage]
     docs = to_documents(pages)                            # -> list[Document]
     result = split_documents(docs, strategy="recursive")
     save_chunks(result, kb_id=1, strategy="recursive")

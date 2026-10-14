@@ -80,7 +80,7 @@ async def get_document(db: AsyncSession, doc_id: int) -> Document | None:
 def read_document_bytes(doc: Document) -> bytes:
     """读取文档原始内容，供在线预览 / 下载。
 
-    上传的文档落在 storage/（或 MinIO），而预置语料是只读引用 resource/ 下的文件
+    上传的文档落在 storage/（或 MinIO），而预置语料是只读引用 product/resource/ 下的文件
     （``file_path`` 为绝对路径），两种形态都要支持。
 
     :raises FileNotFoundError: 原始文件已不存在或丢失

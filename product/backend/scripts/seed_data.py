@@ -2,7 +2,7 @@
 
 行为：
 1. 预置 1 个知识库「法律领域」，``enabled_strategies`` 默认全开。
-2. 扫描仓库根 ``resource/法律领域/`` 下的 pdf / docx / txt / md 四种格式文件
+2. 扫描 ``product/resource/法律领域/`` 下的 pdf / docx / txt / md 四种格式文件
    （**只读引用**，不复制、不改写），复用 ``ingest_service.ingest_paths`` 一次性
    解析 -> 分块 -> 建索引（向量 + BM25），并在 ``documents`` 表登记 completed 记录。
 3. 幂等：已存在同名知识库直接复用；同名文档（同文件名）已登记则跳过，不重复入库。

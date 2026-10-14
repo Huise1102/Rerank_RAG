@@ -78,13 +78,12 @@ RRF 融合（k = 60）→ 候选池保留 20 条
 │   ├── app.py            Streamlit 前端入口（对话 + 检索调试）
 │   ├── src/              api / ingest / retrieval / generation / evaluation
 │   ├── data/eval/        测试集与评估产物（含 EXPERIMENT_REPORT.md）
-│   ├── migration_prompts.md   从验证版迁移到产品级的完整提示词
 │   └── README.md         验证版详细文档
 ├── product/              产品级系统（Vue 3 + FastAPI）
 │   ├── backend/          FastAPI 服务、检索链路、异步入库、迁移脚本
 │   ├── frontend/         Vue 3 四页应用（问答 / 知识库 / 检索策略 / 日志）
+│   ├── resource/         预置语料（法律领域，只读引用）
 │   └── README.md         产品级系统详细文档
-├── resource/             预置语料（法律领域）
 ├── LICENSE               PolyForm Noncommercial License 1.0.0
 └── README.md             本文件
 ```

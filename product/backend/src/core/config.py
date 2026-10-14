@@ -429,8 +429,8 @@ class AppSettings(BaseSettings):
     language: str = "zh"
     debug: bool = False
 
-    #: 种子数据来源：仓库根 resource/（只读引用，不复制、不改写）
-    resource_dir: Path = Field(default=Path(r"C:\Users\98429\Desktop\基于混合检索与Rerank的领域知识库系统\resource"))
+    #: 种子数据来源：product/resource/（只读引用，不复制、不改写）
+    resource_dir: Path = Field(default=Path(r"C:\Users\98429\Desktop\基于混合检索与Rerank的领域知识库系统\product\resource"))
 
     # 基础设施
     paths: PathSettings = Field(default_factory=PathSettings)
