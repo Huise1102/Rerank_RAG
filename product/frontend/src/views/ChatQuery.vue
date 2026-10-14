@@ -9,7 +9,7 @@
           style="width: 240px"
           @change="onKbChange"
         >
-          <el-option v-for="kb in kbStore.kbs" :key="kb.id" :label="kb.name" :value="kb.id" />
+          <el-option v-for="kb in kbStore.activeKbs" :key="kb.id" :label="kb.name" :value="kb.id" />
         </el-select>
       </div>
       <div class="toolbar-right">
@@ -48,7 +48,13 @@
             </div>
           </div>
 
-          <div v-for="msg in chatStore.messages" :key="msg.id" class="msg-block">
+          <div
+            v-for="msg in chatStore.messages"
+            :key="msg.id"
+            class="msg-block"
+            :class="{ 'msg-block--selectable': msg.role === 'assistant' }"
+            @click="selectDetail(msg)"
+          >
             <ChatMessage :message="msg" @cite="(idx) => handleCitationClick(msg.id, idx)" />
 
             <div v-if="msg.role === 'assistant'" class="assistant-extras">
@@ -64,40 +70,46 @@
                   :id="`cite-${msg.id}-${citeIndex(c, i)}`"
                 />
               </div>
-
-              <RetrievalDetail
-                v-if="docsOf(msg).length"
-                :docs="docsOf(msg)"
-                :latency="msg.latency"
-                :stats="msg.stats"
-                :strategy="msg.strategy"
-              />
             </div>
           </div>
         </div>
 
         <div class="composer">
+          <div v-if="imageDataUrl" class="image-preview">
+            <img :src="imageDataUrl" alt="待发送的图片" />
+            <el-button class="image-remove" link @click="clearImage">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
           <el-input
             v-model="input"
             type="textarea"
             :rows="3"
             resize="none"
             :disabled="!kbStore.currentKbId"
-            placeholder="请输入你的问题…（Enter 发送，Shift+Enter 换行）"
+            :placeholder="
+              imageDataUrl
+                ? '可补充你的问题，留空则让系统描述图片内容（Enter 发送）'
+                : '请输入你的问题…（Enter 发送，Shift+Enter 换行）'
+            "
             @keydown="onKeydown"
           />
           <div class="composer-actions">
-            <span class="composer-hint">
-              {{
-                kbStore.currentKb
-                  ? `当前知识库：${kbStore.currentKb.name} · 检索策略修改请前往「检索策略」页`
-                  : '请先选择知识库'
-              }}
-            </span>
+            <el-button :disabled="!kbStore.currentKbId" @click="pickImage">
+              <el-icon><Picture /></el-icon>
+              <span>图片</span>
+            </el-button>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              hidden
+              @change="onPickImage"
+            />
             <el-button
               type="primary"
               :loading="sending"
-              :disabled="!kbStore.currentKbId || !input.trim()"
+              :disabled="!kbStore.currentKbId || (!input.trim() && !imageDataUrl)"
               @click="handleSend"
             >
               <el-icon v-if="!sending"><Promotion /></el-icon>
@@ -106,12 +118,38 @@
           </div>
         </div>
       </section>
+
+      <!-- 右：检索详情（3/9），展示当前所选回答的召回与耗时 -->
+      <aside class="detail-panel">
+        <div class="detail-panel__head">
+          <span class="detail-panel__title">检索详情</span>
+          <span v-if="detailMsg && detailMsg.strategy" class="detail-panel__tag">
+            {{ detailMsg.strategy }}
+          </span>
+        </div>
+        <div class="detail-panel__body scroll-area">
+          <template v-if="detailMsg && docsOf(detailMsg).length">
+            <div class="detail-panel__stat">
+              Top-{{ docsOf(detailMsg).length }} 文档块 · 两路召回得分
+            </div>
+            <RetrievalDetail
+              :docs="docsOf(detailMsg)"
+              :latency="detailMsg.latency"
+              :stats="detailMsg.stats"
+            />
+          </template>
+          <div v-else class="detail-empty">
+            提问后，这里会展示该次回答召回的文档块、两路召回得分与耗时分解。<br />
+            上方回答可点击切换，默认显示最近一次回答。
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup>
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useKbStore } from '@/stores/kb'
 import {
@@ -132,17 +170,57 @@ const chatStore = useChatStore()
 const input = ref('')
 const sending = ref(false)
 const scrollEl = ref(null)
+const fileInput = ref(null)
+//: 待发送图片的 data URL（data:image/png;base64,...）
+const imageDataUrl = ref('')
 let abortController = null
+
+//: 用户在对话区点选的那条回答，决定右侧「检索详情」栏展示哪一次检索
+const selectedDetailId = ref(null)
+
+// 优先展示点选的那条回答，否则回退到最近一条回答（新回答生成时自动跟随）
+const detailMsg = computed(() => {
+  const list = chatStore.messages
+  if (selectedDetailId.value) {
+    const hit = list.find((m) => m.id === selectedDetailId.value && m.role === 'assistant')
+    if (hit) return hit
+  }
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i].role === 'assistant') return list[i]
+  }
+  return null
+})
+
+function selectDetail(msg) {
+  if (msg.role === 'assistant') selectedDetailId.value = msg.id
+}
+
+//: DeepSeek 多模态接口支持的图片格式
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 onMounted(async () => {
   await kbStore.fetchKbs()
+  ensureActiveKb()
   if (kbStore.currentKbId) {
     await chatStore.fetchConversations(kbStore.currentKbId)
   }
 })
 
+// 只在「已启用」的知识库范围内选中，避免停用后仍可问答
+function ensureActiveKb() {
+  const active = kbStore.activeKbs
+  if (!active.length) {
+    kbStore.setCurrentKb(null)
+    return
+  }
+  if (active.some((k) => k.id === kbStore.currentKbId)) return
+  kbStore.setCurrentKb(active[0].id)
+}
+
 async function onKbChange() {
   chatStore.reset()
+  selectedDetailId.value = null
   if (kbStore.currentKbId) {
     await chatStore.fetchConversations(kbStore.currentKbId)
   }
@@ -150,12 +228,14 @@ async function onKbChange() {
 
 function newConversation() {
   chatStore.newConversation()
+  selectedDetailId.value = null
 }
 
 async function selectConversation(id) {
   if (id === chatStore.currentConversationId) return
   try {
     await chatStore.selectConversation(id)
+    selectedDetailId.value = null
     await scrollToBottom()
   } catch (e) {
     /* 错误提示由拦截器统一处理 */
@@ -204,6 +284,8 @@ function latencyText(msg) {
 }
 
 function handleCitationClick(msgId, index) {
+  // 点引用时同步把右侧检索详情切到该条回答
+  selectedDetailId.value = msgId
   const el = document.getElementById(`cite-${msgId}-${index}`)
   if (!el) return
   el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -225,15 +307,50 @@ function onKeydown(event) {
   }
 }
 
+// ------------------------------- 图片问答 ---------------------------------- //
+
+function pickImage() {
+  fileInput.value?.click()
+}
+
+function onPickImage(event) {
+  const file = event.target.files?.[0]
+  event.target.value = '' // 允许再次选择同一文件
+  if (!file) return
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    ElMessage.error('仅支持 JPEG / PNG / GIF / WebP 格式的图片')
+    return
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    ElMessage.error('图片不能超过 8 MB')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    imageDataUrl.value = String(reader.result || '')
+  }
+  reader.onerror = () => ElMessage.error('图片读取失败，请重试')
+  reader.readAsDataURL(file)
+}
+
+function clearImage() {
+  imageDataUrl.value = ''
+}
+
 async function handleSend() {
   const text = input.value.trim()
-  if (!text || sending.value || !kbStore.currentKbId) return
+  const image = imageDataUrl.value
+  if ((!text && !image) || sending.value || !kbStore.currentKbId) return
 
   input.value = ''
+  imageDataUrl.value = ''
+  // 新提问后详情栏跟随这一次检索，不再停留在之前点选的回答上
+  selectedDetailId.value = null
   chatStore.messages.push({
     id: nextMessageId(),
     role: 'user',
     content: text,
+    image,
   })
 
   const assistant = reactive({
@@ -257,6 +374,7 @@ async function handleSend() {
       kbId: kbStore.currentKbId,
       conversationId: chatStore.currentConversationId,
       question: text,
+      image,
       signal: abortController.signal,
       onDelta: (delta) => {
         assistant.content += delta
@@ -302,8 +420,6 @@ async function handleSend() {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 100px);
-  max-width: 1180px;
-  margin: 0 auto;
 }
 
 .chat-toolbar {
@@ -339,9 +455,11 @@ async function handleSend() {
   min-height: 0;
 }
 
+/* 左：会话列表 —— 占 1/9 */
 .conv-panel {
-  width: 220px;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background-color: #ffffff;
@@ -414,14 +532,71 @@ async function handleSend() {
   color: var(--app-text-muted);
 }
 
+/* 中：主对话区 —— 占 5/9 */
 .conv-main {
-  flex: 1;
+  flex: 5 1 0;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  min-width: 0;
   background-color: #ffffff;
   border: 1px solid var(--app-border);
   border-radius: 6px;
+}
+
+/* 右：检索详情 —— 占 3/9 */
+.detail-panel {
+  flex: 3 1 0;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+}
+
+.detail-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.detail-panel__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+
+.detail-panel__tag {
+  padding: 1px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+  color: var(--app-accent-dark);
+  background-color: var(--app-accent-soft);
+}
+
+.detail-panel__body {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.detail-panel__stat {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.detail-empty {
+  padding: 40px 10px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--app-text-muted);
 }
 
 .msg-scroll {
@@ -451,6 +626,16 @@ async function handleSend() {
   margin-bottom: 6px;
 }
 
+/* 回答可点击切换右侧检索详情 */
+.msg-block--selectable {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.msg-block--selectable:hover {
+  background-color: #faf7f0;
+}
+
 .assistant-extras {
   margin: 0 0 18px 16px;
   padding-left: 2px;
@@ -474,13 +659,38 @@ async function handleSend() {
 .composer-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 10px;
   margin-top: 10px;
 }
 
-.composer-hint {
-  font-size: 12px;
+.image-preview {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+.image-preview img {
+  display: block;
+  max-height: 120px;
+  max-width: 220px;
+  border-radius: 4px;
+  border: 1px solid var(--app-border);
+}
+
+.image-remove {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  border: 1px solid var(--app-border);
   color: var(--app-text-muted);
+}
+
+.image-remove:hover {
+  color: var(--app-danger);
 }
 </style>
