@@ -13,12 +13,20 @@
         </el-select>
       </div>
       <div class="toolbar-right">
-        <span class="toolbar-label">当前策略</span>
+        <span class="toolbar-label">当前<br />策略</span>
         <StrategyBuilder :model-value="kbStore.currentStrategies" readonly />
+        <el-button
+          class="toolbar-toggle"
+          :type="detailVisible ? 'primary' : 'default'"
+          @click="detailVisible = !detailVisible"
+        >
+          <el-icon><DataLine /></el-icon>
+          <span>检索详情</span>
+        </el-button>
       </div>
     </div>
 
-    <div class="chat-body">
+    <div class="chat-body" :class="{ 'chat-body--no-detail': !detailVisible }">
       <aside class="conv-panel">
         <el-button class="conv-new" @click="newConversation">
           <el-icon><Plus /></el-icon>
@@ -119,8 +127,8 @@
         </div>
       </section>
 
-      <!-- 右：检索详情（3/9），展示当前所选回答的召回与耗时 -->
-      <aside class="detail-panel">
+      <!-- 右：检索详情（3/9），展示当前所选回答的召回与耗时。默认隐藏，由工具栏按钮控制显隐 -->
+      <aside v-if="detailVisible" class="detail-panel">
         <div class="detail-panel__head">
           <span class="detail-panel__title">检索详情</span>
           <span v-if="detailMsg && detailMsg.strategy" class="detail-panel__tag">
@@ -177,6 +185,9 @@ let abortController = null
 
 //: 用户在对话区点选的那条回答，决定右侧「检索详情」栏展示哪一次检索
 const selectedDetailId = ref(null)
+
+//: 右侧「检索详情」栏是否展示，默认隐藏
+const detailVisible = ref(false)
 
 // 优先展示点选的那条回答，否则回退到最近一条回答（新回答生成时自动跟随）
 const detailMsg = computed(() => {
@@ -428,7 +439,7 @@ async function handleSend() {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 6px;
   padding: 12px 18px;
@@ -443,9 +454,16 @@ async function handleSend() {
 }
 
 .toolbar-label {
+  flex-shrink: 0;
   font-size: 13px;
   color: var(--app-text-secondary);
   font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.toolbar-toggle {
+  flex-shrink: 0;
 }
 
 .chat-body {
@@ -455,14 +473,28 @@ async function handleSend() {
   min-height: 0;
 }
 
+/* 检索详情隐藏时只剩一条 14px 间隙：会话列表 1 份、主对话区 8 份 */
+.chat-body--no-detail .conv-panel {
+  flex-basis: calc((100% - 14px) / 9);
+}
+
+.chat-body--no-detail .conv-main {
+  flex-basis: calc((100% - 14px) * 8 / 9);
+}
+
 /* 左：会话列表 —— 占 1/9 */
+/* 三栏按显式基准分配：先扣掉两条 14px 间隙（gap 见下方 .chat-body），剩余空间再按 1:5:3 切分。
+   不能用 flex:grow + flex-basis:0，因为 box-sizing:border-box 下 basis:0 会退化成 padding+border 的
+   高度，导致带 padding 的栏获得额外“起跑线”，比例失真。基准写死为百分比后，剩余空间恒为 0，比例精确。 */
 .conv-panel {
-  flex: 1 1 0;
+  flex-grow: 0;
+  flex-shrink: 1;
+  flex-basis: calc((100% - 28px) / 9);
   min-width: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 6px;
   padding: 12px;
@@ -534,24 +566,28 @@ async function handleSend() {
 
 /* 中：主对话区 —— 占 5/9 */
 .conv-main {
-  flex: 5 1 0;
+  flex-grow: 0;
+  flex-shrink: 1;
+  flex-basis: calc((100% - 28px) * 5 / 9);
   min-width: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 6px;
 }
 
 /* 右：检索详情 —— 占 3/9 */
 .detail-panel {
-  flex: 3 1 0;
+  flex-grow: 0;
+  flex-shrink: 1;
+  flex-basis: calc((100% - 28px) * 3 / 9);
   min-width: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 6px;
 }
@@ -613,7 +649,7 @@ async function handleSend() {
 .empty-hint__title {
   font-size: 20px;
   font-weight: 700;
-  color: #1f1f1f;
+  color: var(--app-title);
 }
 
 .empty-hint__sub {
@@ -633,7 +669,7 @@ async function handleSend() {
 }
 
 .msg-block--selectable:hover {
-  background-color: #faf7f0;
+  background-color: var(--app-surface-sunken);
 }
 
 .assistant-extras {
@@ -685,7 +721,7 @@ async function handleSend() {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
   color: var(--app-text-muted);
 }
