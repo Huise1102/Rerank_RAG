@@ -1,25 +1,29 @@
 # 领域知识库系统迁移提示词全集
 
-本文档用于将当前基于 **Streamlit + FastAPI** 的 RAG 问答系统，迁移为基于 **FastAPI + Vue3 + MySQL + Redis + MinIO + Celery** 的产品级领域知识库系统。
+本文档用于将**参考项目 `demo/`**（基于 **Streamlit + FastAPI** 的 RAG 问答系统），迁移为基于 **FastAPI + Vue3 + MySQL + Redis + MinIO + Celery** 的产品级领域知识库系统。
+
+**第一条硬约束：`demo/` 目录必须原样保留、只读。**
+动手前务必先读下一节「迁移边界与目录约定」。
 
 ---
 
-## 修订说明（相对原文档的改动）
+## 迁移边界与目录约定（先读）
 
-本文档在原稿基础上，按**当前项目的真实实现**做了校正，重点如下：
+本项目的迁移方式为**旁路新建**，不是原地改造，务必遵守以下边界：
 
-1. **纠正失实描述**：当前后端并非"只有 `/query` 和 `/health`"；评估模块**不使用 RAGAS**（项目明确弃用）；依赖清单中的 **`FlagEmbedding` 必须删除**（项目刻意不装）。
-2. **补充必须原样保留的链路参数**：双路召回 Top-50 → RRF(k=60) → 候选 20 → 精排 Top-5 → 上下文预算 6000 字；分块 `fixed(500/50/max800)` 与 `recursive(500/50/separators/max1200)`。
-3. **补充必须原样保留的工程约束**：重排模型**后台线程预热**（不得阻塞启动）；检索/生成是**阻塞**操作，迁移到 async 应用后**必须走线程池**，不得用 `async def` 直接包同步代码。
-4. **补充必须原样保留的核心资产**：`citation.py`（宽松解析 + 严格映射 + 越界编号幻觉信号）、BGE 查询指令前缀、确定性 `chunk_id`、`ingest_manifest.json` 增量清单。
-5. **版本对齐**：Python 3.11.9、LangChain 0.2.17、Chroma 0.5.20、pydantic 锁 2.9.x，与现行 `requirements.txt` 一致。
-6. **评估口径对齐**：检索评估零 token 可复现；分块策略消融**必须用页级判定**；Top-k 选档依据是"召回饱和点"而非"指标最高档"；生成评估采用**分层抽样**。
+1. **`demo/` 是只读参考项目**：不得修改、删除、移动或重命名 `demo/` 下的任何文件 —— 包括代码、`.env`、`.gitignore`、`indexes/`、`data/`（原始 PDF、分块 JSON、评估结果）、`README.md`。`demo/` 必须始终保持可独立运行。
+2. **新项目落点**：在**仓库根**新增独立目录 `product/`，其下再分 `backend/`（FastAPI）与 `frontend/`（Vue3）。迁移产物全部放进 `product/` 内，与 `demo/` 零耦合。
+3. **"复用 / 迁移现有模块" = 复制**：文档中所有"复用现有 `src/xxx/`""迁移现有模块"均指**从 `demo/src/xxx/` 复制到 `product/backend/src/xxx/` 后再改**，绝不回到 `demo/` 原地修改。
+4. **独立依赖环境**：`product/backend` 自建虚拟环境（如 `product/backend/.venv`），**不复用也不污染** `demo/.venv`；两边各自独立的 `requirements.txt`。
+5. **独立配置与数据**：`product/backend` 自带 `.env`、`data/`、`indexes/`、`storage/`、`logs/`，路径基准为**新项目根**；不得与 `demo/indexes/`、`demo/data/` 共用同一目录。
+6. **旧索引与评估产物不搬迁**：`demo/indexes/`（Chroma、BM25 pickle）与 `demo/data/processed/` 是那套单语料的产物，**不要**搬到新项目充当多知识库索引，新项目按 `kb_{kb_id}` 重建。评估数据与结果**全部留在 `demo/`**（新项目不做评估，见 4.8），需要时在 demo 中查看，不复制、不移动。
+7. **每阶段自检**：每完成一步运行 `git status`，结果只应出现 `product/` 下的**新增**文件，`demo/` 下不应有任何 modified / deleted。
 
 ---
 
 ## 0. 项目背景与迁移目标
 
-### 0.1 当前项目状态（已按实际代码校正）
+### 0.1 参考项目 demo/ 现状（已按实际代码校正）
 
 - **前端**：Streamlit 单文件 `app.py`（只做展示，不参与任何计算）。
 - **后端**：`src/api/` 分三层——`schemas.py`（对外契约）→ `service.py`（业务编排，含**后台线程预热**）→ `main.py`（路由），另有 `ingest.py`（增量入库模块）。现有路由：`/health`、`/warmup`、`/query`、`/query/stream`(SSE)、`/retrieve`、`/strategies`、`/config`(密钥脱敏)、`/ingest`、`/ingest/files/{name}`、`/ingest/status/{task_id}`、`/ingest/tasks`、`/ingest/manifest`。
@@ -36,22 +40,22 @@
 
 ### 0.2 迁移目标
 
-构建一个多用户、多知识库、多轮对话、可观测、可评估的领域知识库系统，具备：
+构建一个多知识库、多轮对话、可观测的领域知识库系统，具备：
 
-- 用户注册/登录，JWT 鉴权，RBAC 权限
-- 知识库 CRUD，文档上传、解析、索引、删除
+- 无登录、无用户体系，单机开箱即用
+- 预置 1 个知识库「法律领域」，同时支持随时新增知识库
+- 知识库 CRUD，文档上传（pdf / docx / txt / md 四种格式）、解析、索引、删除
 - 多知识库隔离（每个知识库独立的向量索引和 BM25 索引）
-- 检索 pipeline 可配置（纯向量 / 纯 BM25 / 混合 / 混合+Rerank）
+- 检索策略按构建块开关自由组合（向量 / BM25 / 融合 RRF / 精排 Rerank）
 - 多轮对话，会话管理，流式输出，引用溯源
-- 离线评估与在线 A/B 对比，可视化指标
-- 结构化日志、指标、链路追踪
+- 结构化日志（检索日志 + 系统日志）、指标
 - Docker Compose 一键部署
 
 ### 0.3 目标技术栈
 
 | 层级 | 技术选型 |
 | --- | --- |
-| 前端 | Vue3 + Vite + Element Plus + Pinia + Vue Router + Axios + ECharts |
+| 前端 | Vue3 + Vite + Element Plus + Pinia + Vue Router + Axios |
 | 后端 | FastAPI + SQLAlchemy 2.0 (async) + Alembic + Pydantic v2（锁 2.9.x，见 0.4） |
 | 数据库 | MySQL 8.0（utf8mb4） |
 | 缓存/队列 | Redis + Celery |
@@ -62,7 +66,6 @@
 | Embedding | `BAAI/bge-large-zh-v1.5`（1024 维，查询侧加官方指令前缀） |
 | Rerank | `BAAI/bge-reranker-v2-m3`（经 `sentence-transformers` 的 `CrossEncoder` 加载，**不装 FlagEmbedding**） |
 | LLM | DeepSeek API（OpenAI 兼容） |
-| 评估 | **自建 LLM-as-Judge**（不引入 RAGAS） |
 | 可观测 | loguru + Prometheus + OpenTelemetry（可选） |
 | 部署 | Docker Compose |
 
@@ -82,27 +85,25 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  前端 Vue3 + Element Plus                                │
-│  ├─ 登录/注册                                            │
-│  ├─ 知识库管理（列表/创建/上传/预览）                     │
-│  ├─ 对话界面（多轮/引用/检索可视化）                      │
-│  ├─ 评估面板（策略对比/指标图表）                         │
-│  └─ 系统设置（用户/角色/模型配置）                        │
+│  前端 Vue3 + Element Plus（4 页）                               │
+│  ├─ 问答页（多轮/引用/检索可视化）                                            │
+│  ├─ 知识库页（列表/创建/上传/文档管理）                     │
+│  ├─ 检索策略页（构建块开关：向量/BM25/融合/精排）                      │
+│  └─ 日志页（检索日志 + 系统日志）                        │
 └─────────────────────────────────────────────────────────┘
                           ↓ RESTful API
 ┌─────────────────────────────────────────────────────────┐
-│  后端 FastAPI                                            │
-│  ├─ 认证鉴权（JWT + RBAC）                               │
+│  后端 FastAPI（无认证）                                           │
+│  ├─ 文档入库（pdf/docx/txt/md 解析）                               │
 │  ├─ 知识库服务（CRUD + 文档管理）                         │
-│  ├─ 检索服务（可配置 pipeline + 插件）                    │
+│  ├─ 检索服务（按 enabled_strategies 组装 pipeline）                    │
 │  ├─ 对话服务（多轮 + 会话管理 + 流式）                    │
-│  ├─ 评估服务（离线评估 + 在线 A/B）                       │
 │  └─ 可观测（日志/指标/追踪）                              │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │  数据层                                                  │
-│  ├─ MySQL：用户/知识库/文档/会话/日志/评估元数据           │
+│  ├─ MySQL：知识库/文档/会话/消息/检索日志                     │
 │  ├─ Redis：会话缓存/限流/Celery 队列                      │
 │  ├─ Chroma/Milvus：向量索引（按知识库隔离）               │
 │  ├─ rank_bm25/Elasticsearch：BM25 索引                   │
@@ -114,8 +115,7 @@
 │  ├─ LangChain：仅文档加载/切分                            │
 │  ├─ Embedding：bge-large-zh-v1.5                         │
 │  ├─ Rerank：bge-reranker-v2-m3                           │
-│  ├─ LLM：DeepSeek API                                    │
-│  └─ 评估：自建 LLM-as-Judge                               │
+│  └─ LLM：DeepSeek API                                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -133,67 +133,62 @@ backend/
 ├── src/
 │   ├── api/
 │   │   ├── v1/
-│   │   │   ├── auth.py          # 登录/注册
-│   │   │   ├── kb.py            # 知识库管理
+│   │   │   ├── kb.py            # 知识库管理（含 /kb/{id}/strategies）
 │   │   │   ├── document.py      # 文档管理
 │   │   │   ├── chat.py          # 对话（含 /chat/stream）
 │   │   │   ├── retrieval.py     # 检索调试
-│   │   │   └── evaluation.py    # 评估
+│   │   │   └── log.py           # 检索日志 / 系统日志查询
 │   │   ├── deps.py              # 依赖注入
 │   │   └── main.py              # FastAPI 入口
 │   ├── core/
 │   │   ├── config.py            # 配置（沿用 11 分组 + RAG_<分组>__<字段> 覆盖）
-│   │   ├── security.py          # JWT/密码哈希
 │   │   └── logging.py           # 日志
 │   ├── db/
 │   │   ├── base.py              # Base 和 engine
 │   │   ├── session.py           # session 依赖
 │   │   └── models/              # ORM 模型
-│   │       ├── user.py
 │   │       ├── knowledge_base.py
 │   │       ├── document.py
 │   │       ├── conversation.py
 │   │       ├── message.py
-│   │       ├── retrieval_log.py
-│   │       └── evaluation.py
+│   │       └── retrieval_log.py
 │   ├── schemas/                 # Pydantic 模型
-│   │   ├── user.py
 │   │   ├── kb.py
 │   │   ├── document.py
-│   │   ├── chat.py
-│   │   └── evaluation.py
+│   │   └── chat.py
 │   ├── services/                # 业务逻辑
-│   │   ├── auth_service.py
 │   │   ├── kb_service.py
 │   │   ├── document_service.py
 │   │   ├── retrieval_service.py
-│   │   ├── chat_service.py
-│   │   └── evaluation_service.py
-│   ├── retrieval/               # 复用现有检索模块（只加 kb_id 适配）
+│   │   └── chat_service.py
+│   ├── retrieval/               # 从 demo/src/retrieval/ 复制（只加 kb_id 适配）
 │   │   ├── vector_retriever.py
 │   │   ├── bm25_retriever.py
 │   │   ├── hybrid_retriever.py
 │   │   ├── reranker.py
 │   │   └── pipeline.py
-│   ├── generation/              # 复用现有生成模块
+│   ├── generation/              # 从 demo/src/generation/ 复制
 │   │   ├── prompt.py
 │   │   ├── llm.py
 │   │   └── citation.py
 │   ├── ingest/                  # 文档解析与索引
-│   │   ├── loader.py
+│   │   ├── loader.py            # 按扩展名分派：pdf/docx/txt/md
+│   │   ├── parsers/             # 各格式解析器
+│   │   │   ├── pdf_parser.py
+│   │   │   ├── docx_parser.py
+│   │   │   └── text_parser.py   # txt 与 md
 │   │   ├── splitter.py
 │   │   └── indexer.py
 │   ├── tasks/                   # Celery 任务
 │   │   ├── celery_app.py
-│   │   ├── document_tasks.py
-│   │   └── evaluation_tasks.py
+│   │   └── document_tasks.py
 │   └── utils/
 │       ├── minio_client.py
 │       └── redis_client.py
 ├── tests/
 ├── scripts/
 │   ├── init_db.py
-│   └── create_admin.py
+│   └── seed_data.py             # 预置「法律领域」知识库并导入 resource/法律领域/
 ├── docker-compose.yml
 ├── Dockerfile
 └── requirements.txt
@@ -207,35 +202,28 @@ frontend/
 ├── src/
 │   ├── api/                     # Axios 封装
 │   │   ├── request.js
-│   │   ├── auth.js
 │   │   ├── kb.js
 │   │   ├── document.js
 │   │   ├── chat.js
-│   │   └── evaluation.js
+│   │   └── log.js
 │   ├── assets/
 │   ├── components/
 │   │   ├── ChatMessage.vue
 │   │   ├── CitationCard.vue
 │   │   ├── RetrievalDetail.vue
-│   │   └── StrategySelect.vue
+│   │   └── StrategyBuilder.vue  # 构建块开关：向量/BM25/融合/精排
 │   ├── layouts/
-│   │   ├── MainLayout.vue
-│   │   └── AuthLayout.vue
+│   │   └── MainLayout.vue
 │   ├── router/
 │   │   └── index.js
 │   ├── stores/
-│   │   ├── user.js
 │   │   ├── kb.js
 │   │   └── chat.js
 │   ├── views/
-│   │   ├── Login.vue
-│   │   ├── Register.vue
-│   │   ├── KnowledgeBaseList.vue
-│   │   ├── KnowledgeBaseDetail.vue
-│   │   ├── DocumentList.vue
-│   │   ├── Chat.vue
-│   │   ├── Evaluation.vue
-│   │   └── Settings.vue
+│   │   ├── ChatQuery.vue        # 问答页
+│   │   ├── KnowledgeBase.vue    # 知识库页（列表/创建/文档管理）
+│   │   ├── RetrievalStrategy.vue# 检索策略页
+│   │   └── Logs.vue             # 日志页（检索日志 + 系统日志）
 │   ├── App.vue
 │   └── main.js
 ├── package.json
@@ -253,42 +241,15 @@ frontend/
 CREATE DATABASE IF NOT EXISTS rag_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE rag_system;
 
--- 用户表
-CREATE TABLE users (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'user') DEFAULT 'user',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
--- 知识库表
+-- 知识库表（无用户体系；enabled_strategies 存 4 个构建块开关）
 CREATE TABLE knowledge_bases (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    owner_id BIGINT NOT NULL,
-    visibility ENUM('public', 'private') DEFAULT 'private',
     chunk_strategy VARCHAR(50) DEFAULT 'recursive',
-    retrieval_strategy VARCHAR(50) DEFAULT 'hybrid_rerank',
+    enabled_strategies JSON NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- 知识库权限表（可选，用于共享）
-CREATE TABLE kb_permissions (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    kb_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    permission ENUM('read', 'write', 'admin') DEFAULT 'read',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY uk_kb_user (kb_id, user_id)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 文档表
@@ -298,7 +259,7 @@ CREATE TABLE documents (
     filename VARCHAR(255) NOT NULL,
     file_path VARCHAR(500) NOT NULL,
     file_size BIGINT,
-    file_type VARCHAR(50),
+    file_type ENUM('pdf','docx','txt','md') NOT NULL,
     status ENUM('pending', 'parsing', 'indexing', 'completed', 'failed') DEFAULT 'pending',
     chunk_count INT DEFAULT 0,
     error_msg TEXT,
@@ -311,14 +272,12 @@ CREATE TABLE documents (
 -- 会话表
 CREATE TABLE conversations (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id BIGINT NOT NULL,
     kb_id BIGINT NOT NULL,
     title VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
-    INDEX idx_user_kb (user_id, kb_id)
+    INDEX idx_kb (kb_id)
 );
 
 -- 消息表
@@ -338,7 +297,6 @@ CREATE TABLE messages (
 -- 检索日志表
 CREATE TABLE retrieval_logs (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id BIGINT,
     kb_id BIGINT,
     query TEXT NOT NULL,
     strategy VARCHAR(50),
@@ -346,20 +304,10 @@ CREATE TABLE retrieval_logs (
     latency FLOAT,
     result_count INT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_kb_created (kb_id, created_at),
-    INDEX idx_user_created (user_id, created_at)
+    INDEX idx_kb_created (kb_id, created_at)
 );
 
--- 评估记录表
-CREATE TABLE evaluations (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    kb_id BIGINT NOT NULL,
-    testset_name VARCHAR(100),
-    strategy VARCHAR(50),
-    metrics JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
-);
+-- 不做用户体系：无 users / kb_permissions 表；不做评估：无 evaluations 表（见 4.8）。
 ```
 
 ---
@@ -371,25 +319,26 @@ CREATE TABLE evaluations (
 给 AI 的提示词：
 
 ```
-请帮我初始化一个新的 FastAPI 后端项目，目录结构见附件。技术栈与版本必须与现有项目对齐：
+请在 product/backend/ 下初始化一个新的 FastAPI 后端项目，目录结构见附件。技术栈与版本必须与参考项目 demo/ 对齐（demo/ 只读，不得改动）：
 - Python 3.11.9
 - FastAPI + Uvicorn
 - SQLAlchemy 2.0 (async) + aiomysql
 - Alembic
 - pydantic >=2.9,<2.10（不要用 2.10+，会与 langchain-core 0.2.x 冲突）
-- python-jose[cryptography] + passlib[bcrypt]
 - celery + redis
 - minio
 - langchain 0.2.17（只用于文档加载/切分）
 - chromadb >=0.5.5,<0.6.0
 - rank_bm25 + jieba
 - sentence-transformers
-- pdfplumber
+- pdfplumber（pdf 解析）
+- python-docx（docx 解析）
 - loguru
 
 注意：
 1. 不要安装 FlagEmbedding（reranker 用 sentence-transformers 的 CrossEncoder 加载即可）。
-2. 不要引入 RAGAS / datasets（评估用自建 LLM-as-Judge）。
+2. 不要引入 python-jose / passlib（新项目无登录），也不要引入 RAGAS / datasets（新项目不做评估，见 4.8）。
+3. 文档上传支持 pdf / docx / txt / md 四种格式，解析链路见 4.3。
 请生成 requirements.txt，并创建基础目录结构。
 ```
 
@@ -407,9 +356,9 @@ CREATE TABLE evaluations (
    - 创建 async_sessionmaker
    - 提供 get_db() 依赖，yield AsyncSession
 3. src/db/models/ 下按表创建 ORM 模型：
-   - user.py, knowledge_base.py, document.py, conversation.py, message.py, retrieval_log.py, evaluation.py
+   - knowledge_base.py, document.py, conversation.py, message.py, retrieval_log.py
    - 使用 SQLAlchemy 2.0 风格（Mapped, mapped_column）
-   - JSON 字段用 JSON 类型
+   - JSON 字段用 JSON 类型（knowledge_bases.enabled_strategies、messages.citations/retrieved_docs/latency）
    - 时间字段用 server_default=func.now()
 4. alembic 配置：
    - alembic init alembic
@@ -418,33 +367,27 @@ CREATE TABLE evaluations (
 请生成完整代码。
 ```
 
-### 4.3 认证与用户模块
+### 4.3 文档解析与入库模块（多格式 loader）
 
 给 AI 的提示词：
 
 ```
-请实现认证与用户模块：
-1. src/core/security.py：
-   - 密码哈希：passlib bcrypt
-   - JWT 生成与验证：python-jose，HS256，过期时间 7 天
-   - 从环境变量读取 SECRET_KEY（禁止硬编码）
-2. src/schemas/user.py：
-   - UserCreate: username, email, password
-   - UserLogin: username, password
-   - UserOut: id, username, email, role, created_at
-   - Token: access_token, token_type
-3. src/services/auth_service.py：
-   - register_user: 检查用户名/邮箱唯一，哈希密码，入库
-   - authenticate_user: 验证用户名密码
-   - create_access_token
-4. src/api/v1/auth.py：
-   - POST /auth/register
-   - POST /auth/login (OAuth2PasswordRequestForm)
-   - GET /auth/me (需要 JWT)
-5. src/api/deps.py：
-   - get_current_user: 从 JWT 解析用户
-   - get_current_admin: 要求 admin 角色
+请从 demo/src/ingest/ 复制 loader/splitter/indexer 到 product/backend/src/ingest/（不改 demo/ 原件），
+并把 loader 改造为**按扩展名分派**，支持 pdf / docx / txt / md 四种格式，统一产出同一 Page/Chunk 结构：
+
+1. src/ingest/loader.py：
+   - 按文件扩展名分派到 src/ingest/parsers/ 下对应解析器
+   - 所有解析器输出统一结构：每页/每段含 text、source（文件名）、page（页码/段号）
+2. src/ingest/parsers/：
+   - pdf_parser.py：沿用 demo 的 pdfplumber 链路（逐页抽取文本）
+   - docx_parser.py：用 python-docx 逐段落抽取文本，段落序号作为 page
+   - text_parser.py：txt 与 md 直接读取（md 保留原文标记，不剥离），整体作为一页
+3. src/ingest/splitter.py：沿用 demo 分块（fixed / recursive 两套参数，见 0.1）
+4. src/ingest/indexer.py：沿用 demo 的 chunk_id 生成规则（文件名 + 页码 + 块序号 + 正文哈希）与双写
+   （Chroma 向量 + BM25 pickle），只加 kb_id 适配
 请生成完整代码。
+
+注意：四种格式必须收敛到同一 Chunk 结构，后续切分 / 索引 / 引用溯源对格式无感知。
 ```
 
 ### 4.4 知识库管理模块
@@ -452,29 +395,30 @@ CREATE TABLE evaluations (
 给 AI 的提示词：
 
 ```
-请实现知识库管理模块：
+请实现知识库管理模块（无用户体系，不涉及权限）：
 1. src/schemas/kb.py：
-   - KBCreate: name, description, visibility, chunk_strategy, retrieval_strategy
-   - KBUpdate: 可选字段
-   - KBOut: id, name, description, owner_id, visibility, chunk_strategy, retrieval_strategy, created_at
+   - KBCreate: name, description, chunk_strategy, enabled_strategies(可选)
+   - KBUpdate: 可选字段（含 enabled_strategies）
+   - KBOut: id, name, description, chunk_strategy, enabled_strategies, created_at
 2. src/services/kb_service.py：
-   - create_kb: 当前用户为 owner
-   - list_kbs: 返回当前用户可见的知识库（自己创建的 + public + 有权限的）
-   - get_kb: 检查权限
-   - update_kb: 只有 owner 或 admin 可改
-   - delete_kb: 只有 owner 或 admin 可删，同时删除关联的向量索引、BM25 索引、文档
+   - create_kb: 新建知识库，enabled_strategies 默认全开（{"vector":true,"bm25":true,"fusion":true,"rerank":true}）
+   - list_kbs: 返回全部知识库
+   - get_kb
+   - update_kb: 含更新 enabled_strategies（构建块开关）
+   - delete_kb: 同时删除关联的向量索引、BM25 索引、文档
 3. src/api/v1/kb.py：
    - GET /kb
    - POST /kb
    - GET /kb/{kb_id}
    - PUT /kb/{kb_id}
+   - PATCH /kb/{kb_id}/strategies：单独更新 enabled_strategies
    - DELETE /kb/{kb_id}
 请生成完整代码。
 
 多知识库隔离要求：
 - Chroma collection_name = f"kb_{kb_id}"，持久化目录 indexes/chroma/kb_{kb_id}/
 - BM25 索引文件 indexes/bm25/kb_{kb_id}.pkl
-- 保留现有 chunk_id 生成规则（文件名 + 页码 + 块序号 + 正文哈希），确保同一 kb 内同样输入必然得到同样 id
+- 保留 demo 的 chunk_id 生成规则（文件名 + 页码 + 块序号 + 正文哈希，见 demo/src/ingest/indexer.py），确保同一 kb 内同样输入必然得到同样 id
 - 每个 kb 维护独立的 ingest_manifest.json（sha256 + 块数），用于增量入库
 ```
 
@@ -485,9 +429,10 @@ CREATE TABLE evaluations (
 ```
 请实现文档管理模块：
 1. src/schemas/document.py：
-   - DocumentOut: id, kb_id, filename, file_size, status, chunk_count, error_msg, created_at
+   - DocumentOut: id, kb_id, filename, file_type, file_size, status, chunk_count, error_msg, created_at
 2. src/services/document_service.py：
-   - upload_document: 保存文件到 MinIO 或本地 storage/{kb_id}/，创建文档记录，状态 pending
+   - upload_document: 校验扩展名仅允许 pdf / docx / txt / md，其余类型直接拒绝；
+     文件保存到 MinIO 或本地 storage/{kb_id}/，创建文档记录（file_type 按扩展名写入），状态 pending
    - list_documents: 按 kb_id 查询
    - delete_document: 删除文件、数据库记录、对应的向量和 BM25 索引
    - get_document: 详情
@@ -501,22 +446,22 @@ CREATE TABLE evaluations (
    - 文档状态更新：pending -> parsing -> indexing -> completed / failed
 请生成完整代码。文件存储先用本地 storage/ 目录，预留 MinIO 接口。
 
-入库必须保留现有两道防线：
+入库必须保留 demo 的两道防线：
 1. 全部文件处理完后一次性写入分块文件（不要在逐文件循环里写，否则后一个文件会覆盖前一个）。
 2. 入库结束做一致性校验：manifest 记录的块数之和 == 索引实际条数，不一致则报错中止。
 ```
 
-### 4.6 检索服务模块（复用与适配）
+### 4.6 检索服务模块（复制与适配）
 
 给 AI 的提示词：
 
 ```
-请将现有的 src/retrieval/ 模块迁移到新项目，并适配多知识库。只做"加 kb_id 参数"的适配，不要改动检索算法本身：
+请将 demo/src/retrieval/ 下的模块**复制**到 product/backend/src/retrieval/，并适配多知识库（不要改动 demo/ 原件）。只做"加 kb_id 参数"的适配，不要改动检索算法本身：
 
 1. 保留原有检索器：vector_retriever.py, bm25_retriever.py, hybrid_retriever.py, reranker.py, pipeline.py
    - 修改为接受 kb_id，从对应 Chroma collection 和 BM25 索引文件加载
 
-2. 索引存储路径：
+2. 索引存储路径（均相对 **product/backend 根**，不要指向 demo/indexes/）：
    - 向量库：indexes/chroma/kb_{kb_id}/
    - BM25：indexes/bm25/kb_{kb_id}.pkl
 
@@ -529,12 +474,18 @@ CREATE TABLE evaluations (
    - 查询侧给 BGE 加官方检索指令前缀（"为这个句子生成表示以用于检索相关文章："）
 
 4. src/services/retrieval_service.py：
-   - retrieve(kb_id, query, strategy, top_k) -> List[Document]
-   - 根据 kb 配置的 retrieval_strategy 选择 pipeline
-   - 记录检索日志到 retrieval_logs 表
+   - retrieve(kb_id, query, top_k) -> List[Document]
+   - 按知识库的 enabled_strategies（构建块开关）组装链路，不按固定策略名分派：
+     * vector / bm25 决定是否启用对应召回
+     * fusion 决定双路结果是否做 RRF 融合（仅开单路召回时 fusion 无意义）
+     * rerank 决定候选是否过精排模型
+   - 开关组合须能还原 demo 的四种策略：只开 vector → 纯向量；只开 bm25 → 纯 BM25；
+     vector+bm25+fusion → 混合；全开 → 混合+Rerank
+   - 对非法组合（未开融合却同时开两路召回）默认按融合执行，并记录实际生效策略
+   - 记录检索日志到 retrieval_logs 表（strategy 字段记录本次实际生效的策略名）
 
 5. src/api/v1/retrieval.py：
-   - POST /kb/{kb_id}/retrieve：调试用，返回检索结果和耗时（对应现有 /retrieve 与 /strategies）
+   - POST /kb/{kb_id}/retrieve：调试用，返回检索结果和耗时（对应 demo 的 /retrieve 与 /strategies）
 
 6. 并发与阻塞：
    - 检索是阻塞的 CPU 操作。在 async 应用中必须通过 run_in_threadpool（或保持普通 def 端点）执行，
@@ -554,7 +505,7 @@ CREATE TABLE evaluations (
    - ConversationOut: id, title, created_at
    - MessageOut: id, role, content, citations, created_at
 2. src/services/chat_service.py：
-   - create_conversation / get_conversation（检查权限）/ list_conversations / delete_conversation
+   - create_conversation / get_conversation / list_conversations（按 kb_id 过滤）/ delete_conversation
    - chat: 核心逻辑
      * 如果无 conversation_id，创建新会话
      * 保存用户消息
@@ -562,7 +513,7 @@ CREATE TABLE evaluations (
      * 调用 generation.llm.generate
      * 保存助手消息（含 citations, retrieved_docs, latency）
      * 返回 ChatResponse
-3. 生成侧必须复用现有 generation 模块，不得重写：
+3. 生成侧必须复用 demo/src/generation/ 模块（**复制**到 product/backend/src/generation/，不改 demo 原件），不得重写：
    - prompt.py：上下文预算裁剪（按相关性降序累加至超预算即停；单条超预算一半时截断而非丢弃）
    - llm.py：两层重试（SDK 负责连接错误/429/5xx，应用层只重试超时并检查剩余预算）；
             调用方显式指定 model 时不降级
@@ -572,7 +523,7 @@ CREATE TABLE evaluations (
    - 生成参数 temperature=0.3；引用格式要求作为独立指令片段动态追加，不要在系统提示词里重复
 4. 流式输出：
    - 实现 async generator，逐 token yield
-   - 使用 FastAPI StreamingResponse，media_type="text/event-stream"（对应现有 /query/stream）
+   - 使用 FastAPI StreamingResponse，media_type="text/event-stream"（对应 demo 的 /query/stream）
    - 前端用 EventSource 接收
    - 注意：流式时先累积完整文本，再统一做引用解析，避免分片把 [1] 切断导致映射失败
 5. src/api/v1/chat.py：
@@ -585,35 +536,13 @@ CREATE TABLE evaluations (
 多轮对话时，可先用 LLM 做 query 改写（把"它有什么特点"改写为完整问题）再检索；改写不得改变引用编号与最终溯源映射的一致性。
 ```
 
-### 4.8 评估服务模块
+### 4.8 评估（不在新项目实现）
 
-给 AI 的提示词：
+> **定位**：新项目**不做评估模块**。评估已在 `demo/` 中完成（四种检索策略的 100 题对比 + 两组消融 + 生成质量，产物在 `demo/data/eval/results/`），结论直接作为实验证据；两个项目同处一个 git 仓库，需要时直接查看 `demo/` 即可。
+>
+> 因此新项目**不需要**：评估相关的 ORM 模型 / 数据表、service、Celery 任务、FastAPI 路由、前端评估页面。线上链路（检索 / 对话）不受影响。
 
-```
-请实现评估服务模块。注意：评估层不参与线上链路，且不使用 RAGAS：
-1. src/schemas/evaluation.py：
-   - EvaluationRequest: kb_id, testset_name, strategies (列表)
-   - EvaluationOut: id, kb_id, testset_name, strategy, metrics, created_at
-2. src/services/evaluation_service.py：
-   - run_evaluation: 对指定 kb 和策略列表跑测试集，计算 Recall@1/3/5/10/20、MRR、nDCG、Precision@k、平均首命中名次
-   - 测试集从 data/testsets/{testset_name}.json 加载；先做 chunk_id 存在性校验
-   - 检索评估零 token 可复现；结果存入 evaluations 表
-3. 生成质量评估（自建 LLM-as-Judge）：
-   - 裁判 temperature=0、强制 JSON 输出、解析失败剔除而非计 0 分
-   - 评分维度：faithfulness、answer_relevancy（1-5 分）
-   - 保留裁判原文与打分理由，便于事后解释
-   - 样本按类别分层抽样（语义泛化 / 术语精确 / 多跳推理轮流取），避免小样本只覆盖一类
-4. 消融实验口径：
-   - 分块策略消融必须用"页级判定"（文件名 + 页码），不能用 chunk_id；
-     换分块策略后页码相同但 chunk_id 完全不同，按 id 比对会让 fixed 档全为 0
-   - Rerank Top-k 消融：选档依据是"召回饱和点"而非"指标最高档"
-5. src/tasks/evaluation_tasks.py：Celery 任务 run_evaluation_task
-6. src/api/v1/evaluation.py：
-   - POST /evaluation/run（触发异步任务）
-   - GET /evaluation/results?kb_id=...
-   - GET /evaluation/compare?kb_id=...&strategies=...
-请生成完整代码。
-```
+（本节无代码提示词。）
 
 ### 4.9 可观测模块
 
@@ -624,13 +553,16 @@ CREATE TABLE evaluations (
 1. src/core/logging.py：
    - 用 loguru 配置结构化日志
    - 输出到控制台和文件 logs/app.log
-   - 记录请求 ID、用户 ID、耗时
+   - 记录请求 ID、耗时
 2. 中间件：
    - 在 FastAPI 中加中间件，记录每个请求的方法、路径、状态码、耗时
    - 注入 request_id
 3. 指标（可选）：
    - 用 prometheus-client 暴露 /metrics
    - 记录 QPS、延迟直方图、错误计数
+4. src/api/v1/log.py（供前端日志页）：
+   - GET /logs/retrieval：分页查询 retrieval_logs（支持按 kb_id 过滤）
+   - GET /logs/system：读取 logs/app.log 尾部 N 行（支持条数与级别/关键字过滤）
 请生成完整代码。
 ```
 
@@ -668,13 +600,12 @@ CREATE TABLE evaluations (
 1. 创建 FastAPI 实例，title="基于混合检索与Rerank的领域知识库系统"
 2. 加 CORS 中间件
 3. 加请求日志中间件
-4. 注册路由：
-   - /api/v1/auth
+4. 注册路由（无认证中间件，不加任何鉴权、不注册 /api/v1/auth）：
    - /api/v1/kb
    - /api/v1/documents
    - /api/v1/retrieval
    - /api/v1/chat
-   - /api/v1/evaluation
+   - /api/v1/logs
 5. 加 /health 与 /metrics；/health 需返回 warmed_up 字段
 6. 模型加载：Embedding 与 Rerank 模型必须放在**后台线程**预热，不要在 lifespan 里同步等待——
    精排模型 2.2 GB 加载需十几秒，同步等待会导致这段时间服务完全不响应（连 /health 都不通）。
@@ -688,25 +619,45 @@ CREATE TABLE evaluations (
 给 AI 的提示词：
 
 ```
-请实现 src/core/config.py，用 pydantic-settings，并沿用现有配置结构：
-- 按功能分为 11 个分组：paths, chunking, embedding, retrieval, rerank, llm, generation, api, frontend, evaluation, logging
+请实现 src/core/config.py，用 pydantic-settings，并沿用 demo/config.py 的配置结构（demo/ 只读）：
+- 按功能分为 10 个分组：paths, chunking, embedding, retrieval, rerank, llm, generation, api, frontend, logging
 - 支持环境变量覆盖，命名规则 RAG_<分组>__<字段>（如 RAG_LLM__API_KEY、RAG_EMBEDDING__OFFLINE）
-- 提供打印全部生效配置的能力（密钥脱敏，对应现有 /config 接口）
+- 提供打印全部生效配置的能力（密钥脱敏，对应 demo 的 /config 接口）
 
 字段至少包括：
 - DATABASE_URL（MySQL 连接串）
 - REDIS_URL（Redis 连接串）
-- SECRET_KEY（JWT 密钥）
-- ACCESS_TOKEN_EXPIRE_MINUTES: 默认 10080（7 天）
 - DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL（https://api.deepseek.com）
 - EMBEDDING_MODEL_PATH: BAAI/bge-large-zh-v1.5（含查询指令前缀配置）
 - RERANKER_MODEL_PATH: BAAI/bge-reranker-v2-m3
 - MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_BUCKET
 - STORAGE_TYPE: local / minio
-- CHROMA_PERSIST_DIR: indexes/chroma
-- BM25_INDEX_DIR: indexes/bm25
+- RESOURCE_DIR: 仓库根 resource/ 路径（种子数据只读引用，见 4.13）
+- CHROMA_PERSIST_DIR: indexes/chroma（相对 **product/backend 根**，不得指向 demo/indexes）
+- BM25_INDEX_DIR: indexes/bm25（相对 **product/backend 根**，不得指向 demo/indexes）
 - 检索链路参数：recall_top_k=50, fusion_top_k=20, rerank_top_k=5, rrf_k=60, context_max_chars=6000
-所有配置从 .env 读取。
+所有配置从 .env 读取（无登录，不需要 SECRET_KEY / JWT 相关配置）。
+```
+
+### 4.13 初始化种子数据
+
+给 AI 的提示词：
+
+```
+请实现 scripts/seed_data.py，用于一键初始化预置知识库：
+
+1. 预置 1 个知识库「法律领域」，enabled_strategies 默认全开
+2. 扫描仓库根 resource/法律领域/ 下所有 pdf / docx / txt / md 文件（**只读引用，不复制、不改写**），
+   该目录当前含 txt / docx / md / pdf 四种格式的法律文本，四种格式都会被解析入库
+3. 复用 4.3 的 loader 按扩展名解析，走 4.6 的索引链路，写入该 kb 的 Chroma 与 BM25 索引，
+   并在 documents 表登记对应记录（file_type 按扩展名写入，状态 completed）
+4. 脚本幂等：已存在同名知识库或同名文档时跳过，不重复建
+
+另有 scripts/init_db.py 负责建库建表（或执行 Alembic 迁移）。
+请生成完整代码。
+
+注意：resource/ 是仓库既有只读资源，导入过程只读取；若同一部法律同时存在多种格式副本，
+只保留一份，避免重复入库。
 ```
 
 ---
@@ -724,108 +675,94 @@ CREATE TABLE evaluations (
 - Pinia
 - Vue Router
 - Axios
-- ECharts
+共四个页面：问答 / 知识库 / 检索策略 / 日志（无登录页、无设置页、无评估页）。
 目录结构见附件。配置代理：/api -> http://localhost:8000
 ```
 
-### 5.2 登录/注册页
+### 5.2 问答页（ChatQuery.vue）
 
 给 AI 的提示词：
 
 ```
-请实现登录和注册页面：
-1. Login.vue：用户名/密码表单，调用 POST /api/v1/auth/login，保存 token 到 Pinia 和 localStorage
-2. Register.vue：用户名/邮箱/密码，调用 POST /api/v1/auth/register
-3. 路由守卫：未登录跳转 /login
-4. Axios 拦截器：请求带 Authorization: Bearer {token}，401 跳转登录
-```
-
-### 5.3 知识库管理页
-
-给 AI 的提示词：
-
-```
-请实现知识库管理页面：
-1. KnowledgeBaseList.vue：
-   - 表格展示知识库：名称、描述、可见性、创建时间
-   - 按钮：创建知识库、进入详情、删除
-   - 创建对话框：名称、描述、可见性、分块策略、检索策略
-2. KnowledgeBaseDetail.vue：
-   - 标签页：文档管理、对话、评估
-   - 文档管理：上传、列表、状态、删除
-   - 对话：跳转到 Chat 页并带上 kb_id
-```
-
-### 5.4 文档管理页
-
-给 AI 的提示词：
-
-```
-请实现文档管理组件：
-1. 上传：el-upload，调用 POST /api/v1/kb/{kb_id}/documents
-2. 列表：表格展示 filename, size, status, chunk_count, created_at
-3. 状态轮询：上传后每 3 秒刷新列表，直到状态为 completed 或 failed
-4. 删除：确认后调用 DELETE /api/v1/documents/{doc_id}
-```
-
-### 5.5 对话页
-
-给 AI 的提示词：
-
-```
-请实现对话页面 Chat.vue：
-1. 左侧：会话列表，可新建、切换、删除
-2. 右侧：对话区域
+请实现问答页 ChatQuery.vue：
+1. 顶部：知识库选择下拉框（默认选中预置的「法律领域」）
+2. 左侧：会话列表，可新建、切换、删除
+3. 右侧：对话区域
    - 消息气泡：用户右对齐，AI 左对齐
    - AI 回答支持 Markdown 渲染
    - 引用编号 [1][2] 可点击，滚动到引用卡片
    - 引用卡片：展示来源文件、页码、原文
    - 检索详情：可折叠，展示 Top-5 文档块与两路召回得分
-3. 底部：输入框，策略选择下拉框（纯向量 / 纯 BM25 / 混合 / 混合+Rerank）
-4. 流式输出：用 EventSource 接收 POST /api/v1/chat/stream
-5. 调用接口：
+4. 底部：输入框；只读展示当前知识库生效的检索策略（修改请前往「检索策略」页）
+5. 流式输出：用 EventSource 接收 POST /api/v1/chat/stream
+6. 调用接口：
    - POST /api/v1/chat/stream
-   - GET /api/v1/conversations
+   - GET /api/v1/conversations?kb_id=
    - GET /api/v1/conversations/{id}/messages
 ```
 
-### 5.6 评估面板
+### 5.3 知识库页（KnowledgeBase.vue）
 
 给 AI 的提示词：
 
 ```
-请实现评估页面 Evaluation.vue：
-1. 选择知识库、测试集、策略（多选）
-2. 点击"运行评估"，调用 POST /api/v1/evaluation/run
-3. 轮询任务状态，完成后展示结果
-4. 结果展示：
-   - 表格：策略 vs Recall@1/3/5、MRR、nDCG、平均首命中名次
-   - 柱状图：ECharts 对比不同策略
-   - 消融实验：分块策略、Rerank Top-k
+请实现知识库页 KnowledgeBase.vue：
+1. 知识库列表：表格展示 名称、描述、分块策略、创建时间
+   - 按钮：新建知识库、进入详情、删除
+   - 新建对话框：名称、描述、分块策略（fixed / recursive）
+2. 知识库详情：文档管理
+   - 上传：el-upload，限定 .pdf/.docx/.txt/.md，调用 POST /api/v1/kb/{kb_id}/documents
+   - 列表：表格展示 filename, file_type, size, status, chunk_count, created_at
+   - 状态轮询：上传后每 3 秒刷新列表，直到 completed 或 failed
+   - 删除：确认后调用 DELETE /api/v1/documents/{doc_id}
+3. 支持随时新增知识库（空知识库亦可先创建，之后再上传文档）
 ```
 
-### 5.7 系统设置
+### 5.4 检索策略页（RetrievalStrategy.vue）
 
 给 AI 的提示词：
 
 ```
-请实现系统设置页面 Settings.vue：
-1. 个人信息：修改密码
-2. 用户管理（仅 admin）：用户列表、角色修改、禁用
-3. 模型配置：LLM/Embedding/Rerank 选择（预留）
+请实现检索策略页 RetrievalStrategy.vue：
+1. 顶部：选择知识库
+2. 核心：4 个**互不重叠的构建块开关**（el-switch），分别对应：
+   - 向量召回（vector）
+   - BM25 召回（bm25）
+   - RRF 融合（fusion，k=60）
+   - 精排 Rerank（rerank）
+   开关状态对应 knowledge_bases.enabled_strategies，
+   通过 PATCH /api/v1/kb/{kb_id}/strategies 保存
+3. 组合说明（只读展示，帮助理解）：
+   - 向量 only → 纯向量
+   - BM25 only → 纯 BM25
+   - 向量 + BM25 + 融合 → 混合
+   - 全开 → 混合 + Rerank
+4. 参数只读展示：双路召回 Top-50、RRF k=60、候选池 20、精排 Top-5、上下文预算 6000 字
+5. 保存成功给出提示
 ```
 
-### 5.8 API 封装与状态管理
+### 5.5 日志页（Logs.vue）
+
+给 AI 的提示词：
+
+```
+请实现日志页 Logs.vue，两个标签页：
+1. 检索日志：调用 GET /api/v1/logs/retrieval，表格展示 kb、query、生效策略、top_k、耗时、结果数、时间；
+   支持按 kb 过滤与分页
+2. 系统日志：调用 GET /api/v1/logs/system，展示 logs/app.log 尾部内容（等宽字体、可滚动），支持选择条数
+```
+
+### 5.6 API 封装与状态管理
 
 给 AI 的提示词：
 
 ```
 请实现前端 API 封装和 Pinia store：
-1. src/api/request.js：Axios 实例，baseURL='/api/v1'，拦截器
-2. src/api/auth.js, kb.js, document.js, chat.js, evaluation.js
-3. src/stores/user.js：token, userInfo, login, logout
-4. src/stores/kb.js：知识库列表、当前知识库
-5. src/stores/chat.js：会话列表、当前会话、消息列表
+1. src/api/request.js：Axios 实例，baseURL='/api/v1'，统一错误提示（无鉴权拦截器）
+2. src/api/kb.js, document.js, chat.js, log.js
+3. src/stores/kb.js：知识库列表、当前知识库
+4. src/stores/chat.js：会话列表、当前会话、消息列表
+（无 user store，无登录 / 鉴权逻辑）
 ```
 
 ---
@@ -835,53 +772,23 @@ CREATE TABLE evaluations (
 | 阶段 | 任务 | 验证方式 |
 | --- | --- | --- |
 | 1 | 后端初始化 + MySQL + 数据库层 | 能连接 MySQL，表创建成功 |
-| 2 | 认证模块 | 注册/登录/获取当前用户 |
-| 3 | 知识库 CRUD | 创建/列表/删除知识库 |
-| 4 | 文档上传 + Celery 异步索引 | 上传 PDF，状态变为 completed |
-| 5 | 检索服务适配多知识库 | 指定 kb_id 检索返回结果，链路参数不变 |
+| 2 | 文档解析与入库（pdf/docx/txt/md） | 四种格式均可解析入库，Chunk 结构一致 |
+| 3 | 知识库 CRUD + 种子数据 | 预置「法律领域」知识库并可新增知识库；检索日志落库 |
+| 4 | 文档上传 + Celery 异步索引 | 上传四种格式文件，状态变为 completed |
+| 5 | 检索服务适配多知识库 + 构建块开关 | 四种开关组合还原四策略，链路参数不变 |
 | 6 | 对话服务 + 多轮 + 流式 | 前端能流式接收答案，引用正确溯源 |
-| 7 | Vue3 前端基础框架 + 登录 | 登录后进入主页 |
-| 8 | 知识库管理页 + 文档管理页 | 上传文档、查看状态 |
-| 9 | 对话页 + 引用 + 检索可视化 | 完整问答流程 |
-| 10 | 评估模块 + 前端评估面板 | 跑评估并出图表 |
-| 11 | 可观测 + 日志 + 指标 | 查看日志和 /metrics |
+| 7 | Vue3 前端基础框架 + 四页路由 | 问答/知识库/检索策略/日志四页可切换 |
+| 8 | 知识库页 + 文档管理 | 新建知识库、上传文档、查看状态 |
+| 9 | 问答页 + 引用 + 检索可视化 | 完整问答流程 |
+| 10 | 检索策略页 + 日志页 | 切换开关生效，检索/系统日志可查 |
+| 11 | 可观测 + 指标 | 查看 /metrics |
 | 12 | Docker Compose 部署 | 一键启动所有服务 |
 
----
-
-## 7. 给 AI 的通用提示词模板
-
-当你需要 AI 帮你迁移某个模块时，使用以下模板：
-
-```
-【上下文】
-我正在将一个 RAG 问答系统迁移为 FastAPI + Vue3 + MySQL 的产品级系统。
-当前项目结构：[粘贴相关目录]
-现有代码：[粘贴需要复用的代码]
-目标架构：[粘贴目标目录结构]
-
-【任务】
-请帮我实现 [模块名称]，要求：
-1. [具体要求1]
-2. [具体要求2]
-3. [具体要求3]
-
-【约束】
-- 使用 SQLAlchemy 2.0 async；但检索/生成等阻塞操作必须走线程池，禁止用 async def 直接包同步代码
-- 使用 Pydantic v2（锁 2.9.x）
-- 多知识库隔离：每个 kb 有独立的向量 collection 与 BM25 索引文件
-- 保留现有检索链路参数（50/20/5、RRF k=60、上下文预算 6000 字）与 BGE 查询指令前缀
-- 保留现有生成逻辑（prompt 预算裁剪、两层重试、citation 宽松解析+严格映射），只做适配
-- 重排模型后台线程预热，禁止阻塞启动
-- 代码注释清晰，符合 PEP8
-
-【输出】
-请生成完整代码文件，并说明如何集成到现有项目。
-```
+> **每阶段完成后自检**：运行 `git status`，结果只应出现 `product/` 下的**新增**文件；一旦发现 `demo/` 下有 modified / deleted，立即回退纠正 —— `demo/` 必须始终原样保留。
 
 ---
 
-## 8. 注意事项与常见问题
+## 7. 注意事项与常见问题
 
 1. MySQL 字符集必须 utf8mb4，否则中文和 emoji 会报错。
 2. 异步 SQLAlchemy：使用 `async_sessionmaker` 和 `AsyncSession`，不要混用同步操作。
@@ -891,13 +798,18 @@ CREATE TABLE evaluations (
 6. 多知识库隔离：向量 collection 用 `kb_{kb_id}`、持久化目录 `indexes/chroma/kb_{kb_id}/`，BM25 索引用 `indexes/bm25/kb_{kb_id}.pkl`。
 7. 流式输出：FastAPI 用 `StreamingResponse`，前端用 `EventSource`，注意 CORS 与代理配置；流式时先累积完整文本再做引用解析。
 8. 文件存储：毕设可先用本地 `storage/` 目录，预留 MinIO 接口。
-9. JWT 密钥：从环境变量读取，不要硬编码。
-10. 数据库迁移：每次改表结构都要生成 Alembic 迁移脚本。
-11. **评估框架**：不使用 RAGAS（依赖重且与 pydantic 2.9 有兼容风险）；用自建 LLM-as-Judge，裁判原文与打分理由一并存档以便解释。
-12. **入库一致性**：全部文件处理完后一次性写分块文件；入库结束校验"manifest 块数之和 == 索引条数"。
-13. **消融口径**：分块策略消融用页级判定（文件名+页码），不能用 chunk_id。
-14. **依赖避坑**：不装 FlagEmbedding；不用 chromadb 1.x；pydantic 锁 2.9.x。
-15. 测试：每个模块完成后写测试；测试若使用假 embedder，必须把索引路径重定向到临时目录，避免污染真实向量库。
+9. **多格式解析**：pdf/docx/txt/md 四种格式必须收敛到同一 Chunk 结构；新增格式时只在 `ingest/parsers/` 增加解析器并注册扩展名映射，不要改动切分与索引。上传白名单只放行这四种扩展名。
+10. **检索策略构建块**：策略由 4 个互不重叠开关（vector / bm25 / fusion / rerank）组合而成，存 `knowledge_bases.enabled_strategies`；不要把策略名硬编码进链路，开关组合需能还原 demo 的四种策略。
+11. **日志页数据来源**：检索日志来自 `retrieval_logs` 表；系统日志来自 loguru 落盘的 `logs/app.log`。
+12. **种子数据**：预置「法律领域」知识库时只**只读引用**仓库根 `resource/法律领域/`，不复制、不改写。
+13. **无登录**：新项目不做用户体系与鉴权，不建 users / kb_permissions 表，不留 JWT 配置与登录页。
+14. 数据库迁移：每次改表结构都要生成 Alembic 迁移脚本。
+15. **评估**：新项目**不做评估模块**，评估与结果全部留在 `demo/`（demo 中不使用 RAGAS，用自建 LLM-as-Judge）。不要在新项目引入评估相关的依赖、数据表或页面。
+16. **入库一致性**：全部文件处理完后一次性写分块文件；入库结束校验"manifest 块数之和 == 索引条数"。
+17. **依赖避坑**：不装 FlagEmbedding；不用 chromadb 1.x；pydantic 锁 2.9.x。
+18. 测试：每个模块完成后写测试；测试若使用假 embedder，必须把索引路径重定向到临时目录，避免污染真实向量库。
+19. **迁移边界（最高优先级）**：见文首「迁移边界与目录约定」——`demo/` 只读、产物写入 `product/`、路径以新项目根为基准、每阶段 `git status` 复核。
+20. **新项目 `.gitignore`**：`product/` 下需自建 `.gitignore`，忽略 `data/`、`indexes/`、`storage/`、`logs/`、`.venv/`、`.env`；根 `.gitignore` 已忽略 `.venv/`、`__pycache__/`、`.hf-cache/` 等，对新目录同样生效。
 
 ---
 
