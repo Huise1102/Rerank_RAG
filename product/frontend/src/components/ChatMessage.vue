@@ -114,7 +114,7 @@ onBeforeUnmount(() => bodyEl.value?.removeEventListener('click', onClick))
 }
 
 .bubble--user {
-  background-color: #f5f0e6;
+  background-color: var(--app-bubble-user-bg);
   border: 1px solid var(--app-border);
   padding: 10px 16px;
   font-size: 15px;
