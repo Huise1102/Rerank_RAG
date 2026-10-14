@@ -26,12 +26,21 @@ export function chat(payload) {
  * @param {number}   opts.kbId
  * @param {number?}  opts.conversationId
  * @param {string}   opts.question
+ * @param {string?}  [opts.image]    图片 data URL（data:image/png;base64,...）
  * @param {Function} [opts.onDelta]  收到增量文本时回调 (delta: string)
  * @param {Function} [opts.onMeta]   收到 meta 事件时回调 (meta: object)
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<Object>} 结束时返回完整结果，用于引用解析与展示
  */
-export async function chatStream({ kbId, conversationId, question, onDelta, onMeta, signal }) {
+export async function chatStream({
+  kbId,
+  conversationId,
+  question,
+  image,
+  onDelta,
+  onMeta,
+  signal,
+}) {
   const response = await fetch('/api/v1/chat/stream', {
     method: 'POST',
     headers: {
@@ -41,7 +50,8 @@ export async function chatStream({ kbId, conversationId, question, onDelta, onMe
     body: JSON.stringify({
       kb_id: kbId,
       conversation_id: conversationId || null,
-      question,
+      question: question || '',
+      image: image || null,
     }),
     signal,
   })
