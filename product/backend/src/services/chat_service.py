@@ -22,6 +22,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.logging import get_logger
 from src.db.models.conversation import Conversation
 from src.db.models.knowledge_base import KnowledgeBase
@@ -176,6 +177,19 @@ async def _run_retrieval(
     return await run_in_threadpool(retrieve, kb.id, question, strategies)
 
 
+async def _retrieval_or_skip(
+    kb: KnowledgeBase, question: str, strategies: dict[str, bool]
+) -> RetrievalResponse:
+    """执行检索；只传图片且未输入文字时没有可用的查询词，直接返回空检索结果。"""
+    if question.strip():
+        return await _run_retrieval(kb, question, strategies)
+    return RetrievalResponse(
+        query="（图片问答，未提供文字问题）",
+        strategy="image_only",
+        chunk_strategy=kb.chunk_strategy,
+    )
+
+
 async def _log_retrieval(db: AsyncSession, retrieval: RetrievalResponse, kb_id: int) -> None:
     """写一条检索日志（失败不阻断主流程）。"""
     try:
@@ -238,23 +252,33 @@ async def chat(
     *,
     conversation_id: int | None = None,
     strategies: dict[str, bool] | None = None,
+    image: str | None = None,
 ) -> dict[str, Any]:
-    """执行一次完整问答（非流式），返回前端 ChatResponse 结构。"""
+    """执行一次完整问答（非流式），返回前端 ChatResponse 结构。
+
+    ``image`` 为图片 data URL；传入后改用多模态模型，图片作为资料的一部分。
+    """
     sw = _resolve_strategies(kb, strategies)
+    text = (question or "").strip()
+    user_content = text or "[图片]"
 
     if conversation_id is None:
-        conv = await create_conversation(db, kb.id, title=question[:60])
+        conv = await create_conversation(db, kb.id, title=(text or "图片问答")[:60])
         conversation_id = conv.id
 
     history = await _recent_history(db, conversation_id)
-    await _save_message(db, conversation_id, role="user", content=question, touch_title=question)
+    await _save_message(db, conversation_id, role="user", content=user_content, touch_title=user_content)
 
-    retrieval = await _run_retrieval(kb, question, sw)
+    retrieval = await _retrieval_or_skip(kb, text, sw)
     contexts = contexts_from_results(retrieval.results)
 
     llm = get_llm_client()
     response: LLMResponse = await run_in_threadpool(
-        llm.generate, question, contexts, history=history
+        llm.generate,
+        text or settings.generation.image_default_question,
+        contexts,
+        history=history,
+        image=image,
     )
     generate_seconds = response.elapsed
 
@@ -301,22 +325,30 @@ async def prepare_stream(
     *,
     conversation_id: int | None = None,
     strategies: dict[str, bool] | None = None,
+    image: str | None = None,
 ) -> dict[str, Any]:
     """流式前的准备工作：建会话、存用户消息、检索、拿 LLM 增量迭代器。"""
     sw = _resolve_strategies(kb, strategies)
+    text = (question or "").strip()
+    user_content = text or "[图片]"
 
     if conversation_id is None:
-        conv = await create_conversation(db, kb.id, title=question[:60])
+        conv = await create_conversation(db, kb.id, title=(text or "图片问答")[:60])
         conversation_id = conv.id
 
     history = await _recent_history(db, conversation_id)
-    await _save_message(db, conversation_id, role="user", content=question, touch_title=question)
+    await _save_message(db, conversation_id, role="user", content=user_content, touch_title=user_content)
 
-    retrieval = await _run_retrieval(kb, question, sw)
+    retrieval = await _retrieval_or_skip(kb, text, sw)
     contexts = contexts_from_results(retrieval.results)
     docs = [_doc_to_client(r) for r in retrieval.results]
 
-    iterator, box = get_llm_client().stream_response(question, contexts, history=history)
+    iterator, box = get_llm_client().stream_response(
+        text or settings.generation.image_default_question,
+        contexts,
+        history=history,
+        image=image,
+    )
 
     return {
         "kb_id": kb.id,
