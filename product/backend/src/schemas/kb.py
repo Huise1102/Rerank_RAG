@@ -42,6 +42,7 @@ class KBUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     chunk_strategy: str | None = None
     enabled_strategies: dict[str, bool] | None = None
+    is_active: bool | None = None
 
     @field_validator("chunk_strategy")
     @classmethod
@@ -71,5 +72,6 @@ class KBOut(BaseModel):
     description: str | None = None
     chunk_strategy: str
     enabled_strategies: dict[str, bool]
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
