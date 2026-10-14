@@ -48,6 +48,10 @@ class BaseStorage(ABC):
 
         return self.save_stream(key, io.BytesIO(data), len(data))
 
+    def read_bytes(self, key: str) -> bytes:
+        """读取对象全部内容（供在线预览 / 下载）。"""
+        return self.materialize(key).read_bytes()
+
 
 class LocalStorage(BaseStorage):
     """本地文件系统后端：storage/<key>。"""
@@ -112,6 +116,15 @@ class MinioStorage(BaseStorage):
         tmp.close()
         self._client.fget_object(self.bucket, key, tmp.name)
         return Path(tmp.name)
+
+    def read_bytes(self, key: str) -> bytes:
+        # 直接读对象流，避免 materialize 产生的临时文件残留
+        resp = self._client.get_object(self.bucket, key)
+        try:
+            return resp.read()
+        finally:
+            resp.close()
+            resp.release_conn()
 
     def delete(self, key: str) -> bool:
         try:
