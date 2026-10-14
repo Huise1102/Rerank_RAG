@@ -17,6 +17,11 @@ export function getDocument(docId) {
   return request.get(`/documents/${docId}`)
 }
 
+// 原始文档直链：默认内联预览，download=true 时作为附件下载
+export function documentFileUrl(docId, download = false) {
+  return `/api/v1/documents/${docId}/file${download ? '?download=true' : ''}`
+}
+
 export function deleteDocument(docId) {
   return request.delete(`/documents/${docId}`)
 }
