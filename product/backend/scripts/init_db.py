@@ -90,14 +90,16 @@ def run_alembic_upgrade() -> bool:
     return True
 
 
-async def _main(mode: str) -> None:
+def _main(mode: str) -> None:
+    # 注意：Alembic 的 env.py 内部会调用 asyncio.run()，必须在一个没有
+    # 运行中的事件循环的同步上下文里执行，因此这里把异步步骤各自单独 run。
     setup_logging()
     settings.ensure_dirs()
-    await ensure_database()
+    asyncio.run(ensure_database())
 
     if mode == "alembic" and run_alembic_upgrade():
         return
-    await create_all_tables()
+    asyncio.run(create_all_tables())
 
 
 if __name__ == "__main__":
@@ -109,4 +111,4 @@ if __name__ == "__main__":
         help="建表方式：alembic=执行迁移（默认）；create=直接 create_all",
     )
     args = parser.parse_args()
-    asyncio.run(_main(args.mode))
+    _main(args.mode)
