@@ -5,16 +5,33 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ChatRequest(BaseModel):
-    """问答请求。strategy 可选：不传时取知识库的 enabled_strategies。"""
+    """问答请求。strategy 可选：不传时取知识库的 enabled_strategies。
+
+    ``image`` 为图片 data URL（``data:image/png;base64,...``）；传入后走多模态模型。
+    question 与 image 至少提供一个（只传图片时按默认问题作答）。
+    """
 
     kb_id: int
     conversation_id: int | None = None
-    question: str = Field(min_length=1)
+    question: str = Field(default="", max_length=4000)
     strategy: dict[str, bool] | None = None
+    image: str | None = Field(default=None, max_length=12_000_000, description="图片 data URL")
+
+    @model_validator(mode="after")
+    def _check(self) -> "ChatRequest":
+        question = (self.question or "").strip()
+        if not question and not self.image:
+            raise ValueError("question 与 image 至少提供一个")
+        if self.image and not self.image.startswith("data:image/"):
+            raise ValueError("image 需为 data URL 格式，如 data:image/png;base64,...")
+        if self.image and "," not in self.image:
+            raise ValueError("image 缺少 base64 数据段")
+        self.question = question
+        return self
 
 
 class ConversationOut(BaseModel):
