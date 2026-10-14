@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -23,6 +23,10 @@ class KnowledgeBase(Base):
     chunk_strategy: Mapped[str] = mapped_column(String(50), default="recursive", nullable=False)
     enabled_strategies: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=lambda: dict(DEFAULT_STRATEGIES), nullable=False
+    )
+    #: 启用开关：仅启用的知识库可在「问答」页选用
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
