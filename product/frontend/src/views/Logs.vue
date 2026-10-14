@@ -230,14 +230,14 @@ function formatTime(value) {
   margin: 0;
   max-height: 520px;
   overflow: auto;
-  background-color: #faf8f2;
+  background-color: var(--app-surface-sunken);
   border: 1px solid var(--app-border);
   border-radius: 4px;
   padding: 14px 16px;
   font-family: var(--app-mono);
   font-size: 12.5px;
   line-height: 1.7;
-  color: #3c3c3c;
+  color: var(--app-text-regular);
   white-space: pre-wrap;
   word-break: break-word;
 }
