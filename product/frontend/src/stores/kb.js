@@ -24,6 +24,9 @@ export const useKbStore = defineStore('kb', () => {
 
   const currentKb = computed(() => kbs.value.find((k) => k.id === currentKbId.value) || null)
 
+  // 已启用的知识库（问答页只能选用这些）
+  const activeKbs = computed(() => kbs.value.filter((k) => k.is_active !== false))
+
   const currentStrategies = computed(() =>
     normalizeStrategies(currentKb.value?.enabled_strategies || DEFAULT_STRATEGIES)
   )
@@ -62,6 +65,7 @@ export const useKbStore = defineStore('kb', () => {
 
   return {
     kbs,
+    activeKbs,
     currentKbId,
     currentKb,
     currentStrategies,
