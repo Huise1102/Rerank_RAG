@@ -1,6 +1,14 @@
 <template>
   <div v-if="message.role === 'user'" class="msg msg--user">
-    <div class="bubble bubble--user">{{ message.content }}</div>
+    <div class="bubble bubble--user">
+      <img
+        v-if="message.image"
+        class="bubble-image"
+        :src="message.image"
+        alt="用户上传的图片"
+      />
+      <div v-if="message.content">{{ message.content }}</div>
+    </div>
   </div>
 
   <div v-else class="msg msg--assistant">
@@ -113,6 +121,19 @@ onBeforeUnmount(() => bodyEl.value?.removeEventListener('click', onClick))
   line-height: 1.7;
   color: var(--app-text);
   white-space: pre-wrap;
+}
+
+.bubble-image {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 4px;
+  border: 1px solid var(--app-border);
+  margin-bottom: 8px;
+}
+
+.bubble-image:last-child {
+  margin-bottom: 0;
 }
 
 .bubble--assistant {
