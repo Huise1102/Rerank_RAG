@@ -1,0 +1,72 @@
+# =============================================================================
+# 产品级领域知识库系统 —— 后端依赖清单
+# =============================================================================
+# 环境：Python 3.11.9 (Windows x64)
+# 安装（推荐 uv）：
+#   uv venv --python 3.11 .venv
+#   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+#
+# -----------------------------------------------------------------------------
+# ⚠️ 版本约束（与参考项目 demo/ 对齐，勿随意放宽）
+# 1) pydantic 必须 <2.10：langchain-core 0.2.x 内部仍用 pydantic v1 的 class Config
+# 2) chromadb 必须 <0.6：支持 chromadb 1.x 的 langchain-chroma 要求 langchain-core>=0.3，
+#    与 LangChain 0.2.x 硬冲突
+# 3) 不安装 FlagEmbedding：reranker 用 sentence-transformers 的 CrossEncoder 加载
+# =============================================================================
+
+# --------------------------- 配置与基础工具 ---------------------------------
+python-dotenv>=1.0.1
+pydantic>=2.9.0,<2.10.0
+pydantic-settings>=2.3.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+tqdm>=4.66.0
+rich>=13.7.0
+
+# ------------------------------ 文本处理 ------------------------------------
+pdfplumber>=0.11.0                       # PDF 主解析器
+python-docx>=1.1.0                       # docx 解析
+jieba>=0.42.1                            # BM25 中文分词
+rank_bm25>=0.2.2                         # BM25Okapi 稀疏检索
+
+# ------------------------ LangChain 0.2.x（仅加载/切分） ---------------------
+langchain>=0.2.0,<0.3.0
+langchain-core>=0.2.0,<0.3.0
+langchain-community>=0.2.0,<0.3.0
+langchain-text-splitters>=0.2.0,<0.3.0
+
+# --------------------------- 向量库 Chroma ----------------------------------
+langchain-chroma>=0.1.2,<0.2.0
+chromadb>=0.5.5,<0.6.0
+
+# --------------------- Embedding / Rerank（sentence-transformers） -----------
+torch>=2.2.0
+sentence-transformers>=3.0.0,<4.0.0
+transformers>=4.40.0
+langchain-huggingface>=0.0.3,<0.2.0
+sacremoses>=0.1.1
+sentencepiece>=0.2.0
+
+# ------------------------------- LLM 生成 -----------------------------------
+openai>=1.30.0,<2.0.0
+
+# ------------------------------- 后端 API -----------------------------------
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+httpx>=0.27.0
+
+# --------------------------- 数据库与异步任务 --------------------------------
+SQLAlchemy>=2.0.30,<2.1.0
+aiomysql>=0.2.0
+alembic>=1.13.0
+celery>=5.4.0
+redis>=5.0.0
+minio>=7.2.0
+
+# ------------------------------- 可观测 -------------------------------------
+loguru>=0.7.2
+prometheus-client>=0.20.0
+
+# ------------------------------- 测试 ---------------------------------------
+pytest>=8.2.0
+pytest-asyncio>=0.23.0
