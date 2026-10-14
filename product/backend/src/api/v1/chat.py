@@ -34,6 +34,7 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
         payload.question,
         conversation_id=payload.conversation_id,
         strategies=payload.strategy,
+        image=payload.image,
     )
     return data
 
@@ -47,6 +48,7 @@ async def chat_stream(payload: ChatRequest, db: AsyncSession = Depends(get_db)):
         payload.question,
         conversation_id=payload.conversation_id,
         strategies=payload.strategy,
+        image=payload.image,
     )
     return StreamingResponse(
         chat_service.stream_events(bundle),
