@@ -17,6 +17,29 @@
 
 ---
 
+## 界面预览
+
+> 以下为本站实际界面，由无头浏览器驱动真实交互后截取——问答页是实际发问、等待流式回答结束后再截的，检索详情面板也是点开后的状态。截图文件位于仓库根 **`docs/images/`**。
+
+<table>
+  <tr>
+    <td align="center"><b>问答页 · 浅色</b><br /><img src="../docs/images/chat.png" width="100%" /></td>
+    <td align="center"><b>问答页 · 深色科技风</b><br /><img src="../docs/images/chat-dark.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>知识库列表</b><br /><img src="../docs/images/knowledge.png" width="100%" /></td>
+    <td align="center"><b>知识库详情 · 文档管理</b><br /><img src="../docs/images/knowledge-detail.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>检索策略配置</b><br /><img src="../docs/images/strategy.png" width="100%" /></td>
+    <td align="center"><b>日志 · 检索日志 / 系统日志</b><br /><img src="../docs/images/logs.png" width="100%" /></td>
+  </tr>
+</table>
+
+前端固定四个页面：**问答 / 知识库 / 检索策略 / 日志**，无登录页与设置页。
+
+---
+
 ## 技术栈
 
 ### 后端
