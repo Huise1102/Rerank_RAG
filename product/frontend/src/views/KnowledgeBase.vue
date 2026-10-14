@@ -686,8 +686,8 @@ onBeforeUnmount(stopPolling)
 .error-note {
   margin-top: 12px;
   padding: 8px 12px;
-  border: 1px solid #e6c9c9;
-  background-color: #fbf3f3;
+  border: 1px solid var(--app-danger-soft-border);
+  background-color: var(--app-danger-soft-bg);
   border-radius: 4px;
   font-size: 12px;
   color: var(--app-danger);
