@@ -1,0 +1,136 @@
+# =============================================================================
+# 产品级领域知识库系统 —— Docker Compose
+# 一键启动：MySQL + Redis + MinIO + 后端(FastAPI)
+# 前端（Vue3）单独用 `npm run dev` 启动，或自行构建后用 nginx 托管。
+#
+# 使用：在本目录执行
+#   docker compose up -d --build
+# 需要 DeepSeek 密钥时先导出环境变量：
+#   set RAG_LLM__API_KEY=sk-xxxx   （PowerShell: $env:RAG_LLM__API_KEY="sk-xxxx"）
+# =============================================================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: rag-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: rag_system
+      MYSQL_USER: rag
+      MYSQL_PASSWORD: rag123456
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-urag", "-prag123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: rag-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      # 基础设施
+      RAG_DATABASE__URL: mysql+aiomysql://rag:rag123456@mysql:3306/rag_system?charset=utf8mb4
+      RAG_REDIS__URL: redis://redis:6379/0
+      RAG_STORAGE__TYPE: minio
+      RAG_MINIO__ENDPOINT: minio:9000
+      RAG_MINIO__ACCESS_KEY: minioadmin
+      RAG_MINIO__SECRET_KEY: minioadmin
+      RAG_MINIO__BUCKET: rag-documents
+      # LLM（密钥从宿主机环境变量透传）
+      RAG_LLM__API_KEY: ${RAG_LLM__API_KEY:-}
+      RAG_LLM__MODEL: ${RAG_LLM__MODEL:-deepseek-chat}
+      RAG_LLM__BASE_URL: https://api.deepseek.com/v1
+      # 本地模型与语料
+      RAG_EMBEDDING__OFFLINE: ${RAG_EMBEDDING__OFFLINE:-false}
+      RAG_EMBEDDING__CACHE_DIR: /app/.hf-cache
+      RAG_RESOURCE_DIR: /app/resource
+      TZ: Asia/Shanghai
+    ports:
+      - "8000:8000"
+    volumes:
+      - hf_cache:/app/.hf-cache
+      - ${RESOURCE_DIR:-../../resource}:/app/resource:ro
+    command: >
+      sh -c "python scripts/init_db.py && uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
+
+  # Celery worker（可选：需要异步解析文档时启用）
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-worker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      RAG_DATABASE__URL: mysql+aiomysql://rag:rag123456@mysql:3306/rag_system?charset=utf8mb4
+      RAG_REDIS__URL: redis://redis:6379/0
+      RAG_STORAGE__TYPE: minio
+      RAG_MINIO__ENDPOINT: minio:9000
+      RAG_MINIO__ACCESS_KEY: minioadmin
+      RAG_MINIO__SECRET_KEY: minioadmin
+      RAG_MINIO__BUCKET: rag-documents
+      RAG_LLM__API_KEY: ${RAG_LLM__API_KEY:-}
+      RAG_EMBEDDING__OFFLINE: ${RAG_EMBEDDING__OFFLINE:-false}
+      RAG_EMBEDDING__CACHE_DIR: /app/.hf-cache
+      TZ: Asia/Shanghai
+    volumes:
+      - hf_cache:/app/.hf-cache
+    command: ["celery", "-A", "src.tasks.celery_app", "worker", "--loglevel=info", "--pool=solo"]
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+  hf_cache:
