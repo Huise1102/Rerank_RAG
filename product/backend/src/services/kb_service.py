@@ -71,6 +71,8 @@ async def update_kb(db: AsyncSession, kb_id: int, data: KBUpdate) -> KnowledgeBa
         kb.chunk_strategy = data.chunk_strategy
     if data.enabled_strategies is not None:
         kb.enabled_strategies = normalize_strategies(data.enabled_strategies)
+    if data.is_active is not None:
+        kb.is_active = bool(data.is_active)
     await db.commit()
     await db.refresh(kb)
     return kb
