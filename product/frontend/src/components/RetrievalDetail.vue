@@ -126,7 +126,7 @@ const statsRows = computed(() => {
   border: 1px solid var(--app-border);
   border-radius: 4px;
   padding: 10px 12px;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
 }
 
 .rd-doc__head {
