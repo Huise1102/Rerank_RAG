@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.logging import get_logger
@@ -18,6 +21,14 @@ from src.services import document_service
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["文档"])
+
+#: 预览/下载时使用的 Content-Type（docx 浏览器不能内联渲染，交给本地软件打开）
+_MEDIA_TYPES = {
+    "pdf": "application/pdf",
+    "txt": "text/plain; charset=utf-8",
+    "md": "text/markdown; charset=utf-8",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 
 async def _trigger_ingest(doc_id: int) -> None:
@@ -75,6 +86,34 @@ async def get_document(doc_id: int, db: AsyncSession = Depends(get_db)):
     if doc is None:
         raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
     return doc
+
+
+@router.get("/documents/{doc_id}/file", summary="查看/下载原始文档")
+async def get_document_file(
+    doc_id: int,
+    download: bool = Query(default=False, description="true 时作为附件下载，否则内联预览"),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await document_service.get_document(db, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
+    try:
+        content = await run_in_threadpool(document_service.read_document_bytes, doc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("读取原始文件失败 doc=%s key=%s: %s", doc_id, doc.file_path, exc)
+        raise HTTPException(status_code=404, detail="原始文件不存在或已丢失") from exc
+
+    # 中文文件名须按 RFC 5987 编码，否则部分浏览器会截断或乱码
+    disposition = "attachment" if download else "inline"
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(doc.filename)}",
+        "Content-Length": str(len(content)),
+    }
+    return Response(
+        content=content,
+        media_type=_MEDIA_TYPES.get(doc.file_type, "application/octet-stream"),
+        headers=headers,
+    )
 
 
 @router.delete("/documents/{doc_id}", summary="删除文档")
