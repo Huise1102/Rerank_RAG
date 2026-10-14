@@ -320,6 +320,11 @@ class LLMSettings(_Section):
     max_retries: int = Field(default=3, ge=0, le=10)
     stream: bool = Field(default=True)
 
+    #: 图像问答使用的多模态模型（DeepSeek OpenAI 兼容接口，支持 image_url 内容块）
+    vision_model: str = Field(default="deepseek-flash", description="支持图片输入的模型名")
+    #: 图片转为 data URL 后的最大字符数（约 8 MiB 原图）
+    image_max_chars: int = Field(default=12_000_000, ge=100_000)
+
     @field_validator("base_url", mode="after")
     @classmethod
     def _strip_slash(cls, v: str) -> str:
@@ -363,6 +368,14 @@ class GenerationSettings(_Section):
         "请依据上述参考资料回答，并标注引用编号。"
     )
     no_context_reply: str = "抱歉，知识库中未检索到与该问题相关的内容，请尝试换一种问法或补充背景信息。"
+    #: 图像问答：图片内容同样视为可依据的资料，否则系统提示词会挡住模型看图作答
+    image_system_rule: str = (
+        "6. 若用户附带图片，图片内容视为【参考资料】的一部分，可以据此作答；"
+        "图片与参考资料冲突时，须指出冲突并分别说明。"
+    )
+    image_user_notice: str = "【图片】用户上传了一张图片，请结合图片内容与上述参考资料回答。"
+    #: 只传图片、未输入文字时使用的默认问题
+    image_default_question: str = "请描述并解释这张图片的内容。"
 
 
 class APISettings(_Section):
