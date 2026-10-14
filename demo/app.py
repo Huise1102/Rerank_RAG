@@ -446,6 +446,8 @@ TIMEOUT = settings.frontend.request_timeout
 
 
 class BackendError(RuntimeError):
+    """与后端通信失败（连接错误、超时或非 2xx 响应）。"""
+
 
 def _url(path: str) -> str:
     return f"{settings.frontend.api_base_url.rstrip('/')}{path}"
