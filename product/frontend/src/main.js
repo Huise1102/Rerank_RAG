@@ -5,10 +5,16 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
 import '@/assets/theme.css'
 
 import App from '@/App.vue'
 import router from '@/router'
+
+// 挂载前先应用主题偏好，避免首屏浅色闪一下再切到深色
+if (localStorage.getItem('app-theme') === 'dark') {
+  document.documentElement.classList.add('dark')
+}
 
 const app = createApp(App)
 
