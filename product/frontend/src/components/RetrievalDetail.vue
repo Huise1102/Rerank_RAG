@@ -1,47 +1,40 @@
 <template>
-  <el-collapse class="retrieval-detail">
-    <el-collapse-item name="detail">
-      <template #title>
-        <span class="rd-title">检索详情</span>
-        <span class="rd-title-sub">Top-{{ docs.length }} 文档块 · 两路召回得分</span>
-      </template>
+  <div class="retrieval-detail">
+    <div class="rd-docs">
+      <div v-for="(doc, i) in docs" :key="doc.chunk_id || i" class="rd-doc">
+        <div class="rd-doc__head">
+          <span class="rd-rank">{{ doc.rank || i + 1 }}.</span>
+          <span class="rd-source">{{ doc.source || '未知来源' }}</span>
+          <span v-if="pageText(doc)" class="rd-page">第 {{ pageText(doc) }} 页</span>
+        </div>
+        <div class="rd-scores">
+          <span v-if="num(doc.score) !== null">最终 {{ fmt(doc.score) }}</span>
+          <span v-if="num(doc.fused_score) !== null">融合 {{ fmt(doc.fused_score, 5) }}</span>
+          <span v-if="num(doc.rerank_score) !== null">精排 {{ fmt(doc.rerank_score) }}</span>
+          <span v-if="matchedText(doc)">命中 {{ matchedText(doc) }}</span>
+        </div>
+        <div class="rd-text">{{ preview(doc.text) }}</div>
+      </div>
+    </div>
 
-      <div class="rd-docs">
-        <div v-for="(doc, i) in docs" :key="doc.chunk_id || i" class="rd-doc">
-          <div class="rd-doc__head">
-            <span class="rd-rank">{{ doc.rank || i + 1 }}.</span>
-            <span class="rd-source">{{ doc.source || '未知来源' }}</span>
-            <span v-if="pageText(doc)" class="rd-page">第 {{ pageText(doc) }} 页</span>
-          </div>
-          <div class="rd-scores">
-            <span v-if="num(doc.score) !== null">最终 {{ fmt(doc.score) }}</span>
-            <span v-if="num(doc.fused_score) !== null">融合 {{ fmt(doc.fused_score, 5) }}</span>
-            <span v-if="num(doc.rerank_score) !== null">精排 {{ fmt(doc.rerank_score) }}</span>
-            <span v-if="matchedText(doc)">命中 {{ matchedText(doc) }}</span>
-          </div>
-          <div class="rd-text">{{ preview(doc.text) }}</div>
+    <div v-if="timingRows.length" class="rd-block">
+      <div class="rd-block__title">耗时分解</div>
+      <div class="rd-lines">
+        <div v-for="row in timingRows" :key="row.label" class="rd-line">
+          {{ row.label }} {{ row.value }}
         </div>
       </div>
+    </div>
 
-      <div v-if="timingRows.length" class="rd-block">
-        <div class="rd-block__title">耗时分解</div>
-        <div class="rd-lines">
-          <div v-for="row in timingRows" :key="row.label" class="rd-line">
-            {{ row.label }} {{ row.value }}
-          </div>
+    <div v-if="statsRows.length" class="rd-block">
+      <div class="rd-block__title">两路召回统计</div>
+      <div class="rd-lines">
+        <div v-for="row in statsRows" :key="row.label" class="rd-line">
+          {{ row.label }} {{ row.value }}
         </div>
       </div>
-
-      <div v-if="statsRows.length" class="rd-block">
-        <div class="rd-block__title">两路召回统计</div>
-        <div class="rd-lines">
-          <div v-for="row in statsRows" :key="row.label" class="rd-line">
-            {{ row.label }} {{ row.value }}
-          </div>
-        </div>
-      </div>
-    </el-collapse-item>
-  </el-collapse>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -51,7 +44,6 @@ const props = defineProps({
   docs: { type: Array, default: () => [] },
   latency: { type: Object, default: () => ({}) },
   stats: { type: Object, default: () => null },
-  strategy: { type: String, default: '' },
 })
 
 function num(v) {
@@ -121,21 +113,7 @@ const statsRows = computed(() => {
 
 <style scoped>
 .retrieval-detail {
-  margin-top: 8px;
   border: none;
-}
-
-.rd-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--app-text-secondary);
-}
-
-.rd-title-sub {
-  margin-left: 10px;
-  font-size: 12px;
-  color: var(--app-text-muted);
-  font-weight: 400;
 }
 
 .rd-docs {
@@ -155,6 +133,7 @@ const statsRows = computed(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--app-text);
+  word-break: break-word;
 }
 
 .rd-rank {
