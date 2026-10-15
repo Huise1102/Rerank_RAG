@@ -93,38 +93,58 @@ def read_document_bytes(doc: Document) -> bytes:
     return get_storage().read_bytes(doc.file_path)
 
 
-async def delete_document(db: AsyncSession, doc_id: int) -> bool:
-    """删除文档：原始文件 + 索引中的对应分块 + 数据库记录。"""
+async def delete_document(db: AsyncSession, doc_id: int) -> dict[str, Any] | None:
+    """删除数据库记录并立即返回；原始文件与索引分块的后台清理由调用方调度。
+
+    索引清理（Chroma 删集合 + 全量重嵌入 + BM25 重建）是分钟级重活，若放在请求路径里
+    会占死事件循环，导致 /health 等所有接口挂起、前端表现为"后端失联"。故这里只做
+    毫秒级的 DB 删除，返回清理所需信息，由后台任务在线程池内执行。
+
+    :returns: ``{doc_id, kb_id, file_path, strategy, filename}``；文档不存在时返回 ``None``
+    """
     doc = await db.get(Document, doc_id)
     if doc is None:
-        return False
+        return None
 
     kb = await db.get(KnowledgeBase, doc.kb_id)
-    strategy = kb.chunk_strategy if kb else "recursive"
-
-    # 1) 删除已上传的原始文件
-    try:
-        get_storage().delete(doc.file_path)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("删除原始文件失败 key=%s: %s", doc.file_path, exc)
-
-    # 2) 从索引中摘除该来源的分块并重建
-    #
-    # 注意：分块的 source 记录的是**入库时实际读取的文件名**，上传文件在存储里带哈希前缀
-    # （如 kb_1/b5df89d7_报告.pdf -> source="b5df89d7_报告.pdf"），与 doc.filename 不同。
-    # 用 doc.filename 过滤会一块都匹配不到，留下孤儿分块，并让后续一致性校验失败。
-    from src.services.ingest_service import remove_source
-
-    try:
-        remove_source(doc.kb_id, Path(doc.file_path).name, strategy)
-    except Exception as exc:  # noqa: BLE001 - 索引清理失败也要删库记录
-        logger.warning("移除索引分块失败 kb=%s file=%s: %s", doc.kb_id, doc.file_path, exc)
-
-    # 3) 删除数据库记录
+    info: dict[str, Any] = {
+        "doc_id": doc.id,
+        "kb_id": doc.kb_id,
+        "file_path": doc.file_path,
+        "strategy": kb.chunk_strategy if kb else "recursive",
+        "filename": doc.filename,
+    }
     await db.delete(doc)
     await db.commit()
-    logger.info("删除文档 id=%s kb=%s name=%s", doc_id, doc.kb_id, doc.filename)
-    return True
+    logger.info("删除文档记录 id=%s kb=%s name=%s（索引清理转入后台）", doc_id, info["kb_id"], info["filename"])
+    return info
+
+
+def cleanup_document_artifacts(kb_id: int, file_path: str, strategy: str, filename: str) -> None:
+    """后台清理被删文档的原始文件与索引分块（同步函数，供线程池/后台任务调用）。
+
+    分块的 source 记录的是**入库时实际读取的文件名**：上传文件在存储里带哈希前缀
+    （如 ``kb_1/b5df89d7_报告.pdf -> source="b5df89d7_报告.pdf"``），与 ``filename`` 不同，
+    用 filename 过滤会一块都匹配不到、留下孤儿分块，故必须用 ``Path(file_path).name``。
+    """
+    import time
+
+    from src.services.ingest_service import remove_source
+
+    started = time.perf_counter()
+    try:
+        get_storage().delete(file_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("删除原始文件失败 key=%s: %s", file_path, exc)
+
+    try:
+        removed = remove_source(kb_id, Path(file_path).name, strategy)
+        logger.info(
+            "索引清理完成 kb=%s name=%s removed=%d 耗时=%.1fs",
+            kb_id, filename, removed, time.perf_counter() - started,
+        )
+    except Exception as exc:  # noqa: BLE001 - 清理失败不影响已删除的库记录
+        logger.warning("移除索引分块失败 kb=%s file=%s: %s", kb_id, file_path, exc)
 
 
 def is_valid_status(status: str) -> bool:
