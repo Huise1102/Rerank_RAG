@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { listConversations, listMessages, deleteConversation } from '@/api/chat'
+import { listConversations, listMessages, deleteConversation, clearConversations } from '@/api/chat'
 
 // 引用来源：兼容数组或 { citations: [...] } 两种返回形态
 export function normalizeCitations(raw) {
@@ -73,6 +73,14 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // 清空会话列表：清空后回到"新建会话"状态，避免仍停留在已删会话上
+  async function clearAllConversations(kbId) {
+    const data = await clearConversations(kbId)
+    conversations.value = []
+    newConversation()
+    return data?.deleted ?? 0
+  }
+
   function reset() {
     conversations.value = []
     currentConversationId.value = null
@@ -88,6 +96,7 @@ export const useChatStore = defineStore('chat', () => {
     selectConversation,
     newConversation,
     removeConversation,
+    clearAllConversations,
     reset,
   }
 })
