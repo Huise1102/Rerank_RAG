@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from src.core.config import settings
+from src.core.model_lock import MODEL_LOAD_LOCK
 from src.retrieval.base import RetrievalResult, get_logger
 
 logger = get_logger(__name__)
@@ -93,15 +94,18 @@ class Reranker:
         if self.backend == "flag_embedding":
             from FlagEmbedding import FlagReranker
 
-            self._model = FlagReranker(
-                self.model_name,
-                use_fp16=(device == "cuda" and cfg.use_fp16),
-            )
+            # 与 embedding 模型等其他大模型的加载互斥，见 core/model_lock.py
+            with MODEL_LOAD_LOCK:
+                self._model = FlagReranker(
+                    self.model_name,
+                    use_fp16=(device == "cuda" and cfg.use_fp16),
+                )
         else:
             from sentence_transformers import CrossEncoder
 
             ref = self._resolve_ref()
-            self._model = CrossEncoder(ref, device=device, max_length=cfg.max_length)
+            with MODEL_LOAD_LOCK:
+                self._model = CrossEncoder(ref, device=device, max_length=cfg.max_length)
 
         self._device = device
         self._loaded = True
