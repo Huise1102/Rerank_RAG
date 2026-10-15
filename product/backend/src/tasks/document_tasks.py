@@ -4,6 +4,9 @@
 ``asyncio.run`` 跑一段 async 逻辑（读写数据库），中间的解析/分块/索引是阻塞计算，
 在 worker 进程里顺序执行不会阻塞任何事件循环。
 
+``asyncio.run`` 每次都新建事件循环，因此数据库会话必须走 ``TaskSessionLocal``
+（NullPool 引擎，不跨循环复用连接），不能复用请求路径的连接池。
+
 状态流转：pending -> parsing -> indexing -> completed / failed。
 """
 
@@ -16,7 +19,7 @@ from typing import Any
 from src.core.logging import get_logger
 from src.db.models.document import Document
 from src.db.models.knowledge_base import KnowledgeBase
-from src.db.session import AsyncSessionLocal
+from src.db.session import TaskSessionLocal
 from src.services import ingest_service
 from src.tasks.celery_app import celery_app
 from src.utils.storage import get_storage
@@ -26,7 +29,7 @@ logger = get_logger(__name__)
 
 async def _set_status(doc_id: int, status: str, *, error: str | None = None,
                       chunk_count: int | None = None) -> None:
-    async with AsyncSessionLocal() as db:
+    async with TaskSessionLocal() as db:
         doc = await db.get(Document, doc_id)
         if doc is None:
             return
@@ -39,7 +42,7 @@ async def _set_status(doc_id: int, status: str, *, error: str | None = None,
 
 
 async def _process(doc_id: int) -> dict[str, Any]:
-    async with AsyncSessionLocal() as db:
+    async with TaskSessionLocal() as db:
         doc = await db.get(Document, doc_id)
         if doc is None:
             return {"doc_id": doc_id, "status": "missing", "error": "文档不存在"}
