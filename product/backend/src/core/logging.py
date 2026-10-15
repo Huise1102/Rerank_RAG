@@ -13,6 +13,10 @@
     setup_logging()
     logger = get_logger(__name__)
     logger.info("...")
+
+``get_logger`` 返回的是 :class:`PercentStyleLogger`：项目内沿用 ``%``-风格占位符
+（``logger.info("doc=%s", doc_id)``，与 demo 及 stdlib logging 一致），而 loguru 只认
+``{}``，不做适配的话日志里会原样打印 ``%s``。该包装在调用前用 ``%`` 预格式化。
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import contextvars
 import logging
 import sys
 import uuid
+from typing import Any
 
 from loguru import logger as _loguru_logger
 
@@ -118,8 +123,73 @@ def setup_logging(level: str | None = None) -> None:
     _configured = True
 
 
-def get_logger(name: str | None = None):
-    """获取绑定了模块名的 loguru logger。"""
+class PercentStyleLogger:
+    """把 ``%``-风格调用适配到 loguru。
+
+    ``logger.info("doc=%s kb=%s", doc_id, kb_id)`` 与 stdlib logging 的写法一致，但 loguru
+    只按 ``{}`` 格式化，传进来的参数会被忽略、``%s`` 原样输出。这里先尝试 ``%`` 预格式化：
+    成功则把结果作为纯文本交给 loguru（``{}`` 不再参与格式化）；失败说明不是 ``%``-风格，
+    原样交给 loguru 按 ``{}`` 处理，两种写法都能正常工作。
+    """
+
+    __slots__ = ("_logger",)
+
+    def __init__(self, logger: Any) -> None:
+        self._logger = logger
+
+    @staticmethod
+    def _prepare(message: Any, args: tuple, kwargs: dict) -> tuple[Any, tuple, dict]:
+        if args or kwargs:
+            try:
+                return message % (args if args else kwargs), (), {}
+            except Exception:  # noqa: BLE001 - 不是 %-风格就原样交给 loguru
+                pass
+        return message, args, kwargs
+
+    def debug(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.debug(msg, *a, **kw)
+
+    def info(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.info(msg, *a, **kw)
+
+    def success(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.success(msg, *a, **kw)
+
+    def warning(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.warning(msg, *a, **kw)
+
+    def error(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.error(msg, *a, **kw)
+
+    def critical(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.critical(msg, *a, **kw)
+
+    def exception(self, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.exception(msg, *a, **kw)
+
+    def log(self, level: Any, message: Any, *args: Any, **kwargs: Any) -> None:
+        msg, a, kw = self._prepare(message, args, kwargs)
+        self._logger.log(level, msg, *a, **kw)
+
+    def bind(self, **kwargs: Any) -> "PercentStyleLogger":
+        return PercentStyleLogger(self._logger.bind(**kwargs))
+
+    def opt(self, *args: Any, **kwargs: Any) -> "PercentStyleLogger":
+        return PercentStyleLogger(self._logger.opt(*args, **kwargs))
+
+    def patch(self, patcher: Any) -> "PercentStyleLogger":
+        return PercentStyleLogger(self._logger.patch(patcher))
+
+
+def get_logger(name: str | None = None) -> PercentStyleLogger:
+    """获取绑定了模块名的日志器（支持 ``%`` 与 ``{}`` 两种占位符风格）。"""
     if not _configured:
         setup_logging()
-    return _loguru_logger.bind(module=name or "-")
+    return PercentStyleLogger(_loguru_logger.bind(module=name or "-"))
