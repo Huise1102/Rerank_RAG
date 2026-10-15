@@ -189,7 +189,7 @@ if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
     uvicorn.run(
-        "src.api.main:app",
+        app,
         host=settings.api.host,
         port=settings.api.port,
         reload=settings.api.reload,
