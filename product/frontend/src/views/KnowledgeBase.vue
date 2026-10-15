@@ -458,8 +458,12 @@ function beforeUpload(file) {
 async function handleUpload(option) {
   const file = option.file
   try {
-    await uploadDocument(detailKb.value.id, file)
+    const doc = await uploadDocument(detailKb.value.id, file)
     ElMessage.success(`「${file.name}」上传成功，正在解析入库`)
+    // 后端落库后即返回，这里先把新行乐观插入表格（状态 pending），无需等下一次轮询
+    if (doc && doc.id) {
+      documents.value = [doc, ...documents.value.filter((d) => d.id !== doc.id)]
+    }
     await fetchDocuments()
     startPolling()
   } catch (e) {
@@ -480,6 +484,8 @@ async function handleDeleteDoc(row) {
   try {
     await deleteDocument(row.id)
     ElMessage.success('已删除文档')
+    // 后端只删库记录后立即返回（索引清理在后台），这里立刻把行移出表格
+    documents.value = documents.value.filter((d) => d.id !== row.id)
     await fetchDocuments()
   } catch (e) {
     /* 拦截器已提示 */
