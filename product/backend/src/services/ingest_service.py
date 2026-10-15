@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import functools
+import threading
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -42,6 +44,24 @@ from src.ingest.splitter import (
 logger = get_logger(__name__)
 
 
+#: 索引变更互斥锁。上传的增量入库、删除文档后的整体重建、删除知识库的清理现在都在
+#: 后台线程里执行，可能彼此并发（如一次性拖入多个文件、或边删边传）；不加锁会出现
+#: "一方在读写分块文件、另一方在删/建 Chroma 集合并重嵌入"的交叉，最终导致分块文件
+#: 块数与向量/BM25 条数不一致。锁的作用只是把这几条变更串行化，不改变任何入库参数。
+_INDEX_LOCK = threading.Lock()
+
+
+def _index_guard(fn):
+    """串行化索引变更函数，避免后台并发写入导致索引与分块文件不一致。"""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _INDEX_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def split_file(path: str | Path, strategy: str) -> ChunkResult:
     """解析 + 分块单个文件，返回该文件的 ``ChunkResult``。"""
     pages = load_document(path)
@@ -66,6 +86,7 @@ def _verify_consistency(kb_id: int, strategy: str, expected: int) -> dict[str, A
     return stats
 
 
+@_index_guard
 def ingest_document(kb_id: int, file_path: str | Path, strategy: str) -> dict[str, Any]:
     """把单个用户上传文档解析入库（增量）。
 
@@ -108,6 +129,7 @@ def ingest_document(kb_id: int, file_path: str | Path, strategy: str) -> dict[st
     }
 
 
+@_index_guard
 def ingest_paths(
     kb_id: int,
     paths: Sequence[str | Path],
@@ -149,6 +171,7 @@ def ingest_paths(
     }
 
 
+@_index_guard
 def remove_source(kb_id: int, filename: str, strategy: str) -> int:
     """从索引中移除某个来源文件的全部分块（删除文档时调用）。
 
@@ -178,6 +201,7 @@ def remove_source(kb_id: int, filename: str, strategy: str) -> int:
     return removed
 
 
+@_index_guard
 def drop_kb(kb_id: int, strategy: str | None = None) -> None:
     """删除知识库的全部索引与分块文件。"""
     name = (strategy or settings.chunk.default_strategy).strip().lower()
