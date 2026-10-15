@@ -57,7 +57,7 @@
 | 会用、能调参     | Streamlit 对话界面 + FastAPI 服务 + 检索调试面板（可见两路召回明细与耗时）              |
 | 效果可量化      | 100 条人工标注测试集（三层类别）+ Recall/MRR/nDCG + 两组消融 + LLM-as-Judge 生成质量 |
 
-### 1.3 核心实验结果（100 题全量，零 token 可复现）
+### 1.3 核心实验结果（100 题全量）
 
 | 策略                      | Recall\@1  | Recall\@3  | Recall\@5  | MRR        | nDCG   | 平均首命中名次  | 秒/题   |
 | ----------------------- | ---------- | ---------- | ---------- | ---------- | ------ | -------- | ----- |
@@ -69,7 +69,7 @@
 > **混合 + Rerank 相比最佳基线：Recall\@1** **`+48.1%`、Recall\@3** **`+30.6%`、Recall\@5** **`+14.2%`、MRR** **`+9.3%`，平均首命中名次前移 44%。**
 > 代价是单题耗时 `×9.3`（CPU 精排是瓶颈，GPU 可提速 20\~50 倍）。
 
-完整报告见 [`data/eval/results/EXPERIMENT_REPORT.md`](data/eval/results/EXPERIMENT_REPORT.md)。
+> **关于评测产物**：完整报告、逐题 CSV 与对比图均由评测流水线在本地生成（`data/eval/results/`），出于体积与标注公开性的考虑**不入仓库**（见 [.gitignore](.gitignore#L22-L27)）；测试集（`data/testset.json`）与其构建脚本同样未公开。因此本文只呈现结论指标，不提供产物链接——如需复跑，请自备语料并自行构建测试集。
 
 ***
 
@@ -221,20 +221,21 @@ flowchart TB
 
 ## 四、目录结构
 
+> 下列为验证版的本地目录结构。`data/raw`、`data/processed`、`data/eval`、`data/testset.json` 以及 `indexes/` 下的索引均为运行产物或私有数据，**不入仓库**（见 [.gitignore](.gitignore#L16-L31)）；clone 后需自备语料并重新执行入库流程生成。
+
 ```
 demo/
 ├── app.py                          # Streamlit 前端入口
 ├── config.py                       # ⭐ 全局配置（11 个分组，所有可调参数集中于此）
 ├── requirements.txt
 ├── data/
-│   ├── raw/                        # 原始 PDF 语料（放入待入库文件）
-│   ├── processed/                  # 分块 JSON + ingest_manifest.json
-│   ├── testset.json                # ⭐ 100 条评估测试集
-│   ├── test_corpus/                # 入库清洗自测用的示例 PDF
-│   └── eval/results/               # ⭐ 实验结果 CSV / Markdown / figures
+│   ├── raw/                        # 原始 PDF 语料（自备，不入仓库）
+│   ├── processed/                  # 分块 JSON + ingest_manifest.json（不入仓库）
+│   ├── testset.json                # 100 条评估测试集（不入仓库）
+│   └── eval/results/               # 实验结果 CSV / Markdown / figures（不入仓库）
 ├── indexes/
-│   ├── chroma/                     # 向量库持久化（集合：rag_domain_qa_fixed / _recursive）
-│   └── bm25/                       # BM25 索引 pickle
+│   ├── chroma/                     # 向量库持久化（集合：rag_domain_qa_fixed / _recursive，不入仓库）
+│   └── bm25/                       # BM25 索引 pickle（不入仓库）
 ├── src/
 │   ├── ingest/                     # loader → splitter → indexer
 │   ├── retrieval/                  # vector / bm25 / hybrid / reranker / pipeline
@@ -460,7 +461,7 @@ python -m src.evaluation.cli all                      # 检索 + 消融 + 出图
 
 ### 7.3 主结果与提升分析
 
-见 [1.3](#13-核心实验结果100-题全量零-token-可复现)。
+见上文 1.3 节「核心实验结果」。
 
 **怎么读"混合+Rerank 的 Recall\@10/@20 低于基线"**：这不是效果变差，而是**结构性**的 ——
 该策略精排后只输出 5 条，Recall\@10/@20 的上限就等于 Recall\@5；而向量/BM25 返回 20 条，在长尾档位天然占优。
@@ -502,7 +503,16 @@ python -m src.evaluation.cli all                      # 检索 + 消融 + 出图
 
 ### 7.5 生成质量（LLM-as-Judge）
 
-见 [`data/eval/results/EXPERIMENT_REPORT.md`](data/eval/results/EXPERIMENT_REPORT.md) 第七章。
+10 题/策略的小样本实测（生成评估耗 token，故不跑全量）：
+
+| 策略 | faithfulness | answer_relevancy | 10 题生成 token |
+| --- | --- | --- | --- |
+| vector（纯向量） | 4.6 | 4.9 | 41,227 |
+| bm25（纯关键词） | 4.7 | 5.0 | 40,576 |
+| hybrid（RRF 融合） | 4.9 | 4.9 | 41,381 |
+| hybrid_rerank（+精排） | 4.8 | 4.8 | **18,306** |
+
+> 完整报告与逐题 CSV 为本地评测产物，**不入仓库**（见 [.gitignore](.gitignore#L22-L27)）。
 裁判为**自建**（非 RAGAS），`temperature=0`、强制 JSON 输出、解析失败剔除而非计 0 分。
 
 ***
