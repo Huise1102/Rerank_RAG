@@ -45,6 +45,14 @@
           </li>
           <li v-if="!chatStore.conversations.length" class="conv-empty">暂无历史会话</li>
         </ul>
+        <el-button
+          class="conv-clear"
+          :disabled="!chatStore.conversations.length"
+          @click="handleClearAll"
+        >
+          <el-icon><Delete /></el-icon>
+          <span>清空所有对话</span>
+        </el-button>
       </aside>
 
       <section class="conv-main">
@@ -266,6 +274,31 @@ async function removeConversation(id) {
   try {
     await chatStore.removeConversation(id)
     ElMessage.success('已删除会话')
+  } catch (e) {
+    /* 拦截器已提示 */
+  }
+}
+
+// 清空当前知识库下的全部会话（含各自消息）
+async function handleClearAll() {
+  if (!chatStore.conversations.length) return
+  try {
+    await ElMessageBox.confirm(
+      '确定清空当前知识库下的所有对话吗？所有会话及其消息都会被删除，且不可恢复。',
+      '清空所有对话',
+      {
+        type: 'warning',
+        confirmButtonText: '清空',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch (e) {
+    return
+  }
+  try {
+    await chatStore.clearAllConversations(kbStore.currentKbId)
+    selectedDetailId.value = null
+    ElMessage.success('已清空所有对话')
   } catch (e) {
     /* 拦截器已提示 */
   }
@@ -667,6 +700,20 @@ async function handleSend() {
   text-align: center;
   font-size: 12px;
   color: var(--app-text-muted);
+}
+
+/* 底部：清空全部对话。与「新建会话」同为默认按钮，仅在悬停时透出危险色，避免喧宾夺主 */
+.conv-clear {
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.conv-clear:not(.is-disabled):hover,
+.conv-clear:not(.is-disabled):focus {
+  color: var(--app-danger);
+  border-color: var(--app-danger);
+  background-color: var(--app-surface);
 }
 
 /* 中：主对话区 —— 占 5/9 */
