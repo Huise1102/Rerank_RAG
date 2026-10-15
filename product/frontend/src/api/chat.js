@@ -13,6 +13,11 @@ export function deleteConversation(conversationId) {
   return request.delete(`/conversations/${conversationId}`)
 }
 
+// 清空会话：传 kbId 只清空该知识库下的会话，不传则清空全部
+export function clearConversations(kbId) {
+  return request.delete('/conversations', { params: { kb_id: kbId } })
+}
+
 // 非流式问答
 export function chat(payload) {
   return request.post('/chat', payload)
