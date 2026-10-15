@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,11 +32,17 @@ _MEDIA_TYPES = {
 
 
 async def _trigger_ingest(doc_id: int) -> None:
-    """触发异步入库；broker 不可用时同步兜底。"""
+    """触发入库（作为响应之后的后台任务运行）；broker 不可用时在线程池内兜底。
+
+    无论走 Celery 还是线程池，都是把重活挪出请求路径，快速释放 HTTP 响应。
+    """
     from src.tasks.document_tasks import parse_and_index_document
     from src.utils.redis_client import ping
 
-    if ping():
+    # Redis 探活是同步阻塞调用：Redis 不可达时单次可耗时数秒。必须放线程池，否则会占住
+    # 事件循环，连上传响应的最后一个数据包都发不出去（表现为"上传要等好几秒才返回"）。
+    redis_ok = await run_in_threadpool(ping)
+    if redis_ok:
         try:
             parse_and_index_document.delay(doc_id)
             logger.info("已投递 Celery 入库任务 doc=%s", doc_id)
@@ -56,6 +62,7 @@ async def _trigger_ingest(doc_id: int) -> None:
 )
 async def upload_document(
     kb_id: int,
+    background: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,7 +78,10 @@ async def upload_document(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    await _trigger_ingest(doc.id)
+    # 文档行已落库（状态 pending），立即返回；解析入库在响应之后的后台任务里执行，
+    # 前端不必等待整条解析->分块->索引链路（否则上传大文件会长时间卡住且列表不刷新）。
+    doc_id = doc.id
+    background.add_task(_trigger_ingest, doc_id)
     return doc
 
 
@@ -117,8 +127,20 @@ async def get_document_file(
 
 
 @router.delete("/documents/{doc_id}", summary="删除文档")
-async def delete_document(doc_id: int, db: AsyncSession = Depends(get_db)) -> dict:
-    ok = await document_service.delete_document(db, doc_id)
-    if not ok:
+async def delete_document(
+    doc_id: int, background: BackgroundTasks, db: AsyncSession = Depends(get_db)
+) -> dict:
+    info = await document_service.delete_document(db, doc_id)
+    if info is None:
         raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
+
+    # DB 记录已删除，立即返回；原始文件与索引分块拆除放到后台线程池执行，
+    # 避免长达数十秒的重建占死事件循环（此前会让 /health 挂起、前端显示"后端失联"）。
+    background.add_task(
+        document_service.cleanup_document_artifacts,
+        info["kb_id"],
+        info["file_path"],
+        info["strategy"],
+        info["filename"],
+    )
     return {"deleted": True, "doc_id": doc_id}
