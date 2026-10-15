@@ -109,12 +109,16 @@ async def delete_document(db: AsyncSession, doc_id: int) -> bool:
         logger.warning("删除原始文件失败 key=%s: %s", doc.file_path, exc)
 
     # 2) 从索引中摘除该来源的分块并重建
+    #
+    # 注意：分块的 source 记录的是**入库时实际读取的文件名**，上传文件在存储里带哈希前缀
+    # （如 kb_1/b5df89d7_报告.pdf -> source="b5df89d7_报告.pdf"），与 doc.filename 不同。
+    # 用 doc.filename 过滤会一块都匹配不到，留下孤儿分块，并让后续一致性校验失败。
     from src.services.ingest_service import remove_source
 
     try:
-        remove_source(doc.kb_id, doc.filename, strategy)
+        remove_source(doc.kb_id, Path(doc.file_path).name, strategy)
     except Exception as exc:  # noqa: BLE001 - 索引清理失败也要删库记录
-        logger.warning("移除索引分块失败 kb=%s file=%s: %s", doc.kb_id, doc.filename, exc)
+        logger.warning("移除索引分块失败 kb=%s file=%s: %s", doc.kb_id, doc.file_path, exc)
 
     # 3) 删除数据库记录
     await db.delete(doc)
