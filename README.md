@@ -100,7 +100,7 @@ RRF 融合（k = 60）→ 候选池保留 20 条
 ├── demo/                 验证版（Streamlit + FastAPI + 评估体系）
 │   ├── app.py            Streamlit 前端入口（对话 + 检索调试）
 │   ├── src/              api / ingest / retrieval / generation / evaluation
-│   ├── data/eval/        测试集与评估产物（含 EXPERIMENT_REPORT.md）
+│   ├── data/             语料、分块与评测数据（不入仓库）
 │   └── README.md         验证版详细文档
 ├── product/              产品级系统（Vue 3 + FastAPI）
 │   ├── backend/          FastAPI 服务、检索链路、异步入库、迁移脚本
@@ -162,7 +162,7 @@ npm run dev                        # http://localhost:5173
 
 ## 六、实验与评估（`demo/`）
 
-验证版内置 100 条人工标注测试集（三层类别），零 token 可复现，四种策略全量结果如下：
+验证版用 100 条人工标注测试集（三层类别）做全量评测，检索类指标**不消耗 LLM token**，四种策略结果如下：
 
 | 策略 | Recall@1 | Recall@3 | Recall@5 | MRR | nDCG | 平均首命中名次 | 秒/题 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -175,7 +175,7 @@ npm run dev                        # http://localhost:5173
 
 ### 检索节省的 token
 
-上表是 100 题全量、**零 token** 可复现的检索指标；下面的 token 数是生成质量评估的**实测**值（因耗 token 只跑 10 题/策略，每题含「生成 + 裁判」两次调用）：
+上表是 100 题全量的检索指标（评测流程本身不消耗 LLM token）；下面的 token 数是生成质量评估的**实测**值（因耗 token 只跑 10 题/策略，每题含「生成 + 裁判」两次调用）：
 
 | 策略 | 10 题生成 token 合计 | 单题平均 | 相对基准 |
 | --- | --- | --- | --- |
@@ -190,7 +190,7 @@ npm run dev                        # http://localhost:5173
 
 > **检索本身不计费**：双路召回（BGE 稠密 + BM25）、RRF 融合、CrossEncoder 精排全部跑在本地模型上，**不消耗任何 LLM token**；只有最后的生成阶段才产生 token 成本。
 
-完整报告见 [demo/data/eval/results/EXPERIMENT_REPORT.md](demo/data/eval/results/EXPERIMENT_REPORT.md)。
+> **关于评测产物**：完整报告、逐题 CSV 与对比图由验证版评测流水线在本地生成（`demo/data/eval/results/`），出于体积与标注公开性的考虑**不入仓库**（见 [demo/.gitignore](demo/.gitignore#L22-L27)）；测试集（`data/testset.json`）及其构建脚本同样未公开。因此本页只呈现结论指标，不提供产物链接——如需复跑，需自备领域语料并自行构建测试集。
 
 > 说明：**产品级系统（`product/`）不包含评估模块**，所有评估相关内容保留在验证版中。
 
