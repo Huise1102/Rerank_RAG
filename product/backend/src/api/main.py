@@ -13,6 +13,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -141,12 +142,15 @@ async def root() -> dict:
 async def health() -> dict:
     from src.utils.redis_client import ping as redis_ping
 
+    # 探活是同步阻塞调用（Redis 不可达时可耗时数秒），放线程池里执行，
+    # 避免每次健康检查都把事件循环占住、拖慢同时段的其他请求。
+    redis_ok = await run_in_threadpool(redis_ping)
     return {
         "status": "ok",
         "domain": settings.domain,
         "warmed_up": _state.done,
         "warming_up": _state.started and not _state.done,
-        "redis": redis_ping(),
+        "redis": redis_ok,
         "warmup_detail": _state.detail,
     }
 
