@@ -19,7 +19,7 @@ import time
 from typing import Any, AsyncIterator, Sequence
 
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -76,6 +76,20 @@ async def delete_conversation(db: AsyncSession, conversation_id: int) -> bool:
     await db.delete(conv)
     await db.commit()
     return True
+
+
+async def delete_conversations(db: AsyncSession, kb_id: int | None = None) -> int:
+    """清空会话（可按知识库过滤），返回删除条数。
+
+    会话下的消息由外键 ``conversations.id ON DELETE CASCADE`` 在库层一并删除，
+    故这里只删会话行即可。
+    """
+    stmt = delete(Conversation)
+    if kb_id is not None:
+        stmt = stmt.where(Conversation.kb_id == kb_id)
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def list_messages(db: AsyncSession, conversation_id: int) -> list[dict[str, Any]]:
