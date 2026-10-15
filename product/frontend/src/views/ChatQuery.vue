@@ -311,6 +311,110 @@ async function scrollToBottom() {
   }
 }
 
+//: 跟随滚动：只有用户本来就贴着底部时才自动跟随，向上翻阅时不再被拽回底部
+function followScroll() {
+  const el = scrollEl.value
+  if (!el) return
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+    el.scrollTop = el.scrollHeight
+  }
+}
+
+//: 吐字速率（字/毫秒）：约 180 字/秒，落在可读的"打字机"节奏上，比模型输出慢，
+//: 但又不至于让人干等。按时间计额度而非按帧计数，与浏览器帧率无关（headless 下
+//: requestAnimationFrame 频率远高于 60fps，按帧限速会失效）。
+const REVEAL_CHARS_PER_MS = 0.19
+//: 积压超过该字数时提速到约 360 字/秒，避免超长回答拖出很长的尾巴
+const REVEAL_BACKLOG = 800
+const REVEAL_CHARS_PER_MS_MAX = 0.38
+
+/**
+ * 流式增量的吐字器。
+ *
+ * 逐条增量触发「整段 markdown 重解析 + v-html 重绘 + 强制滚底」会把主线程长时间占满，
+ * 浏览器几乎没有机会绘制，观感就成了整段文字瞬间出现。这里把增量攒进缓冲、按时间额度
+ * 吐字：既保证正文以可读节奏逐步长出来，又把重绘次数从每秒两百多次降到帧率级别。
+ */
+function createStreamReveal(target) {
+  let pending = ''
+  let rafId = null
+  let onDrained = null
+  let credit = 0
+  let lastTs = null
+
+  const pump = (ts) => {
+    rafId = null
+    //: 相邻两帧的真实间隔即本帧额度的时间基数。空闲后（后台标签页 rAF 停摆、模型停顿）
+    //: 首帧间隔可能极长，故上限 50ms，避免攒出巨额额度把积压一次倒光。
+    const dt = lastTs === null ? 16 : Math.min(50, Math.max(0, ts - lastTs))
+    lastTs = ts
+    credit += dt * (pending.length > REVEAL_BACKLOG ? REVEAL_CHARS_PER_MS_MAX : REVEAL_CHARS_PER_MS)
+
+    const step = Math.min(Math.floor(credit), pending.length)
+    if (step > 0) {
+      credit -= step
+      target.content += pending.slice(0, step)
+      pending = pending.slice(step)
+      followScroll()
+    }
+
+    if (pending) {
+      rafId = requestAnimationFrame(pump)
+    } else {
+      //: 只有额度清零；lastTs 保留，下一帧才能按真实间隔计额度
+      credit = 0
+      if (onDrained) {
+        const done = onDrained
+        onDrained = null
+        done()
+      }
+    }
+  }
+
+  const schedule = () => {
+    if (rafId === null) rafId = requestAnimationFrame(pump)
+  }
+
+  return {
+    push(delta) {
+      if (!delta) return
+      pending += delta
+      schedule()
+    },
+    /** 流已结束：按同一节奏把剩余正文吐完，返回吐完的 Promise */
+    finish(finalText) {
+      if (finalText) {
+        // target.content 始终是最终答案的前缀，故缓冲直接按最终答案对齐，避免重复或漏字
+        pending = finalText.slice(target.content.length)
+      }
+      if (!pending) return Promise.resolve()
+      //: 页面切到后台时 rAF 会停摆，这里直接落地，避免发送按钮一直转圈
+      if (document.hidden) {
+        target.content += pending
+        pending = ''
+        return Promise.resolve()
+      }
+      schedule()
+      return new Promise((resolve) => {
+        onDrained = resolve
+      })
+    },
+    /** 收尾兜底：停掉动画帧并把已收到的增量落地 */
+    cancel() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
+      if (pending) {
+        target.content += pending
+        pending = ''
+      }
+      credit = 0
+      lastTs = null
+    },
+  }
+}
+
 function onKeydown(event) {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
@@ -380,6 +484,8 @@ async function handleSend() {
   scrollToBottom()
 
   abortController = new AbortController()
+  //: 正文按帧吐字，避免整段瞬间砸下来
+  const reveal = createStreamReveal(assistant)
   try {
     const result = await chatStream({
       kbId: kbStore.currentKbId,
@@ -387,10 +493,7 @@ async function handleSend() {
       question: text,
       image,
       signal: abortController.signal,
-      onDelta: (delta) => {
-        assistant.content += delta
-        scrollToBottom()
-      },
+      onDelta: (delta) => reveal.push(delta),
       onMeta: (meta) => {
         assistant.retrieved_docs = normalizeDocs(meta.retrieved_docs)
         if (meta.stats) assistant.stats = meta.stats
@@ -398,7 +501,8 @@ async function handleSend() {
       },
     })
 
-    assistant.content = result.answer || assistant.content
+    // 先把正文按节奏吐完，再展示引用与耗时，避免正文还在打字时统计先跳出来
+    await reveal.finish(result.answer || '')
     assistant.citations = normalizeCitations(result.citations)
     if (result.retrieved_docs?.length) {
       assistant.retrieved_docs = normalizeDocs(result.retrieved_docs)
@@ -418,6 +522,7 @@ async function handleSend() {
       ElMessage.error(`生成失败：${err.message}`)
     }
   } finally {
+    reveal.cancel()
     assistant.streaming = false
     sending.value = false
     abortController = null
