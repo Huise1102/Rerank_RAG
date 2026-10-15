@@ -87,3 +87,12 @@ async def delete_conversation(conversation_id: int, db: AsyncSession = Depends(g
     if not ok:
         raise HTTPException(status_code=404, detail=f"会话 {conversation_id} 不存在")
     return {"deleted": True, "conversation_id": conversation_id}
+
+
+@router.delete("/conversations", summary="清空会话（可按知识库过滤）")
+async def delete_conversations(
+    kb_id: int | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    deleted = await chat_service.delete_conversations(db, kb_id)
+    return {"deleted": deleted, "kb_id": kb_id}
