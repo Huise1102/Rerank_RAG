@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from src.core.config import configure_chroma_telemetry, settings
+from src.core.model_lock import MODEL_LOAD_LOCK
 from src.ingest.splitter import Chunk, ChunkResult, chunks_file, load_chunks
 
 #: BM25 pickle 的格式版本
@@ -179,7 +180,9 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
     else:
         target = "cpu"
 
-    model = SentenceTransformer(model_ref, device=target)
+    # 与精排模型等其他大模型的加载互斥，避免并发 from_pretrained 拿到 meta 参数
+    with MODEL_LOAD_LOCK:
+        model = SentenceTransformer(model_ref, device=target)
     model.max_seq_length = cfg.max_length
     return model, target
 
