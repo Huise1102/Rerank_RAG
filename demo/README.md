@@ -371,12 +371,14 @@ python -m src.generation.cli ask "~"  # 真实问答（消耗 token）
 ```powershell
 # 终端 1：后端（启动时后台线程预热检索管线，约 10 秒）
 python -m src.api.main
-#   接口文档：http://127.0.0.1:8000/docs
+#   接口文档：http://127.0.0.1:8100/docs
 
 # 终端 2：前端
 streamlit run app.py
 #   界面：http://127.0.0.1:8501
 ```
+
+> **端口约定**：验证版（`demo/`）后端占 **8100**、Streamlit 占 **8501**；产品版（`product/`）后端占 **8000**、前端占 **5173**。两者可同时启动、互不抢占端口。如需改端口，demo 侧用环境变量 `RAG_API__PORT`、`RAG_FRONTEND__API_BASE_URL` 覆盖。
 
 **接口一览**（同时挂载在 `/api/v1` 前缀下）：
 
@@ -652,7 +654,7 @@ RAG_CHUNK__CHUNK_SIZE=1000
 | `rerank`     | `enabled`、`top_k=5`、`max_length=512`、`batch_size=8`、`score_threshold` | 阶段 2   |
 | `llm`        | `model=deepseek-chat`、`temperature=0.3`、`max_tokens=2048`、`timeout`   | 阶段 3   |
 | `generation` | `context_max_chars=6000`、`citation_style=bracket`、系统提示词               | 阶段 3   |
-| `api`        | `host`、`port=8000`、`warmup_on_startup`、`cors_origins`                 | 阶段 4   |
+| `api`        | `host`、`port=8100`、`warmup_on_startup`、`cors_origins`                 | 阶段 4   |
 | `frontend`   | `api_base_url`、`show_debug_panel`、`max_history`                       | 阶段 4   |
 | `evaluation` | `recall_at_k=[1,3,5,10,20]`、`judge_metrics`、`ablation_*`              | 阶段 5、6 |
 | `log`        | 日志级别、轮转大小                                                             | 全阶段    |
