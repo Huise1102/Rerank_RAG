@@ -2,7 +2,7 @@
 
 入口：``from src.api.main import create_app, app``；
 启动：``python -m src.api.main`` 或
-``uvicorn src.api.main:app --host 127.0.0.1 --port 8000``。
+``uvicorn src.api.main:app --host 127.0.0.1 --port 8100``。
 
 main.py 应用与路由，app.py 别名转发，schemas.py 请求/响应模型，
 service.py 检索→生成→引用解析编排，ingest.py 增量入库。
