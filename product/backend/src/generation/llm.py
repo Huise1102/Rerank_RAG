@@ -404,7 +404,6 @@ _CLIENT: LLMClient | None = None
 
 
 def get_llm_client() -> LLMClient:
-    """获取全局 LLM 客户端单例。"""
     global _CLIENT
     if _CLIENT is None:
         _CLIENT = LLMClient()
