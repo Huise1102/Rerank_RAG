@@ -73,7 +73,6 @@ async def list_documents(db: AsyncSession, kb_id: int) -> list[Document]:
 
 
 async def get_document(db: AsyncSession, doc_id: int) -> Document | None:
-    """按 id 获取文档。"""
     return await db.get(Document, doc_id)
 
 
