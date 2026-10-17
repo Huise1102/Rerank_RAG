@@ -1,6 +1,5 @@
 <template>
   <div class="page">
-    <!-- 列表视图 -->
     <template v-if="!detailKb">
       <div class="page-head">
         <div class="page-head__left">
@@ -55,7 +54,6 @@
       </div>
     </template>
 
-    <!-- 详情视图：文档管理 -->
     <template v-else>
       <div class="page-head">
         <div class="page-head__left">
@@ -144,7 +142,6 @@
       </div>
     </template>
 
-    <!-- 新建知识库对话框 -->
     <el-dialog v-model="createVisible" title="新建知识库" width="460px">
       <el-form :model="createForm" label-width="80px">
         <el-form-item label="名称" required>
@@ -171,7 +168,6 @@
       </template>
     </el-dialog>
 
-    <!-- 修改知识库对话框 -->
     <el-dialog v-model="editVisible" title="修改知识库" width="460px">
       <el-form :model="editForm" label-width="80px">
         <el-form-item label="名称" required>
@@ -198,7 +194,6 @@
       </template>
     </el-dialog>
 
-    <!-- 文档预览对话框 -->
     <el-dialog
       v-model="previewVisible"
       :title="previewDoc ? previewDoc.filename : '文档预览'"
@@ -250,12 +245,10 @@ import { uploadDocument, listDocuments, deleteDocument, documentFileUrl } from '
 
 const kbStore = useKbStore()
 
-// 新建对话框
 const createVisible = ref(false)
 const creating = ref(false)
 const createForm = ref({ name: '', description: '', chunk_strategy: 'recursive' })
 
-// 修改对话框
 const editVisible = ref(false)
 const updating = ref(false)
 const editingKbId = ref(null)
@@ -264,13 +257,11 @@ const editForm = ref({ name: '', description: '', chunk_strategy: 'recursive' })
 // 启用开关：记录正在提交的知识库 id
 const togglingId = ref(null)
 
-// 详情视图
 const detailKb = ref(null)
 const documents = ref([])
 const docsLoading = ref(false)
 let pollTimer = null
 
-// 文档预览
 const previewVisible = ref(false)
 const previewDoc = ref(null)
 const previewText = ref('')
@@ -491,8 +482,6 @@ async function handleDeleteDoc(row) {
     /* 拦截器已提示 */
   }
 }
-
-// ------------------------------- 文档预览 ---------------------------------- //
 
 async function openPreview(row) {
   previewDoc.value = row
