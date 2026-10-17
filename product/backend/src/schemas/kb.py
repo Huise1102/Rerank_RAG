@@ -63,8 +63,6 @@ class StrategyPayload(BaseModel):
 
 
 class KBOut(BaseModel):
-    """知识库输出。"""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
