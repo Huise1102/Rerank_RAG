@@ -1,6 +1,5 @@
 import request from './request'
 
-// 会话管理
 export function listConversations(kbId) {
   return request.get('/conversations', { params: { kb_id: kbId } })
 }
