@@ -272,7 +272,6 @@ class Reranker:
         top_k: int | None = None,
         show_progress: bool = False,
     ) -> list[list[RetrievalResult]]:
-        """批量精排。"""
         iterator: Sequence[Any] = list(zip(queries, candidates_list))
         if show_progress:
             from tqdm import tqdm
