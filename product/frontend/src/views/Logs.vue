@@ -9,7 +9,6 @@
 
     <div class="panel">
       <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <!-- 检索日志 -->
         <el-tab-pane label="检索日志" name="retrieval">
           <div class="filter-bar">
             <span class="filter-label">知识库</span>
@@ -64,7 +63,6 @@
           </div>
         </el-tab-pane>
 
-        <!-- 系统日志 -->
         <el-tab-pane label="系统日志" name="system">
           <div class="filter-bar">
             <span class="filter-label">条数</span>
@@ -105,7 +103,6 @@ const kbStore = useKbStore()
 
 const activeTab = ref('retrieval')
 
-// 检索日志
 const kbFilter = ref(null)
 const logs = ref([])
 const logsLoading = ref(false)
@@ -113,7 +110,6 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
-// 系统日志
 const systemLogText = ref('')
 const systemLoading = ref(false)
 const lines = ref(200)
