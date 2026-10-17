@@ -26,14 +26,12 @@ from src.db import models  # noqa: F401 - 导入以注册所有 ORM 模型
 setup_logging()
 logger = get_logger(__name__)
 
-# ------------------------------- 指标 --------------------------------------- #
 REQUESTS_TOTAL = Counter("rag_requests_total", "HTTP 请求数", ["method", "status"])
 REQUEST_LATENCY = Histogram(
     "rag_request_latency_seconds", "HTTP 请求耗时（秒）", ["method", "status"]
 )
 
 
-# ------------------------------ 预热状态 ------------------------------------ #
 class _WarmupState:
     def __init__(self) -> None:
         self.started = False
@@ -76,7 +74,6 @@ async def lifespan(app: FastAPI):
     logger.info("服务关闭")
 
 
-# ------------------------------ ASGI 中间件 --------------------------------- #
 class RequestLogMiddleware:
     """记录请求日志与指标；纯 ASGI 实现，不缓冲响应体（流式 SSE 安全）。"""
 
@@ -113,7 +110,6 @@ class RequestLogMiddleware:
             request_id_var.reset(token)
 
 
-# -------------------------------- 应用 -------------------------------------- #
 app = FastAPI(
     title="基于混合检索与Rerank的领域知识库系统",
     description="多知识库领域问答：BM25 + 向量双路召回，RRF 融合，交叉编码器精排。",
