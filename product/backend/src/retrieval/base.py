@@ -36,8 +36,8 @@ class RetrievalResult:
     rank: int = 0  # **本路**名次，从 1 开始
 
     # —— 融合/精排过程的可解释字段 ——
-    fused_score: float | None = None  # 融合分数
-    rerank_score: float | None = None  # 精排分数
+    fused_score: float | None = None
+    rerank_score: float | None = None
     matched_by: list[str] = field(default_factory=list)  # 召回该块的检索器
 
     @property
