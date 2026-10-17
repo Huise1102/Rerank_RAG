@@ -33,7 +33,6 @@ def get_enabled_strategies(kb: KnowledgeBase) -> dict[str, bool]:
 
 
 async def create_kb(db: AsyncSession, data: KBCreate) -> KnowledgeBase:
-    """新建知识库。"""
     kb = KnowledgeBase(
         name=data.name.strip(),
         description=(data.description or None),
@@ -54,7 +53,6 @@ async def list_kbs(db: AsyncSession) -> list[KnowledgeBase]:
 
 
 async def get_kb(db: AsyncSession, kb_id: int) -> KnowledgeBase | None:
-    """按 id 获取知识库。"""
     return await db.get(KnowledgeBase, kb_id)
 
 
