@@ -102,7 +102,6 @@ body {
   font-family: var(--app-mono);
 }
 
-/* ---------- Element Plus 局部微调 ---------- */
 .el-button--primary {
   --el-button-bg-color: var(--el-color-primary);
   --el-button-border-color: var(--el-color-primary);
@@ -164,9 +163,6 @@ body {
   color: var(--app-title);
 }
 
-/* ============================================================
-   整体布局
-   ============================================================ */
 .app-shell {
   height: 100vh;
 }
@@ -277,9 +273,6 @@ body {
   overflow: auto;
 }
 
-/* ============================================================
-   通用页面容器
-   ============================================================ */
 .page {
   max-width: 1180px;
   margin: 0 auto;
@@ -331,9 +324,6 @@ body {
   margin-bottom: 10px;
 }
 
-/* ============================================================
-   Markdown 渲染（AI 回答）
-   ============================================================ */
 .markdown-body {
   font-size: 15px;
   line-height: 1.78;
