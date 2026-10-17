@@ -17,7 +17,6 @@ logger = get_logger(__name__)
 
 @lru_cache(maxsize=1)
 def get_minio_client() -> Any:
-    """获取 MinIO 客户端单例。"""
     from minio import Minio
 
     cfg = settings.minio
