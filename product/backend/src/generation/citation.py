@@ -44,8 +44,6 @@ _REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 
 @dataclass
 class Citation:
-    """一条引用。"""
-
     index: int  # 模型写的编号
     chunk_id: str = ""
     source: str = ""
