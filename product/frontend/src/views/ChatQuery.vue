@@ -455,8 +455,6 @@ function onKeydown(event) {
   }
 }
 
-// ------------------------------- 图片问答 ---------------------------------- //
-
 function pickImage() {
   fileInput.value?.click()
 }
