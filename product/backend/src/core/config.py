@@ -54,11 +54,6 @@ class _Section(BaseModel):
     model_config = {"extra": "forbid", "validate_assignment": True, "protected_namespaces": ()}
 
 
-# =============================================================================
-# 基础设施分组
-# =============================================================================
-
-
 class PathSettings(_Section):
     """数据、索引、存储、日志目录；相对路径以 PROJECT_ROOT 为基准展开。"""
 
@@ -127,9 +122,7 @@ class StorageSettings(_Section):
     type: StorageType = "local"
 
 
-# =============================================================================
 # AI 链路分组（与 demo 同名同义，保证复制过来的模块零改动可用）
-# =============================================================================
 
 
 class StrategySpec(_Section):
@@ -407,11 +400,6 @@ class LogSettings(_Section):
         return _abs(v)
 
 
-# =============================================================================
-# 聚合对象
-# =============================================================================
-
-
 class AppSettings(BaseSettings):
     """全局配置聚合对象；业务代码统一 ``from src.core.config import settings`` 使用。"""
 
@@ -432,14 +420,12 @@ class AppSettings(BaseSettings):
     #: 种子数据来源：product/resource/（只读引用，不复制、不改写）
     resource_dir: Path = Field(default=Path(r"C:\Users\98429\Desktop\基于混合检索与Rerank的领域知识库系统\product\resource"))
 
-    # 基础设施
     paths: PathSettings = Field(default_factory=PathSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     minio: MinioSettings = Field(default_factory=MinioSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
 
-    # AI 链路
     chunk: ChunkSettings = Field(default_factory=ChunkSettings)
     pdf: PDFSettings = Field(default_factory=PDFSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
@@ -528,7 +514,6 @@ def configure_chroma_telemetry() -> None:
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
-    """获取全局配置单例（带缓存）。"""
     cfg = AppSettings()
     cfg.ensure_dirs()
     cfg.apply_environment()
