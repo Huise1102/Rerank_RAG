@@ -8,8 +8,6 @@ from pydantic import BaseModel, ConfigDict
 
 
 class RetrievalLogOut(BaseModel):
-    """检索日志输出。"""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
