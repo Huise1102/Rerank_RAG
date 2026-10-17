@@ -35,8 +35,6 @@ class ChatRequest(BaseModel):
 
 
 class ConversationOut(BaseModel):
-    """会话输出。"""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
