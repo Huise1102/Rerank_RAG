@@ -41,15 +41,9 @@ logger = get_logger(__name__)
 _SENTINEL = object()
 
 
-# --------------------------------------------------------------------------- #
-# 会话管理
-# --------------------------------------------------------------------------- #
-
-
 async def create_conversation(
     db: AsyncSession, kb_id: int, *, title: str | None = None
 ) -> Conversation:
-    """新建会话。"""
     conv = Conversation(kb_id=kb_id, title=(title or None))
     db.add(conv)
     await db.commit()
@@ -127,11 +121,6 @@ async def _recent_history(db: AsyncSession, conversation_id: int) -> list[tuple[
     return [(role, content) for role, content in rows.all()]
 
 
-# --------------------------------------------------------------------------- #
-# 序列化工具
-# --------------------------------------------------------------------------- #
-
-
 def _doc_to_client(r: RetrievalResult) -> dict[str, Any]:
     """把检索结果转成前端 RetrievalDetail 需要的扁平字段。"""
     return {
@@ -177,11 +166,6 @@ def _resolve_strategies(
 
         return normalize_strategies(override)
     return get_enabled_strategies(kb)
-
-
-# --------------------------------------------------------------------------- #
-# 检索执行 / 落库
-# --------------------------------------------------------------------------- #
 
 
 async def _run_retrieval(
@@ -254,11 +238,6 @@ async def _save_message(
     return msg
 
 
-# --------------------------------------------------------------------------- #
-# 非流式问答
-# --------------------------------------------------------------------------- #
-
-
 async def chat(
     db: AsyncSession,
     kb: KnowledgeBase,
@@ -320,11 +299,6 @@ async def chat(
         "stats": retrieval.stats,
         "conversation_id": conversation_id,
     }
-
-
-# --------------------------------------------------------------------------- #
-# 流式问答
-# --------------------------------------------------------------------------- #
 
 
 def sse(payload: dict[str, Any]) -> str:
