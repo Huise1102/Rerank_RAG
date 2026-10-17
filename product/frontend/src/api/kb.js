@@ -1,6 +1,5 @@
 import request from './request'
 
-// 知识库管理
 export function listKbs() {
   return request.get('/kb')
 }
