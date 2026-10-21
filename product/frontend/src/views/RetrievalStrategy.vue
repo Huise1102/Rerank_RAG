@@ -37,7 +37,7 @@
 
       <div class="panel two-col">
         <div>
-          <div class="section-label">组合说明（只读）</div>
+          <div class="section-label">组合说明</div>
           <ul class="combo-list">
             <li v-for="item in combos" :key="item.name">
               <span class="combo-name">{{ item.name }}</span>
@@ -47,7 +47,7 @@
           </ul>
         </div>
         <div>
-          <div class="section-label">链路参数（只读）</div>
+          <div class="section-label">链路参数</div>
           <ul class="param-list">
             <li v-for="p in params" :key="p.label">
               <span class="param-label">{{ p.label }}</span>
