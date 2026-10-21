@@ -7,7 +7,7 @@
 #   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 #
 # -----------------------------------------------------------------------------
-# ⚠️ 版本约束（与参考项目 demo/ 对齐，勿随意放宽）
+# 版本约束（与参考项目 demo/ 对齐，勿随意放宽）
 # 1) pydantic 必须 <2.10：langchain-core 0.2.x 内部仍用 pydantic v1 的 class Config
 # 2) chromadb 必须 <0.6：支持 chromadb 1.x 的 langchain-chroma 要求 langchain-core>=0.3，
 #    与 LangChain 0.2.x 硬冲突
