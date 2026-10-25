@@ -259,6 +259,75 @@ class LLMClient:
             model=getattr(completion, "model", "") or (model or self.model),
         )
 
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> Iterator[tuple[str, Any]]:
+        """流式 Function Calling 调用。
+
+        yield ``("delta", 文本增量)``；结束时 yield ``("done", ChatMessage)``，其中已聚合
+        content 与 tool_calls（按 index 拼接 id/name/arguments）。供 agent 边决策边输出正文。
+        """
+        params = self._params(
+            messages, stream=True, model=model, temperature=temperature,
+            max_tokens=max_tokens, tools=tools,
+        )
+        params["stream_options"] = {"include_usage": True}
+        t0 = time.perf_counter()
+        stream = self._call_with_retry(params, deadline=t0 + self.timeout)
+
+        pieces: list[str] = []
+        calls: dict[int, dict[str, str]] = {}
+        usage: dict[str, Any] = {}
+        finish = ""
+
+        for chunk in stream:
+            if getattr(chunk, "usage", None) is not None:
+                usage = {
+                    "prompt_tokens": getattr(chunk.usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(chunk.usage, "completion_tokens", None),
+                    "total_tokens": getattr(chunk.usage, "total_tokens", None),
+                }
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            if delta is not None:
+                text = getattr(delta, "content", None)
+                if text:
+                    pieces.append(text)
+                    yield ("delta", text)
+                for tc in getattr(delta, "tool_calls", None) or []:
+                    idx = getattr(tc, "index", 0) or 0
+                    slot = calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                    if getattr(tc, "id", None):
+                        slot["id"] = tc.id
+                    fn = getattr(tc, "function", None)
+                    if fn is not None:
+                        if getattr(fn, "name", None):
+                            slot["name"] += fn.name
+                        if getattr(fn, "arguments", None):
+                            slot["arguments"] += fn.arguments
+            finish = getattr(choice, "finish_reason", "") or finish
+
+        self.last_seconds = time.perf_counter() - t0
+        yield (
+            "done",
+            ChatMessage(
+                content="".join(pieces).strip(),
+                tool_calls=[calls[k] for k in sorted(calls)],
+                usage=usage,
+                finish_reason=finish,
+                model=model or self.model,
+            ),
+        )
+
     def generate(
         self,
         query: str,
