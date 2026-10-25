@@ -8,6 +8,9 @@ import ChatMessage from '../components/ChatMessage'
 import CitationCard from '../components/CitationCard'
 import DecisionTrace from '../components/DecisionTrace'
 
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
 export default function AgentChat() {
   const kb = useKbStore()
   const cs = useChatStore()
@@ -15,9 +18,11 @@ export default function AgentChat() {
 
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [imageDataUrl, setImageDataUrl] = useState('')
   const scrollRef = useRef(null)
   const traceScrollRef = useRef(null)
   const abortRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const activeKbs = kb.kbs.filter((k) => k.is_active)
   const currentKbId = kb.currentKbId
@@ -117,12 +122,14 @@ export default function AgentChat() {
 
   async function send() {
     const q = input.trim()
-    if (!q || !currentKbId || sending) return
+    const image = imageDataUrl
+    if ((!q && !image) || !currentKbId || sending) return
     setSending(true)
     setInput('')
+    setImageDataUrl('')
 
     const conversationId = cs.currentConversationId
-    const userMsg = { id: nextMessageId(), role: 'user', content: q }
+    const userMsg = { id: nextMessageId(), role: 'user', content: q, image }
     const asstId = nextMessageId()
     cs.appendMessage(userMsg)
     cs.appendMessage({
@@ -148,6 +155,7 @@ export default function AgentChat() {
         kbId: currentKbId,
         conversationId,
         question: q,
+        image,
         signal: abortRef.current?.signal,
         onStep: (step) => {
           traceAccum.push(step)
@@ -193,6 +201,24 @@ export default function AgentChat() {
       e.preventDefault()
       send()
     }
+  }
+
+  function onPickImage(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      message.error('仅支持 JPEG / PNG / GIF / WebP 格式的图片')
+      return
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      message.error('图片不能超过 8 MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setImageDataUrl(String(reader.result || ''))
+    reader.onerror = () => message.error('图片读取失败，请重试')
+    reader.readAsDataURL(file)
   }
 
   return (
@@ -294,19 +320,57 @@ export default function AgentChat() {
           </div>
 
           <div className="composer">
+            {imageDataUrl && (
+              <div className="image-preview">
+                <img src={imageDataUrl} alt="待发送的图片" />
+                <button
+                  type="button"
+                  className="image-remove"
+                  title="移除图片"
+                  onClick={() => setImageDataUrl('')}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <textarea
+              rows={3}
               value={input}
               disabled={!currentKbId || sending}
               placeholder={
-                currentKbId ? '请输入你的问题…（Enter 发送，Shift+Enter 换行）' : '请先选择知识库'
+                !currentKbId
+                  ? '请先选择知识库'
+                  : imageDataUrl
+                    ? '可补充你的问题，留空则让系统描述图片内容（Enter 发送）'
+                    : '请输入你的问题…（Enter 发送，Shift+Enter 换行）'
               }
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeydown}
             />
             <div className="composer-actions">
               <button
+                type="button"
+                className="btn btn--icon"
+                disabled={!currentKbId || sending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <circle cx="8.5" cy="9.5" r="1.5" />
+                  <path d="m21 15-5-5L5 20" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>图片</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                hidden
+                onChange={onPickImage}
+              />
+              <button
                 className="btn btn--primary"
-                disabled={!currentKbId || (!input.trim() && !sending) || sending}
+                disabled={!currentKbId || (!input.trim() && !imageDataUrl) || sending}
                 onClick={send}
               >
                 {sending ? '思考中…' : '发送'}
