@@ -22,6 +22,8 @@ class AgentState:
     question: str
     kb_id: int
     history: list[tuple[str, str]] = field(default_factory=list)
+    #: 图片 data URL（可选）；非空时最后一条 user 消息改为内容块数组
+    image: str | None = None
 
     #: 喂给 LLM 的 OpenAI 消息列表（含系统提示、历史、assistant(tool_calls)、tool 结果）
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -32,13 +34,30 @@ class AgentState:
     rounds: int = 0
 
     def build_initial(self) -> None:
-        """构造首轮决策上下文：system + 最近历史 + 当前问题。"""
-        self.messages = [{"role": "system", "content": AGENT_SYSTEM}]
+        """构造首轮决策上下文：system + 最近历史 + 当前问题（可带图片）。"""
+        system_text = AGENT_SYSTEM
+        if self.image:
+            system_text = f"{system_text}\n{settings.generation.image_system_rule}"
+        self.messages = [{"role": "system", "content": system_text}]
         turns = max(settings.generation.history_max_turns, 0) * 2
         for role, content in list(self.history)[-turns:] if turns else []:
             if role in ("user", "assistant") and content:
                 self.messages.append({"role": role, "content": content})
-        self.messages.append({"role": "user", "content": self.question})
+
+        if not self.image:
+            self.messages.append({"role": "user", "content": self.question})
+            return
+
+        text = self.question or settings.generation.image_default_question
+        self.messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"{text}\n\n{settings.generation.image_user_notice}"},
+                    {"type": "image_url", "image_url": {"url": self.image}},
+                ],
+            }
+        )
 
     def add_evidences(self, results: list[RetrievalResult]) -> list[RetrievalResult]:
         """追加检索结果（按 chunk_id 去重），返回本轮新增的子序列。"""
