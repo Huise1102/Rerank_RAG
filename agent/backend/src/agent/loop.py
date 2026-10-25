@@ -49,24 +49,26 @@ class AgentLoop:
 
     # ---- 公开入口 ----
 
-    def run(self, question: str, kb_id: int, history: list[tuple[str, str]]) -> AgentResult:
+    def run(self, question: str, kb_id: int, history: list[tuple[str, str]],
+            image: str | None = None) -> AgentResult:
         """非流式入口：消费流式事件，只取最终结果。"""
         result: AgentResult | None = None
-        for event in self.run_stream(question, kb_id, history):
+        for event in self.run_stream(question, kb_id, history, image):
             if event["type"] == "result":
                 result = event["result"]
         if result is None:
             raise RuntimeError("Agent 未产出最终结果")
         return result
 
-    def run_stream(self, question: str, kb_id: int, history: list[tuple[str, str]]) -> Iterator[dict[str, Any]]:
+    def run_stream(self, question: str, kb_id: int, history: list[tuple[str, str]],
+                   image: str | None = None) -> Iterator[dict[str, Any]]:
         """流式决策循环。
 
         yield ``{"type": "step"}``（每轮决策轨迹）、``{"type": "delta"}``（最终答案文本增量）、
         ``{"type": "result"}``（结束，含 AgentResult）。决策轮调工具时通常不产出正文，
         因此 delta 可直接向前端推送，无需等整轮结束。
         """
-        state = AgentState(question=question, kb_id=kb_id, history=history)
+        state = AgentState(question=question, kb_id=kb_id, history=history, image=image)
         state.build_initial()
         retrieve_calls = 0
 
@@ -141,10 +143,15 @@ class AgentLoop:
         return self.llm.chat_stream(
             state.messages,
             tools=TOOL_SCHEMAS,
-            model=settings.agent.model,
+            model=self._model(state),
             temperature=settings.agent.temperature,
             max_tokens=settings.agent.max_tokens,
         )
+
+    @staticmethod
+    def _model(state: AgentState) -> str:
+        """带图时改用多模态模型（文本模型收到 image_url 块会直接 400）。"""
+        return settings.llm.vision_model if state.image else settings.agent.model
 
     @staticmethod
     def _parse_args(raw: Any) -> dict[str, Any]:
@@ -221,7 +228,7 @@ class AgentLoop:
         decision = None
         for kind, payload in self.llm.chat_stream(
             state.messages,
-            model=settings.agent.model,
+            model=self._model(state),
             temperature=settings.agent.temperature,
             max_tokens=settings.agent.max_tokens,
         ):
