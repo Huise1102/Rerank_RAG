@@ -556,11 +556,6 @@ select.field {
   margin-top: 8px;
 }
 
-.composer-hint {
-  font-size: 12px;
-  color: var(--app-text-muted);
-}
-
 /* 右：详情/轨迹面板 */
 .detail-panel {
   border-left: 1px solid var(--app-border);
@@ -1047,6 +1042,38 @@ select.field {
   border: 1px solid var(--app-border);
 }
 
+.tag--danger {
+  color: var(--app-danger);
+  background-color: rgba(178, 74, 58, 0.12);
+}
+
+.muted {
+  color: var(--app-text-muted);
+}
+
+.table-empty {
+  padding: 28px 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.btn--link {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--app-accent-dark);
+}
+
+.btn--link:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.btn--link-danger {
+  color: var(--app-danger);
+}
+
 .filter-bar {
   display: flex;
   align-items: center;
@@ -1161,4 +1188,140 @@ select.field {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 6px;
+}
+
+.modal--wide {
+  width: 960px;
+  max-width: 94vw;
+}
+
+/* ---------- 知识库详情 / 上传 ---------- */
+.detail-crumb {
+  margin-bottom: 4px;
+}
+
+.upload-zone {
+  padding: 24px 20px;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: 6px;
+  background-color: var(--app-surface-sunken);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.upload-zone:hover,
+.upload-zone.is-dragover {
+  border-color: var(--app-accent);
+  background-color: var(--app-accent-soft);
+}
+
+.upload-panel__icon {
+  color: var(--app-accent);
+  margin-bottom: 6px;
+}
+
+.upload-panel__text {
+  font-size: 14px;
+  color: var(--app-text-regular);
+}
+
+.upload-panel__text em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--app-accent-dark);
+}
+
+.upload-panel__sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.upload-tip {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.file-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--app-accent-dark);
+  cursor: pointer;
+}
+
+.file-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- 文档预览 ---------- */
+.preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.preview-body {
+  height: 62vh;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  overflow: auto;
+  background-color: var(--app-surface-sunken);
+}
+
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.preview-text {
+  min-height: 100%;
+  margin: 0;
+  padding: 18px 22px;
+  background-color: var(--app-surface);
+}
+
+.preview-pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--app-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-unsupported {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 48px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.preview-unsupported__icon {
+  font-size: 40px;
+}
+
+.error-note {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  background-color: var(--app-surface-soft);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--app-danger);
 }
