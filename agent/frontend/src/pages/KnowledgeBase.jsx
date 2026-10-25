@@ -12,11 +12,13 @@ const SWITCH_LABELS = {
   rerank: '精排',
 }
 
+// 与后端 documents.status 枚举保持一致：pending / parsing / indexing / completed / failed
 const STATUS_LABELS = {
   pending: { text: '待入库', cls: 'tag--muted' },
-  processing: { text: '入库中', cls: 'tag--accent' },
-  ready: { text: '已就绪', cls: 'tag--success' },
-  error: { text: '失败', cls: 'tag--muted' },
+  parsing: { text: '解析中', cls: 'tag--accent' },
+  indexing: { text: '入库中', cls: 'tag--accent' },
+  completed: { text: '已入库', cls: 'tag--success' },
+  failed: { text: '失败', cls: 'tag--muted' },
 }
 
 function fmtSize(bytes) {
@@ -256,7 +258,7 @@ export default function KnowledgeBase() {
                       <span className={`tag ${(STATUS_LABELS[d.status] || STATUS_LABELS.pending).cls}`}>
                         {(STATUS_LABELS[d.status] || STATUS_LABELS.pending).text}
                       </span>
-                      {d.status === 'error' && d.error_msg ? (
+                      {d.status === 'failed' && d.error_msg ? (
                         <span className="text-danger" style={{ fontSize: 12, marginLeft: 6 }}>
                           {d.error_msg}
                         </span>
