@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useKbStore } from '../stores/kbStore'
 import { useChatStore, nextMessageId } from '../stores/chatStore'
 import { useAgentStore } from '../stores/agentStore'
@@ -16,6 +16,7 @@ export default function AgentChat() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const scrollRef = useRef(null)
+  const traceScrollRef = useRef(null)
   const abortRef = useRef(null)
 
   const activeKbs = kb.kbs.filter((k) => k.is_active)
@@ -30,10 +31,26 @@ export default function AgentChat() {
     return () => abortRef.current?.abort()
   }, [])
 
-  // 新消息滚动到底部
+  // 切换消息/会话时，轨迹面板回到顶部，保证从第 1 轮开始阅读
   useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    const el = traceScrollRef.current
+    if (el) el.scrollTop = 0
+  }, [as.selectedMessageId, cs.currentConversationId])
+
+  // 把提问的顶部对齐到消息区顶部；用于新回答开始生成时「从头看」。
+  // 回答刚出现时内容高度可能不足，滚动会被最大值截断，因此保留锚点，
+  // 随正文增长反复校正，直到真正对齐后解除。
+  const anchorPendingRef = useRef(null)
+  useEffect(() => {
+    const id = anchorPendingRef.current
+    const box = scrollRef.current
+    if (!id || !box) return
+    const target = box.querySelector(`[data-msg-id="${id}"]`)
+    if (!target) return
+    const delta = target.getBoundingClientRect().top - box.getBoundingClientRect().top
+    box.scrollTop += delta - 12
+    const remaining = target.getBoundingClientRect().top - box.getBoundingClientRect().top
+    if (Math.abs(remaining - 12) <= 2) anchorPendingRef.current = null
   }, [cs.messages])
 
   const selectedMsg = (() => {
@@ -98,11 +115,6 @@ export default function AgentChat() {
     }
   }
 
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [])
-
   async function send() {
     const q = input.trim()
     if (!q || !currentKbId || sending) return
@@ -125,7 +137,8 @@ export default function AgentChat() {
       is_clarification: false,
     })
     as.setSelectedMessageId(asstId)
-    scrollToBottom()
+    // 以「提问」为锚点：问题与回答开头保持可见，之后正文增长不再自动滚动
+    anchorPendingRef.current = userMsg.id
 
     const traceAccum = []
     let answerAccum = ''
@@ -172,7 +185,6 @@ export default function AgentChat() {
       })
     } finally {
       setSending(false)
-      scrollToBottom()
     }
   }
 
@@ -253,6 +265,7 @@ export default function AgentChat() {
               <div
                 key={msg.id}
                 className="msg-block"
+                data-msg-id={msg.id}
                 onClick={() => selectMsg(msg)}
               >
                 <ChatMessage message={msg} onCite={() => {}} />
@@ -309,7 +322,7 @@ export default function AgentChat() {
               <span className="detail-panel__title">决策轨迹</span>
               {selectedMsg?.rounds ? <span className="detail-panel__tag">{selectedMsg.rounds} 轮</span> : null}
             </div>
-            <div className="detail-panel__body scroll-area">
+            <div ref={traceScrollRef} className="detail-panel__body scroll-area">
               {selectedMsg ? (
                 <DecisionTrace trace={selectedMsg.agent_trace || []} />
               ) : (
