@@ -7,6 +7,8 @@ meta → agent_step×N → delta → done。
 
 from __future__ import annotations
 
+import queue
+import threading
 import time
 from typing import Any, AsyncIterator
 
@@ -100,7 +102,7 @@ async def prepare_agent_stream(
     conversation_id: int | None = None,
     image: str | None = None,
 ) -> dict[str, Any]:
-    """流式前准备：建会话、存用户消息、在线程池跑完 AgentLoop。"""
+    """流式前准备：建会话、存用户消息；Agent 循环留到事件生成阶段执行。"""
     text = (question or "").strip()
     user_content = text or "[图片]"
 
@@ -111,27 +113,63 @@ async def prepare_agent_stream(
     history = await _recent_history(db, conversation_id)
     await _save_message(db, conversation_id, role="user", content=user_content, touch_title=user_content)
 
-    t0 = time.perf_counter()
-    result = await run_in_threadpool(_run_agent, kb.id, text, history)
-    total_ms = round((time.perf_counter() - t0) * 1000)
+    return {
+        "kb_id": kb.id,
+        "conversation_id": conversation_id,
+        "question": text,
+        "history": history,
+        "t0": time.perf_counter(),
+    }
 
-    return {"kb_id": kb.id, "conversation_id": conversation_id, "result": result, "total_ms": total_ms}
+
+def _stream_agent_events(bundle: dict[str, Any], out: "queue.Queue[dict[str, Any] | None]") -> None:
+    """线程池任务：跑 AgentLoop 并把事件放进队列（None 为结束哨兵）。"""
+    try:
+        loop = AgentLoop()
+        for event in loop.run_stream(bundle["question"], bundle["kb_id"], bundle["history"]):
+            out.put(event)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Agent 流式执行失败")
+        out.put({"type": "error", "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        out.put(None)
 
 
 async def agent_stream_events(bundle: dict[str, Any]) -> AsyncIterator[str]:
-    """按 SSE 协议产出 meta / agent_step / delta / done，并在结束时落库。"""
-    result = bundle["result"]
-    conversation_id: int = bundle["conversation_id"]
-    latency = _latency_payload(result, bundle["total_ms"])
+    """按 SSE 协议实时产出：meta → (agent_step | delta)×N → done。
 
+    Agent 循环是同步阻塞的，放独立线程执行；事件经队列转发，正文因此可以边生成边下发。
+    结束时用独立会话落库（请求级会话在流式响应结束前可能已被依赖清理）。
+    """
+    conversation_id: int = bundle["conversation_id"]
     yield sse({"type": "meta", "conversation_id": conversation_id, "agent": True})
 
-    for step in result.trace:
-        yield sse({"type": "agent_step", "step": step})
+    out: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    threading.Thread(target=_stream_agent_events, args=(bundle, out), daemon=True).start()
 
-    yield sse({"type": "delta", "delta": result.answer})
+    result = None
+    while True:
+        event = await run_in_threadpool(out.get)
+        if event is None:
+            break
+        kind = event.get("type")
+        if kind == "delta":
+            yield sse({"type": "delta", "delta": event["delta"]})
+        elif kind == "step":
+            yield sse({"type": "agent_step", "step": event["step"]})
+        elif kind == "result":
+            result = event["result"]
+        elif kind == "error":
+            yield sse({"type": "error", "error": event["error"]})
+            return
 
-    # 用独立会话落库：请求级会话在流式响应结束前可能已被依赖清理
+    if result is None:
+        yield sse({"type": "error", "error": "Agent 未产出结果"})
+        return
+
+    total_ms = round((time.perf_counter() - bundle["t0"]) * 1000)
+    latency = _latency_payload(result, total_ms)
+
     try:
         from src.db.session import AsyncSessionLocal
 
