@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field, model_validator
 class AgentChatRequest(BaseModel):
     """Agent 问答请求。question 与 image 至少提供一个。
 
-    ``image`` 为图片 data URL（``data:image/png;base64,...``）；首版仅透传、不启用视觉决策。
+    ``image`` 为图片 data URL（``data:image/png;base64,...``）；传入后 Agent 改用多模态模型，
+    图片作为决策上下文的一部分参与检索与作答。
     """
 
     kb_id: int
