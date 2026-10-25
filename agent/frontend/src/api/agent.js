@@ -11,12 +11,13 @@ export function agentChat(payload) {
  * @param {number}  opts.kbId
  * @param {number?} opts.conversationId
  * @param {string}  opts.question
+ * @param {string?} opts.image  图片 data URL（可只发图不发文）
  * @param {(step: object) => void}  opts.onStep  agent_step 事件（每轮决策/工具结果）
  * @param {(meta: object) => void}  opts.onMeta  meta 事件（conversation_id 等）
  * @param {(delta: string) => void} opts.onDelta delta 事件（最终答案正文）
  * @param {AbortSignal?} opts.signal
  */
-export async function agentChatStream({ kbId, conversationId, question, onStep, onMeta, onDelta, signal }) {
+export async function agentChatStream({ kbId, conversationId, question, image, onStep, onMeta, onDelta, signal }) {
   const response = await fetch('/api/v1/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -24,6 +25,7 @@ export async function agentChatStream({ kbId, conversationId, question, onStep, 
       kb_id: kbId,
       conversation_id: conversationId || null,
       question: question || '',
+      image: image || null,
     }),
     signal,
   })
