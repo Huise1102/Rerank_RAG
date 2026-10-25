@@ -68,6 +68,7 @@
             v-for="msg in chatStore.messages"
             :key="msg.id"
             class="msg-block"
+            :data-msg-id="msg.id"
             :class="{ 'msg-block--selectable': msg.role === 'assistant' }"
             @click="selectDetail(msg)"
           >
@@ -240,6 +241,7 @@ function ensureActiveKb() {
 async function onKbChange() {
   chatStore.reset()
   selectedDetailId.value = null
+  resetScrollAnchor()
   if (kbStore.currentKbId) {
     await chatStore.fetchConversations(kbStore.currentKbId)
   }
@@ -248,6 +250,13 @@ async function onKbChange() {
 function newConversation() {
   chatStore.newConversation()
   selectedDetailId.value = null
+  resetScrollAnchor()
+}
+
+//: 切换会话/知识库后恢复正常滚动行为（加载历史仍会直接滚到底部）
+function resetScrollAnchor() {
+  anchorMsgId.value = null
+  followSuppressed = false
 }
 
 async function selectConversation(id) {
@@ -255,6 +264,7 @@ async function selectConversation(id) {
   try {
     await chatStore.selectConversation(id)
     selectedDetailId.value = null
+    resetScrollAnchor()
     await scrollToBottom()
   } catch (e) {
     /* 错误提示由拦截器统一处理 */
@@ -344,8 +354,41 @@ async function scrollToBottom() {
   }
 }
 
-//: 跟随滚动：只有用户本来就贴着底部时才自动跟随，向上翻阅时不再被拽回底部
+//: 本轮提问的锚点：新问答开始时把提问顶到消息区顶部，之后正文增长只做校正，
+//: 不再把视口拉向末尾，保证用户总是从回答开头读起。
+const anchorMsgId = ref(null)
+
+function adjustAnchor() {
+  const el = scrollEl.value
+  const id = anchorMsgId.value
+  if (!el || id == null) return
+  const target = el.querySelector(`[data-msg-id="${id}"]`)
+  if (!target) return
+  const boxTop = el.getBoundingClientRect().top
+  el.scrollTop += target.getBoundingClientRect().top - boxTop - 12
+  //: 内容高度足够时才可能真正对齐；对齐后解除锚定，之后不再自动滚动
+  if (Math.abs(target.getBoundingClientRect().top - boxTop - 12) <= 2) {
+    anchorMsgId.value = null
+  }
+}
+
+async function anchorToMessage(id) {
+  anchorMsgId.value = id
+  await nextTick()
+  adjustAnchor()
+}
+
+//: 本轮回答生成期间禁用"贴底跟随"：锚点一旦对齐就解除，但此后正文继续增长时
+//: 若内容仍不够高，贴底逻辑会把提问顶出视口，因此整轮回答期间都不再跟随底部。
+let followSuppressed = false
+
+//: 跟随滚动：锚定期间只校正提问位置；锚定结束且未禁用跟随时，仅在用户本来就贴着底部时才跟随
 function followScroll() {
+  if (anchorMsgId.value != null) {
+    adjustAnchor()
+    return
+  }
+  if (followSuppressed) return
   const el = scrollEl.value
   if (!el) return
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
@@ -498,6 +541,7 @@ async function handleSend() {
     content: text,
     image,
   })
+  const userMsg = chatStore.messages[chatStore.messages.length - 1]
 
   const assistant = reactive({
     id: nextMessageId(),
@@ -512,7 +556,9 @@ async function handleSend() {
   })
   chatStore.messages.push(assistant)
   sending.value = true
-  scrollToBottom()
+  //: 锚定本轮提问（而非滚到底部），回答从提问下方开始生成；本轮不再贴底跟随
+  followSuppressed = true
+  await anchorToMessage(userMsg.id)
 
   abortController = new AbortController()
   //: 正文按帧吐字，避免整段瞬间砸下来
@@ -557,7 +603,9 @@ async function handleSend() {
     assistant.streaming = false
     sending.value = false
     abortController = null
-    scrollToBottom()
+    //: 结束时不跳到底部：只做一次锚定校正，保持阅读位置
+    await nextTick()
+    adjustAnchor()
   }
 }
 </script>
