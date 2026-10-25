@@ -705,6 +705,20 @@ select.field {
   word-break: break-word;
 }
 
+.rd-toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--app-accent);
+  cursor: pointer;
+}
+
+.rd-toggle:hover {
+  text-decoration: underline;
+}
+
 .rd-block {
   margin-top: 14px;
 }
@@ -733,35 +747,146 @@ select.field {
 }
 
 /* ---------- 策略组合（StrategyBuilder）---------- */
-.sb-tags {
-  display: flex;
+.sb-readonly {
+  display: inline-flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  font-size: 13px;
 }
 
 .sb-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  border: 1px solid var(--app-border);
-  color: var(--app-text-muted);
-  background-color: var(--app-surface-soft);
-}
-
-.sb-tag.is-on {
-  border-color: var(--app-accent);
-  color: var(--app-accent-dark);
+  padding: 1px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--app-accent);
   background-color: var(--app-accent-soft);
+  color: var(--app-accent-dark);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.sb-name {
-  margin-left: 4px;
-  font-size: 12px;
+.sb-tag.is-off {
+  border-color: var(--app-border-strong);
+  background-color: var(--app-surface-soft);
+  color: var(--app-text-muted);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+
+.sb-combo {
   color: var(--app-text-secondary);
+  font-weight: 600;
+}
+
+.sb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.sb-row:last-child {
+  border-bottom: none;
+}
+
+.sb-row__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.sb-row__desc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+/* ---------- 检索策略页 ---------- */
+.kb-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+
+.picker-combo {
+  font-size: 13px;
+  color: var(--app-text-secondary);
+}
+
+.save-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-border);
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+.combo-list,
+.param-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.combo-list li,
+.param-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--app-border);
+  font-size: 13px;
+}
+
+.combo-list li:last-child,
+.param-list li:last-child {
+  border-bottom: none;
+}
+
+.combo-name {
+  min-width: 160px;
+  color: var(--app-text-regular);
+}
+
+.combo-arrow {
+  color: var(--app-text-muted);
+}
+
+.combo-result {
+  color: var(--app-accent-dark);
+  font-weight: 600;
+}
+
+.param-label {
+  min-width: 110px;
+  color: var(--app-text-regular);
+}
+
+.param-value {
+  font-family: var(--app-mono);
+  color: var(--app-accent-dark);
+  font-weight: 600;
 }
 
 /* ---------- 决策轨迹（DecisionTrace）---------- */
