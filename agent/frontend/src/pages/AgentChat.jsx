@@ -304,7 +304,6 @@ export default function AgentChat() {
               onKeyDown={onKeydown}
             />
             <div className="composer-actions">
-              <span className="composer-hint">智能体最多 3 轮决策，第 3 轮强制作答</span>
               <button
                 className="btn btn--primary"
                 disabled={!currentKbId || (!input.trim() && !sending) || sending}
