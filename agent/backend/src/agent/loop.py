@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterator
 
 from src.agent.prompts import FORCE_ANSWER_INSTRUCTION, TOOL_SCHEMAS
 from src.agent.state import AgentState
@@ -50,50 +50,70 @@ class AgentLoop:
     # ---- 公开入口 ----
 
     def run(self, question: str, kb_id: int, history: list[tuple[str, str]]) -> AgentResult:
+        """非流式入口：消费流式事件，只取最终结果。"""
+        result: AgentResult | None = None
+        for event in self.run_stream(question, kb_id, history):
+            if event["type"] == "result":
+                result = event["result"]
+        if result is None:
+            raise RuntimeError("Agent 未产出最终结果")
+        return result
+
+    def run_stream(self, question: str, kb_id: int, history: list[tuple[str, str]]) -> Iterator[dict[str, Any]]:
+        """流式决策循环。
+
+        yield ``{"type": "step"}``（每轮决策轨迹）、``{"type": "delta"}``（最终答案文本增量）、
+        ``{"type": "result"}``（结束，含 AgentResult）。决策轮调工具时通常不产出正文，
+        因此 delta 可直接向前端推送，无需等整轮结束。
+        """
         state = AgentState(question=question, kb_id=kb_id, history=history)
         state.build_initial()
-        t_start = time.perf_counter()
         retrieve_calls = 0
 
         for round_no in range(1, self.max_rounds + 1):
             state.rounds = round_no
             round_t0 = time.perf_counter()
-            decision = self._decide(state)
+            decision = None
+            for kind, payload in self._decide_stream(state):
+                if kind == "delta":
+                    yield {"type": "delta", "delta": payload}
+                else:
+                    decision = payload
+            if decision is None:
+                raise RuntimeError("LLM 未返回决策结果")
 
             # 不调工具 = 直接输出最终答案（含 [n] 引用）→ 结束
             if not decision.tool_calls:
-                state.trace.append(
-                    self._step(round_no, "answer", tool=None, args=None,
-                               usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-                )
-                return self._finish(state, decision.content)
+                step = self._step(round_no, "answer", tool=None, args=None,
+                                  usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
+                state.trace.append(step)
+                yield {"type": "step", "step": step}
+                yield {"type": "result", "result": self._finish(state, decision.content)}
+                return
 
             call = decision.tool_calls[0]
             name = call.get("name", "")
             args = self._parse_args(call.get("arguments", ""))
 
             if name == "ask_clarification":
-                state.trace.append(
-                    self._step(round_no, "ask_clarification", tool=name, args=args,
-                               usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-                )
-                return self._clarify(state, (args.get("question") or "").strip())
+                step = self._step(round_no, "ask_clarification", tool=name, args=args,
+                                  usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
+                state.trace.append(step)
+                yield {"type": "step", "step": step}
+                yield {"type": "delta", "delta": (args.get("question") or "").strip()}
+                yield {"type": "result", "result": self._clarify(state, (args.get("question") or "").strip())}
+                return
 
             # 触发上限：未知工具 / 检索次数用尽 → 强制作答
-            if name != "retrieve":
-                state.trace.append(
-                    self._step(round_no, "force_answer", tool=name or None, args=args,
-                               usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-                )
-                return self._force_finish(state)
-
             query = (args.get("query") or "").strip()
-            if not query or retrieve_calls >= self.max_retrieve_calls:
-                state.trace.append(
-                    self._step(round_no, "force_answer", tool="retrieve", args=args,
-                               usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-                )
-                return self._force_finish(state)
+            if name != "retrieve" or not query or retrieve_calls >= self.max_retrieve_calls:
+                step = self._step(round_no, "force_answer", tool=name or None, args=args,
+                                  usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
+                state.trace.append(step)
+                yield {"type": "step", "step": step}
+                for event in self._force_finish_stream(state):
+                    yield event
+                return
 
             # 执行检索：回填证据，进入下一轮
             retrieve_calls += 1
@@ -102,20 +122,23 @@ class AgentLoop:
                 self._assistant_tool_calls_msg(call),
                 {"role": "tool", "tool_call_id": call.get("id", ""), "content": result["rendered"]},
             )
-            state.trace.append(
-                self._step(round_no, "retrieve", tool="retrieve", args={"query": query, "strategy": result["strategy"]},
-                           result_count=result["result_count"], docs=result["docs"],
-                           strategy=result["strategy"], stats=result["stats"],
-                           usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-            )
+            step = self._step(round_no, "retrieve", tool="retrieve",
+                              args={"query": query, "strategy": result["strategy"]},
+                              result_count=result["result_count"], docs=result["docs"],
+                              strategy=result["strategy"], stats=result["stats"],
+                              usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
+            state.trace.append(step)
+            yield {"type": "step", "step": step}
 
         # 触顶仍未收敛：追加「必须作答」指令，强制 LLM 输出
-        return self._force_finish(state)
+        for event in self._force_finish_stream(state):
+            yield event
 
     # ---- 内部 ----
 
-    def _decide(self, state: AgentState):
-        return self.llm.chat(
+    def _decide_stream(self, state: AgentState) -> Iterator[tuple[str, Any]]:
+        """单轮流式决策：透传正文增量，最后返回聚合后的 ChatMessage。"""
+        return self.llm.chat_stream(
             state.messages,
             tools=TOOL_SCHEMAS,
             model=settings.agent.model,
@@ -191,17 +214,25 @@ class AgentLoop:
             clarification_question=question,
         )
 
-    def _force_finish(self, state: AgentState) -> AgentResult:
+    def _force_finish_stream(self, state: AgentState) -> Iterator[dict[str, Any]]:
+        """触顶/异常后的强制作答：不带 tools，正文边生成边推送。"""
         state.messages.append({"role": "user", "content": FORCE_ANSWER_INSTRUCTION})
         round_t0 = time.perf_counter()
-        decision = self.llm.chat(
+        decision = None
+        for kind, payload in self.llm.chat_stream(
             state.messages,
             model=settings.agent.model,
             temperature=settings.agent.temperature,
             max_tokens=settings.agent.max_tokens,
-        )
-        state.trace.append(
-            self._step(state.rounds, "force_answer", tool=None, args=None,
-                       usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
-        )
-        return self._finish(state, decision.content or "")
+        ):
+            if kind == "delta":
+                yield {"type": "delta", "delta": payload}
+            else:
+                decision = payload
+        if decision is None:
+            raise RuntimeError("LLM 未返回强制作答结果")
+        step = self._step(state.rounds, "force_answer", tool=None, args=None,
+                          usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
+        state.trace.append(step)
+        yield {"type": "step", "step": step}
+        yield {"type": "result", "result": self._finish(state, decision.content or "")}
