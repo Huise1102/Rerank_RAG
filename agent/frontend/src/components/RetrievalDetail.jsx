@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 // 支持数值安全格式化 + 空值返回 null
 export function num(v) {
   return typeof v === 'number' && !Number.isNaN(v) ? v : null
@@ -18,13 +20,12 @@ function matchedText(doc) {
   return Array.isArray(m) && m.length ? m.join('+') : ''
 }
 
-function preview(text) {
-  const t = String(text || '')
-  return t.length > 180 ? `${t.slice(0, 180)}…` : t
-}
-
-// 单个文档块（供 RetrievalDetail 与 DecisionTrace 复用）
+// 单个文档块（供 RetrievalDetail 与 DecisionTrace 复用）。
+// 正文默认折叠，只保留「序号 / 来源 / 页码 / 分数 / 命中」摘要，点击展开原文。
 export function DocLine({ doc, index }) {
+  const [expanded, setExpanded] = useState(false)
+  const text = String(doc?.text || '')
+
   return (
     <div className="rd-doc">
       <div className="rd-doc__head">
@@ -38,7 +39,14 @@ export function DocLine({ doc, index }) {
         {num(doc?.rerank_score) !== null ? <span>精排 {fmt(doc.rerank_score)}</span> : null}
         {matchedText(doc) ? <span>命中 {matchedText(doc)}</span> : null}
       </div>
-      <div className="rd-text">{preview(doc?.text)}</div>
+      {text ? (
+        <>
+          {expanded ? <div className="rd-text">{text}</div> : null}
+          <button className="rd-toggle" type="button" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? '收起原文' : `展开原文（${text.length} 字）`}
+          </button>
+        </>
+      ) : null}
     </div>
   )
 }
