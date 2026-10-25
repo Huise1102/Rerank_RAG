@@ -28,9 +28,10 @@ from src.services.chat_service import (
 logger = get_logger(__name__)
 
 
-def _run_agent(kb_id: int, question: str, history: list[tuple[str, str]]) -> Any:
+def _run_agent(kb_id: int, question: str, history: list[tuple[str, str]],
+               image: str | None = None) -> Any:
     """在线程池跑一次 AgentLoop（阻塞）。"""
-    return AgentLoop().run(question, kb_id, history)
+    return AgentLoop().run(question, kb_id, history, image)
 
 
 def _latency_payload(result: Any, total_ms: int) -> dict[str, Any]:
@@ -77,7 +78,7 @@ async def agent_chat(
     await _save_message(db, conversation_id, role="user", content=user_content, touch_title=user_content)
 
     t0 = time.perf_counter()
-    result = await run_in_threadpool(_run_agent, kb.id, text, history)
+    result = await run_in_threadpool(_run_agent, kb.id, text, history, image)
     total_ms = round((time.perf_counter() - t0) * 1000)
 
     latency = _latency_payload(result, total_ms)
@@ -118,6 +119,7 @@ async def prepare_agent_stream(
         "conversation_id": conversation_id,
         "question": text,
         "history": history,
+        "image": image,
         "t0": time.perf_counter(),
     }
 
@@ -126,7 +128,7 @@ def _stream_agent_events(bundle: dict[str, Any], out: "queue.Queue[dict[str, Any
     """线程池任务：跑 AgentLoop 并把事件放进队列（None 为结束哨兵）。"""
     try:
         loop = AgentLoop()
-        for event in loop.run_stream(bundle["question"], bundle["kb_id"], bundle["history"]):
+        for event in loop.run_stream(bundle["question"], bundle["kb_id"], bundle["history"], bundle.get("image")):
             out.put(event)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Agent 流式执行失败")
