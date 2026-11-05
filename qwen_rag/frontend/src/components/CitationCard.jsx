@@ -2,14 +2,14 @@ function num(v) {
   return typeof v === 'number' && !Number.isNaN(v) ? v : null
 }
 
-export default function CitationCard({ citation, index, id }) {
+export default function CitationCard({ citation, index, id, active = false }) {
   const source = citation.source || '未知来源'
   const page = citation.page === null || citation.page === undefined || citation.page === '' ? null : citation.page
   const score = num(citation.score)
   const count = citation.count || 0
 
   return (
-    <div className="citation-card" id={id}>
+    <div className={`citation-card${active ? ' is-active' : ''}`} id={id}>
       <div className="citation-card__head">
         <span className="cc-index">[{index}]</span>
         <span className="cc-source">{source}</span>
