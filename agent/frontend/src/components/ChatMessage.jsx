@@ -23,22 +23,38 @@ function expandIndices(group) {
   return out
 }
 
-// 把 [1] / [2,3] / [1-3] 形式的引用编号转成可点击的 .cite-ref
-function decorateCitations(html) {
+// 把 [1] / [2,3] / [1-3] 形式的证据引用转成可点击的 .cite-ref。
+// maxIndex 为本次累积证据条数：整组编号都超出范围时（通常是法条条号，如 [38]）按普通文字显示。
+// validIndices 为「引用来源」里真实存在的编号；范围内但缺卡片时标成越界引用。
+function decorateCitations(html, validIndices, maxIndex) {
+  // 证据条数未知（流式中 / 本轮未检索）时不解释方括号数字
+  if (!maxIndex) return html
   return html.replace(
     /\[(\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)\]/g,
     (whole, inner) => {
       const indices = expandIndices(inner.split(',').map((s) => s.trim()))
       if (!indices.length) return whole
+      const unique = [...new Set(indices)]
+      if (unique.every((n) => n > maxIndex)) return whole
       const label = inner.replace(/\s+/g, '')
-      const titleText = [...new Set(indices)].slice(0, 10).join(', ') + (indices.length > 10 ? ' …' : '')
-      return `<span class="cite-ref" data-indices="${[...new Set(indices)].join(',')}" title="引用来源 ${titleText}">[${label}]</span>`
+      const invalid = validIndices && unique.every((n) => !validIndices.has(n))
+      const titleText = unique.slice(0, 10).join(', ') + (unique.length > 10 ? ' …' : '')
+      const cls = invalid ? 'cite-ref cite-ref--invalid' : 'cite-ref'
+      const title = invalid
+        ? `编号 ${titleText} 没有对应的来源卡片（模型越界引用）`
+        : `点击查看引用来源 ${titleText}`
+      return `<span class="${cls}" data-indices="${unique.join(',')}" title="${title}">[${label}]</span>`
     }
   )
 }
 
-export default function ChatMessage({ message, onCite }) {
+export default function ChatMessage({ message, onCite, citations, evidenceCount }) {
   const content = message.content || ''
+  const maxIndex = evidenceCount || 0
+  const validIndices = useMemo(() => {
+    if (!citations?.length) return null
+    return new Set(citations.map((c, i) => c.index ?? i + 1))
+  }, [citations])
   const html = useMemo(() => {
     if (!content) {
       return message.streaming ? '<span class="stream-cursor">▋</span>' : ''
@@ -49,10 +65,10 @@ export default function ChatMessage({ message, onCite }) {
     } catch (e) {
       out = escapeHtml(content)
     }
-    out = decorateCitations(out)
+    out = decorateCitations(out, validIndices, maxIndex)
     if (message.streaming) out += '<span class="stream-cursor">▋</span>'
     return out
-  }, [content, message.streaming])
+  }, [content, message.streaming, validIndices, maxIndex])
 
   function handleClick(e) {
     const el = e.target.closest('.cite-ref')
