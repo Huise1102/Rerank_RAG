@@ -375,11 +375,12 @@ class APISettings(_Section):
     """FastAPI 服务。"""
 
     host: str = "0.0.0.0"
-    port: int = Field(default=8000, ge=1, le=65535)
+    #: 产品版占 8002（与 demo 8001、agent 8003、qwen_rag 8004 错开）
+    port: int = Field(default=8002, ge=1, le=65535)
     reload: bool = False
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+        default=["http://localhost:5172", "http://127.0.0.1:5172", "http://localhost:3000"]
     )
     request_timeout: int = Field(default=180, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
