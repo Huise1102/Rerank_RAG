@@ -98,7 +98,7 @@ services:
       RAG_RESOURCE_DIR: /app/resource
       TZ: Asia/Shanghai
     ports:
-      - "8001:8000"
+      - "8004:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
