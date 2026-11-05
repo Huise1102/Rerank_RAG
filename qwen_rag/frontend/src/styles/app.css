@@ -605,6 +605,19 @@ select.field {
   padding: 10px 12px;
   margin-bottom: 8px;
   background-color: var(--app-surface);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.citation-card.is-active {
+  border-color: var(--app-accent);
+  background-color: var(--app-accent-soft);
+  box-shadow: 0 0 0 2px var(--app-accent-soft);
+}
+
+.citations-hint {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  margin: -2px 0 8px;
 }
 
 .citation-card__head {
