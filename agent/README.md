@@ -8,7 +8,7 @@
 
 ## 功能特性
 
-- **智能问答（Agent 自主决策）**：LLM 每轮只做一件事——调用 `retrieve`、调用 `ask_clarification`，或直接输出最终答案。闲聊不进检索；指代不明先反问；证据不足如实拒答，不臆造。
+- **智能问答（Agent 自主决策）**：先由 LLM 做**意图识别**（正常交流 CHAT / 知识库问答 KB），再进入逐轮决策——每轮只做一件事：调用 `retrieve`、调用 `ask_clarification`，或直接输出最终答案。闲聊不进检索；KB 问题未检索前不得凭记忆作答；指代不明先反问；证据不足如实拒答，不臆造。
 - **决策轨迹可视化**：右侧面板按轮次展示时间线（行动类型、改写后的 query、所选策略、命中片段、耗时），片段行复用检索详情的视觉；历史会话可从落库轨迹还原。
 - **三轮硬约束**：单问题最多 3 轮决策，第 3 轮必须直接作答；未知工具、检索次数用尽、空 query 也会立即收敛，不存在无限循环。
 - **引用可溯源**：跨轮证据按 `chunk_id` 去重、编号连续，答案中的 `[n]` 精确映射回「文件名 + 页码」。
@@ -25,7 +25,8 @@
 
 ```mermaid
 flowchart LR
-    Q["用户提问"] --> LOOP["AgentLoop<br/>最多 3 轮"]
+    Q["用户提问"] --> INTENT["意图识别<br/>CHAT / KB"]
+    INTENT --> LOOP["AgentLoop<br/>最多 3 轮"]
     LOOP -->|"retrieve(query, strategy)"| RET["混合检索<br/>向量 ‖ BM25 → RRF → 精排"]
     RET --> EV["证据累积<br/>chunk_id 去重 + 连续编号"]
     EV --> LOOP
@@ -42,15 +43,18 @@ flowchart LR
 
 | 轮次 | LLM 的职责 | 系统动作 |
 | --- | --- | --- |
-| 第 1 轮 | 意图识别：闲聊直接答 / 歧义反问 / 需要依据则改写 query 并检索 | 检索结果编号后回填为 tool 消息，进入下一轮 |
+| 决策前 | 意图识别：判断本轮是正常交流（CHAT）还是知识库问答（KB）；带图提问按 image 放行 | 结果写入系统提示，并作为 `round=0, action="intent"` 的轨迹步骤推送 |
+| 第 1 轮 | 按意图执行：CHAT 直接答；KB 必须改写 query 并检索；有歧义则反问 | 检索结果编号后回填为 tool 消息，进入下一轮 |
 | 第 2 轮 | 评估证据：足够则作答；不足则换关键词或换角度再检索（禁止完全相同 query） | 同上，检索调用次数累计 |
 | 第 3 轮 | 必须直接输出最终回答，禁止再调用任何工具 | 循环到顶后收敛 |
 
-三条保底机制：
+保底机制：
 
 1. `for` 循环封顶 `MAX_DECISION_ROUNDS`（默认 3）；
 2. 「不调工具即输出 content」——该 content 直接作为最终答案（方案 A，不再二次生成）；
-3. 触顶或异常后追加 `FORCE_ANSWER_INSTRUCTION` 再请求一次，强制产出答案。
+3. 触顶或异常后追加 `FORCE_ANSWER_INSTRUCTION` 再请求一次，强制产出答案；
+4. **检索优先守卫（仅 KB）**：首轮未检索就想作答时，正文先缓存不推送，追加
+   `RETRIEVE_FIRST_INSTRUCTION` 重新决策；模型仍拒绝则由系统以原问题兜底检索一次。
 
 ---
 
@@ -172,7 +176,7 @@ python scripts\seed_data.py
 
 # 5. 自检与启动
 python -m src.core.config      # 打印配置（含 agent 分组，max_decision_rounds=3）
-python -m src.api.main         # 默认 http://127.0.0.1:8000
+python -m src.api.main         # 默认 http://127.0.0.1:8003
 ```
 
 首次启动会在后台线程预热向量与精排模型（CPU 下精排加载约 20 秒），期间 `/health` 返回 `warmed_up=false`。
@@ -188,10 +192,10 @@ npm run dev
 ### 访问地址
 
 - 前端：http://localhost:5173（默认落到 `/agent` 智能问答页）
-- 后端 API：http://localhost:8000（业务前缀 `/api/v1`）
-- 交互式文档：http://localhost:8000/docs
+- 后端 API：http://localhost:8003（业务前缀 `/api/v1`）
+- 交互式文档：http://localhost:8003/docs
 
-> 本版与 `product/` 使用相同端口（8000 / 5173），两者不要同时启动；`demo/` 使用 8100 / 8501，可与任一版并行。
+> 四版端口已全部错开：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173、`qwen_rag/` 8004 / 5174，可同时启动。
 
 ---
 
@@ -273,7 +277,7 @@ npm run dev
 
 ```
 meta           { conversation_id, agent: true }
-agent_step ×N  { step }        # 每轮一条，按 round 升序
+agent_step ×N  { step }        # 意图识别一条（round=0）+ 每轮决策一条
 delta          { delta }       # 最终答案全文（一次推送）
 done           { response }    # 完整响应对象，与 /agent/chat 一致
 ```
@@ -295,7 +299,7 @@ done           { response }    # 完整响应对象，与 /agent/chat 一致
 }
 ```
 
-`action` 取值：`retrieve`（检索）、`ask_clarification`（反问）、`answer`（直接作答）、`force_answer`（强制作答）。
+`action` 取值：`intent`（意图识别，`round=0`，`args={"intent": "chat|kb|image"}`）、`retrieve`（检索）、`ask_clarification`（反问）、`answer`（直接作答）、`force_answer`（强制作答）。
 
 ### 落库与回看
 
@@ -311,7 +315,7 @@ done           { response }    # 完整响应对象，与 /agent/chat 一致
 | 检索驱动 | 固定链路 + 四档策略对比 | 知识库固定策略配置 | **LLM 逐轮决策**（改写 query、选策略、判断证据） |
 | 最终答案 | PromptBuilder + 固定生成 | 同左 | **Agent 直接产出**（方案 A） |
 | 前端 | Streamlit | Vue 3 + Element Plus | **React 18 + Vite** |
-| 端口 | 8100 / 8501 | 8000 / 5173 | 8000 / 5173 |
+| 端口 | 8001 / 5171 | 8002 / 5172 | 8003 / 5173 |
 | 决策上限 | — | — | **最多 3 轮，第 3 轮强制作答** |
 
 设计文档见 [`docs/项目迁移.md`](../docs/项目迁移.md)，执行规格见 [`docs/spec.md`](../docs/spec.md)。
