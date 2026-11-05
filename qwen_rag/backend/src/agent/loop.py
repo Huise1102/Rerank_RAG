@@ -37,12 +37,6 @@ MAX_DECISION_ROUNDS: int = settings.agent.max_decision_rounds
 INTENT_HISTORY_MESSAGES: int = 4
 
 
-def _is_smalltalk(text: str) -> bool:
-    """已废弃的正则兜底：意图识别改由 LLM 完成（保留给无 LLM 的单测）。"""
-    compact = (text or "").strip().lower()
-    return compact in {"你好", "您好", "hi", "hello", "嗨", "在吗", "在不在", "谢谢", "感谢", "晚安"}
-
-
 @dataclass
 class AgentResult:
     """一次 Agent 问答的完整结果。"""
