@@ -483,7 +483,7 @@ def create_app(*, warmup: bool | None = None) -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # CORS：Streamlit 默认跑在 8501
+    # CORS：Streamlit 前端跑在 5171
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.api.cors_origins,
