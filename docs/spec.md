@@ -125,7 +125,7 @@ evidences_max: int = 20
 
 ### 3.1 脚手架
 - `package.json`：deps `react@18/react-dom@18/react-router-dom@6/zustand@4/axios/marked`；devDeps `vite@5/@vitejs/plugin-react`。
-- `vite.config.js`：`@vitejs/plugin-react`、alias `@ -> ./src`、server.proxy `/api -> http://localhost:8000`。
+- `vite.config.js`：`@vitejs/plugin-react`、alias `@ -> ./src`、server.proxy `/api -> http://localhost:8003`。
 - `index.html`、`src/main.jsx`（ReactDOM.createRoot，应用前按 `localStorage['app-theme']==='dark'` 给 `<html>` 加 `dark`）。
 - `src/assets/theme.css`：**完整复制** `product/frontend/src/assets/theme.css`。
 
