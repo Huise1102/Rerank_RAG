@@ -80,7 +80,15 @@ class AgentLoop:
         因此 delta 可直接向前端推送，无需等整轮结束。
         """
         state = AgentState(question=question, kb_id=kb_id, history=history)
+        intent, intent_usage, intent_ms = self._classify_intent(question, history)
+        state.intent = intent
         state.build_initial()
+
+        intent_step = self._step(0, "intent", tool=None, args={"intent": intent},
+                                 usage=intent_usage, elapsed_ms=intent_ms)
+        state.trace.append(intent_step)
+        yield {"type": "step", "step": intent_step}
+
         retrieve_calls = 0
         nudged = False
 
@@ -104,8 +112,8 @@ class AgentLoop:
             if decision is None:
                 raise RuntimeError("LLM 未返回决策结果")
 
-            # 检索优先：未检索过、又不是纯闲聊时，拦截「凭记忆直接作答」
-            if not decision.tool_calls and retrieve_calls == 0 and not _is_smalltalk(state.question):
+            # 检索优先：意图为知识库问答、且尚未检索过时，拦截「凭记忆直接作答」
+            if not decision.tool_calls and retrieve_calls == 0 and state.intent == "kb":
                 if not nudged:
                     nudged = True
                     state.messages.append({"role": "user", "content": RETRIEVE_FIRST_INSTRUCTION})
@@ -172,6 +180,35 @@ class AgentLoop:
             yield event
 
     # ---- 内部 ----
+
+    def _classify_intent(
+        self, question: str, history: list[tuple[str, str]]
+    ) -> tuple[str, dict[str, Any], int]:
+        """意图识别：先判断正常交流（chat）还是知识库问答（kb），再进入决策循环。
+
+        分类失败或无法解析时回落到 ``kb``（宁可多检索一次，也不放过幻觉）。
+        返回 ``(intent, usage, elapsed_ms)``。
+        """
+        messages: list[dict[str, Any]] = [{"role": "system", "content": INTENT_SYSTEM}]
+        for role, content in list(history)[-INTENT_HISTORY_MESSAGES:]:
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content[:300]})
+        messages.append({"role": "user", "content": question})
+
+        t0 = time.perf_counter()
+        try:
+            resp = self.llm.chat(
+                messages,
+                model=settings.agent.model,
+                temperature=0.0,
+                max_tokens=16,
+            )
+        except Exception:  # noqa: BLE001 —— 分类失败不应阻断问答
+            return "kb", {}, self._elapsed(t0)
+
+        label = (resp.content or "").strip().upper()
+        intent = "chat" if label.startswith("CHAT") else "kb"
+        return intent, resp.usage or {}, self._elapsed(t0)
 
     def _decide_stream(self, state: AgentState) -> Iterator[tuple[str, Any]]:
         """单轮流式决策：透传正文增量，最后返回聚合后的 ChatMessage。"""
