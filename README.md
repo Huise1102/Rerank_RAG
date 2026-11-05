@@ -134,7 +134,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── frontend/         React 18 四页应用（智能问答 / 知识库 / 检索策略 / 日志）
 │   └── README.md         Agentic 版详细文档
 ├── qwen_rag/             Agentic 本地版（React + FastAPI + Ollama/Qwen3）
-│   ├── backend/          与 agent 同构，LLM 改为本地 Qwen（8001）
+│   ├── backend/          与 agent 同构，LLM 改为本地 Qwen（8004）
 │   ├── frontend/         与 agent 同构，端口 5174，已下线图片入口
 │   └── README.md         本地 Qwen 版详细文档
 ├── docs/                 项目文档与界面截图（docs/images/*.png）
@@ -150,7 +150,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 ## 五、快速开始
 
 > 各种形态的索引、数据、配置相互独立，可按需单独运行。详细步骤见各自的 README。
-> 端口上，`product/` 与 `agent/` 都使用 8000 / 5173，不要同时启动；`qwen_rag/` 使用 8001 / 5174，`demo/` 使用 8100 / 8501，可与任一版并行。
+> 四版端口全部错开，可同时启动：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173、`qwen_rag/` 8004 / 5174。
 
 ### 验证版（`demo/`）
 
@@ -182,12 +182,12 @@ Copy-Item .env.example .env        # 编辑 .env，填写 RAG_LLM__API_KEY
 .\.venv\Scripts\Activate.ps1
 python scripts\init_db.py          # 建库 + 迁移建表
 python scripts\seed_data.py        # 灌入预置语料「法律领域」
-python -m src.api.main             # 启动后端（http://127.0.0.1:8000）
+python -m src.api.main             # 启动后端（http://127.0.0.1:8002）
 
 # 前端（另开一个终端）
 cd product\frontend
 npm install
-npm run dev                        # http://localhost:5173
+npm run dev                        # http://localhost:5172
 ```
 
 详见 [product/README.md](product/README.md)。
@@ -203,7 +203,7 @@ Copy-Item .env.example .env        # 编辑 .env，填写 RAG_LLM__API_KEY
 .\.venv\Scripts\Activate.ps1
 python scripts\init_db.py          # 建库 + 迁移建表
 python scripts\seed_data.py        # 灌入预置语料「法律领域」
-python -m src.api.main             # 启动后端（http://127.0.0.1:8000）
+python -m src.api.main             # 启动后端（http://127.0.0.1:8003）
 
 # 前端（另开一个终端）
 cd agent\frontend
@@ -222,11 +222,11 @@ npm run dev                        # http://localhost:5173/agent
 cd qwen_rag\backend
 uv venv --python 3.11 .venv
 uv pip install --python .venv\Scripts\python.exe -r requirements.txt
-Copy-Item .env.example .env        # 默认 ollama + qwen3:8b，端口 8001
+Copy-Item .env.example .env        # 默认 ollama + qwen3:8b，端口 8004
 .\.venv\Scripts\Activate.ps1
 python scripts\init_db.py
 python scripts\seed_data.py
-python -m src.api.main             # http://127.0.0.1:8001
+python -m src.api.main             # http://127.0.0.1:8004
 
 # 前端（另开一个终端）
 cd qwen_rag\frontend
