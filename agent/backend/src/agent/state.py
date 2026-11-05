@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.agent.prompts import AGENT_SYSTEM
+from src.agent.prompts import AGENT_SYSTEM, intent_instruction
 from src.core.config import settings
 from src.generation.prompt import PromptContext, contexts_from_results
 from src.retrieval.base import RetrievalResult
@@ -25,6 +25,8 @@ class AgentState:
     #: 图片 data URL（可选）；非空时最后一条 user 消息改为内容块数组
     image: str | None = None
 
+    #: 决策前的意图识别结果：``chat``（正常交流）/ ``kb``（知识库问答）/ ``image``（带图提问）
+    intent: str = "kb"
     #: 喂给 LLM 的 OpenAI 消息列表（含系统提示、历史、assistant(tool_calls)、tool 结果）
     messages: list[dict[str, Any]] = field(default_factory=list)
     #: 累积证据（按 chunk_id 去重）
@@ -34,8 +36,8 @@ class AgentState:
     rounds: int = 0
 
     def build_initial(self) -> None:
-        """构造首轮决策上下文：system + 最近历史 + 当前问题（可带图片）。"""
-        system_text = AGENT_SYSTEM
+        """构造首轮决策上下文：system（含意图说明） + 最近历史 + 当前问题（可带图片）。"""
+        system_text = f"{AGENT_SYSTEM}\n\n{intent_instruction(self.intent)}"
         if self.image:
             system_text = f"{system_text}\n{settings.generation.image_system_rule}"
         self.messages = [{"role": "system", "content": system_text}]
