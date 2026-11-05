@@ -1,24 +1,26 @@
 """调度循环（loop.py）：第三版核心 —— LLM 逐轮决策，最多 3 轮必须收敛。
 
 ReAct 式循环：每轮 LLM 要么调用一个工具（retrieve / ask_clarification），要么直接输出
-最终答案（不调工具即 content）。四条保底对应「最多 3 次决策」与「知识库优先」约束：
+最终答案（不调工具即 content）。保底机制对应「最多 3 次决策」与「知识库优先」约束：
 1. ``MAX_DECISION_ROUNDS`` 封顶 for 循环；
 2. 不调工具直接输出 content = 最终答案，立即退出；
 3. 触顶/异常后追加「必须作答」指令强制 LLM 输出，绝不无限循环；
-4. **检索优先**：首次检索之前，非闲聊问题不许直接作答——正文先缓存不推送，模型若仍
+4. **意图识别**：进入循环前先由 LLM 判断是正常交流（CHAT）还是知识库问答（KB）；
+   CHAT 直接作答不检索，KB 则启用检索优先守卫；
+5. **检索优先**（仅 KB）：首次检索之前不许直接作答——正文先缓存不推送，模型若仍
    不调用 retrieve，则追加系统拦截指令并要求重新决策；再拒绝就由系统兜底检索一次。
 """
 
 from __future__ import annotations
 
 import json
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from src.agent.prompts import (
     FORCE_ANSWER_INSTRUCTION,
+    INTENT_SYSTEM,
     RETRIEVE_FIRST_INSTRUCTION,
     TOOL_SCHEMAS,
 )
@@ -31,16 +33,14 @@ from src.generation.llm import ChatMessage, get_llm_client
 #: 硬约束：单问题最多决策轮数（第 3 轮必须收敛）
 MAX_DECISION_ROUNDS: int = settings.agent.max_decision_rounds
 
-#: 纯闲聊：只有这类问题允许在未检索的情况下直接作答
-_SMALLTALK_RE = re.compile(
-    r"^(你好|您好|hi|hello|嗨|在吗|在不在|谢谢|感谢|你是谁|你叫什么|你能做什么|"
-    r"介绍一下你自己|早上好|晚上好|晚安)[\s，。！？!?,~]*$",
-    re.IGNORECASE,
-)
+#: 意图识别只带最近 N 条历史，避免长上下文拖慢分类
+INTENT_HISTORY_MESSAGES: int = 4
 
 
 def _is_smalltalk(text: str) -> bool:
-    return bool(_SMALLTALK_RE.match((text or "").strip()))
+    """已废弃的正则兜底：意图识别改由 LLM 完成（保留给无 LLM 的单测）。"""
+    compact = (text or "").strip().lower()
+    return compact in {"你好", "您好", "hi", "hello", "嗨", "在吗", "在不在", "谢谢", "感谢", "晚安"}
 
 
 @dataclass
