@@ -2,10 +2,17 @@ import { DocLine } from './RetrievalDetail'
 
 // 行动标签：agent 后端 trace 里的 action 字段
 const ACTION_LABELS = {
+  intent: '意图识别',
   answer: '直接作答',
   retrieve: '检索',
   ask_clarification: '澄清',
   force_answer: '强制作答',
+}
+
+const INTENT_LABELS = {
+  chat: '正常交流',
+  kb: '知识库问答',
+  image: '带图提问',
 }
 
 const STRATEGY_LABELS = {
@@ -26,13 +33,16 @@ export default function DecisionTrace({ trace = [] }) {
     return <div className="dt-empty">暂无决策轨迹</div>
   }
 
-  const totalDocs = steps.reduce((sum, s) => sum + (s.result_count || 0), 0)
-  const retrieveCount = steps.filter((s) => s.action === 'retrieve').length
+  const rounds = steps.filter((s) => s.action !== 'intent')
+  const intent = steps.find((s) => s.action === 'intent')?.args?.intent
+  const totalDocs = rounds.reduce((sum, s) => sum + (s.result_count || 0), 0)
+  const retrieveCount = rounds.filter((s) => s.action === 'retrieve').length
 
   return (
     <div className="decision-trace">
       <div className="dt-summary">
-        共 {steps.length} 轮 · 检索 {retrieveCount} 次 · 累计召回 {totalDocs} 条
+        意图：{INTENT_LABELS[intent] || '知识库问答'} · 共 {rounds.length} 轮 · 检索{' '}
+        {retrieveCount} 次 · 累计召回 {totalDocs} 条
       </div>
       <div className="dt-list">
         {steps.map((step, i) => (
@@ -46,16 +56,27 @@ export default function DecisionTrace({ trace = [] }) {
 function StepCard({ step }) {
   const label = ACTION_LABELS[step.action] || step.action || '决策'
   const isRetrieve = step.action === 'retrieve'
+  const isIntent = step.action === 'intent'
+  const roundLabel = isIntent ? '决策前' : `第 ${step.round ?? '-'} 轮`
 
   return (
     <div className="dt-card">
       <div className="dt-card__head">
-        <span className="dt-round">第 {step.round ?? '-'} 轮</span>
+        <span className="dt-round">{roundLabel}</span>
         <span className={`dt-action dt-action--${step.action}`}>{label}</span>
         <span className="dt-elapsed">{fmtMs(step.elapsed_ms)}</span>
       </div>
 
-      {isRetrieve ? (
+      {isIntent ? (
+        <div className="dt-answer">
+          判断为「{INTENT_LABELS[step.args?.intent] || '知识库问答'}」，
+          {step.args?.intent === 'chat'
+            ? '按正常交流直接作答，不检索知识库'
+            : step.args?.intent === 'image'
+              ? '图片内容作为参考资料，可直接结合图片作答'
+              : '进入知识库检索流程，未检索前不得作答'}
+        </div>
+      ) : isRetrieve ? (
         <>
           <div className="dt-meta">
             <span className="dt-kv">
