@@ -15,7 +15,7 @@
 | 思考模式   | 无                             | `think=false`（Qwen3 默认思考会让单轮决策慢约 8-10 倍） |
 | 上下文窗口  | 由服务端决定                        | 显式 `num_ctx=8192`（证据上限 6000 字，4096 不够）   |
 | 多模态    | 支持图片（切换多模态模型）                 | **不支持**（Qwen3-8B 为纯文本模型，图片入口已下线）         |
-| 默认端口   | 8000 / 5173                   | **8001 / 5174**（可与 product、agent 同时运行）   |
+| 默认端口   | 8003 / 5173                   | **8004 / 5174**（四版端口全错开，可同时运行）          |
 
 ***
 
@@ -224,7 +224,7 @@ Copy-Item .env.example .env
 #   RAG_DATABASE__URL     本机 MySQL 连接串
 #   RAG_EMBEDDING__CACHE_DIR  仓库根 .hf-cache 的绝对路径
 #   RAG_RESOURCE_DIR      预置语料目录（默认指向 product/resource）
-#   RAG_API__PORT         本版用 8001，避免与 product/agent 冲突
+#   RAG_API__PORT         本版用 8004（demo 8001 / product 8002 / agent 8003）
 
 # 3. 启动 MySQL（本机未运行时可用 Docker 只拉起数据库）
 docker compose up -d mysql redis minio
@@ -235,7 +235,7 @@ python scripts\seed_data.py
 
 # 5. 自检与启动
 python -m src.core.config      # 打印配置（LLM=ollama/qwen3:8b@...）
-python -m src.api.main         # 默认 http://127.0.0.1:8001
+python -m src.api.main         # 默认 http://127.0.0.1:8004
 ```
 
 首次启动会在后台线程预热向量与精排模型（CPU 下精排加载约 20 秒），期间 `/health` 返回 `warmed_up=false`。
@@ -253,13 +253,13 @@ npm run dev
 
 ### 访问地址
 
-- 前端：<http://localhost:5174（默认落到> `/agent` 智能问答页）
+- 前端：http://localhost:5174（默认落到 `/agent` 智能问答页）
 
-- 后端 API：<http://localhost:8001（业务前缀> `/api/v1`）
+- 后端 API：http://localhost:8004（业务前缀 `/api/v1`）
 
-- 交互式文档：<http://localhost:8001/docs>
+- 交互式文档：<http://localhost:8004/docs>
 
-> 本版与 `product/`、`agent/` 的端口全部错开，可与其中任一版同时运行（后两者互相占用 8000/5173）。
+> 四版端口全部错开，可同时运行：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173、`qwen_rag/` 8004 / 5174。
 
 ***
 
@@ -394,7 +394,7 @@ done           { response }    # 完整响应对象，与 /agent/chat 一致
 | 最终答案   | PromptBuilder + 固定生成  | 同左                   | Agent 直接产出（方案 A）     | Agent 直接产出（方案 A）        |
 | 模型位置   | 云端                    | 云端                   | DeepSeek 云端 API      | **本机 Ollama**           |
 | 前端     | Streamlit             | Vue 3 + Element Plus | React 18 + Vite      | React 18 + Vite         |
-| 端口     | 8100 / 8501           | 8000 / 5173          | 8000 / 5173          | 8001 / 5174             |
+| 端口     | 8001 / 5171           | 8002 / 5172          | 8003 / 5173          | 8004 / 5174             |
 | 决策上限   | —                     | —                    | 最多 3 轮，第 3 轮强制作答     | 同上                      |
 
 设计文档见 [`docs/项目迁移.md`](../docs/项目迁移.md)，执行规格见 [`docs/spec.md`](../docs/spec.md)；本版沿用 agent 版的调度设计。
