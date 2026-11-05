@@ -1,7 +1,8 @@
 """Agent 调度层提示词与工具 Schema（第三版新增）。
 
-三份内容集中于此，与现有 ``settings.generation.system_prompt``（第七节最终生成用）互不冲突：
-- ``AGENT_SYSTEM``：决策大脑（意图路由 + 逐轮检索 + 引用规则）
+四份内容集中于此，与现有 ``settings.generation.system_prompt``（第七节最终生成用）互不冲突：
+- ``INTENT_SYSTEM``：决策前的意图识别（正常交流 CHAT / 知识库问答 KB）
+- ``AGENT_SYSTEM``：决策大脑（按意图执行 + 逐轮检索 + 引用规则）
 - ``TOOL_SCHEMAS``：Function Calling 的工具 JSON Schema（retrieve / ask_clarification）
 - ``FORCE_ANSWER_INSTRUCTION``：触顶兜底指令
 """
