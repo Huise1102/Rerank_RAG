@@ -564,13 +564,13 @@ class EvaluationSettings(_Section):
 class APISettings(_Section):
     """阶段 4 使用：FastAPI 服务。"""
     host: str = "127.0.0.1"
-    #: 验证版占 8100，避免与本仓库 product/ 后端的 8000 端口冲突；可用 RAG_API__PORT 覆盖
-    port: int = Field(default=8100, ge=1, le=65535)
+    #: 验证版占 8001（与 product 8002、agent 8003、qwen_rag 8004 错开）；可用 RAG_API__PORT 覆盖
+    port: int = Field(default=8001, ge=1, le=65535)
     reload: bool = False
     workers: int = Field(default=1, ge=1)
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = Field(
-        default=["http://localhost:8501", "http://127.0.0.1:8501", "http://localhost:3000"]
+        default=["http://localhost:5171", "http://127.0.0.1:5171", "http://localhost:3000"]
     )
     request_timeout: int = Field(default=180, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -583,7 +583,7 @@ class APISettings(_Section):
 
 class FrontendSettings(_Section):
     """阶段 4 使用：Streamlit。"""
-    api_base_url: str = "http://127.0.0.1:8100"
+    api_base_url: str = "http://127.0.0.1:8001"
     page_title: str = "领域知识问答系统"
     #: 用 Streamlit 的 Material 符号（字体连字）而非 emoji
     page_icon: str = ":material/menu_book:"
