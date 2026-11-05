@@ -387,7 +387,8 @@ class APISettings(_Section):
     """FastAPI 服务。"""
 
     host: str = "0.0.0.0"
-    port: int = Field(default=8000, ge=1, le=65535)
+    #: Agentic 版占 8003（与 demo 8001、product 8002、qwen_rag 8004 错开）
+    port: int = Field(default=8003, ge=1, le=65535)
     reload: bool = False
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = Field(
