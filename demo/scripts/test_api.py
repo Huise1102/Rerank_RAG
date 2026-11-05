@@ -124,11 +124,11 @@ def test_app_wiring() -> TestClient:
 
     # CORS
     r = client.options("/query", headers={
-        "Origin": "http://localhost:8501",
+        "Origin": "http://localhost:5171",
         "Access-Control-Request-Method": "POST",
     })
     check("CORS 允许 Streamlit 源",
-          r.headers.get("access-control-allow-origin") in ("http://localhost:8501", "*"),
+          r.headers.get("access-control-allow-origin") in ("http://localhost:5171", "*"),
           str(r.headers.get("access-control-allow-origin")))
 
     # 根路径（include_in_schema=False，因此不在 OpenAPI 里，需直接请求验证）
