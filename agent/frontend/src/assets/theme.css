@@ -327,6 +327,19 @@ body {
   text-decoration: underline;
 }
 
+/* 越界引用：编号在本次「引用来源」里不存在，标灰虚线并提示无来源 */
+.cite-ref--invalid {
+  color: var(--app-text-muted);
+  font-weight: 500;
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+.cite-ref--invalid:hover {
+  background-color: transparent;
+  text-decoration: underline dotted;
+}
+
 .stream-cursor {
   color: var(--app-accent);
   font-weight: 600;
