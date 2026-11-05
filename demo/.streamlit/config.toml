@@ -36,6 +36,7 @@ primaryColor = "#3b7dd8"       # st.toggle 开启色（唯一需要主题令牌�
 
 [server]
 headless = true
+port = 5171                      # 四版前端端口：demo 5171 / product 5172 / agent 5173 / qwen 5174
 fileWatcherType = "auto"
 
 [browser]
