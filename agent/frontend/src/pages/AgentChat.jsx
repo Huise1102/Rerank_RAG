@@ -19,6 +19,7 @@ export default function AgentChat() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [imageDataUrl, setImageDataUrl] = useState('')
+  const [activeCitations, setActiveCitations] = useState([])
   const scrollRef = useRef(null)
   const traceScrollRef = useRef(null)
   const abortRef = useRef(null)
@@ -72,6 +73,18 @@ export default function AgentChat() {
 
   function selectMsg(m) {
     if (m.role === 'assistant') as.setSelectedMessageId(m.id)
+  }
+
+  // 点击正文里的 [n]：滚到对应引用卡片并高亮（保持高亮，直到点下一个）
+  function handleCite(msgId, indices) {
+    const ids = indices.map((n) => `cite-${msgId}-${n}`)
+    const existing = ids.filter((id) => document.getElementById(id))
+    if (!existing.length) {
+      message.info('该引用编号没有对应的来源卡片')
+      return
+    }
+    document.getElementById(existing[0])?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    setActiveCitations(existing)
   }
 
   async function onKbChange(e) {
@@ -294,7 +307,12 @@ export default function AgentChat() {
                 data-msg-id={msg.id}
                 onClick={() => selectMsg(msg)}
               >
-                <ChatMessage message={msg} onCite={() => {}} />
+                <ChatMessage
+                  message={msg}
+                  citations={msg.citations}
+                  evidenceCount={msg.retrieved_docs?.length || 0}
+                  onCite={(indices) => handleCite(msg.id, indices)}
+                />
                 {msg.role === 'assistant' && !msg.streaming && (
                   <div className="assistant-extras">
                     {msg.is_clarification && (
@@ -303,12 +321,16 @@ export default function AgentChat() {
                     {msg.citations?.length ? (
                       <div className="citations">
                         <div className="section-label">引用来源（{msg.citations.length} 条）</div>
+                        <div className="citations-hint">
+                          正文中的 [n] 为证据编号，对应下方同编号来源，点击可定位并高亮；法条条号（如第三十八条）不是引用，不参与跳转
+                        </div>
                         {msg.citations.map((c, i) => (
                           <CitationCard
                             key={i}
                             citation={c}
                             index={c.index ?? i + 1}
                             id={`cite-${msg.id}-${c.index ?? i + 1}`}
+                            active={activeCitations.includes(`cite-${msg.id}-${c.index ?? i + 1}`)}
                           />
                         ))}
                       </div>
