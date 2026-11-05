@@ -6,15 +6,16 @@
 > 针对「用户不会用规章制度的措辞提问」这一真实痛点，重点解决**口语化提问下的召回**与**答案可溯源**两个问题。
 > 在此基础上，第三版进一步把「何时检索、怎么检索」交给 LLM 逐轮决策，探索 Agentic RAG 相对固定管道的差异。
 
-本仓库包含同一套检索链路的三种形态：
+本仓库包含同一套检索链路的四种形态（其中 `qwen_rag/` 是 `agent/` 的本地模型分支）：
 
 | 形态 | 目录 | 定位 | 技术形态 |
 | --- | --- | --- | --- |
 | **验证版（Demo）** | [`demo/`](demo/) | 聚焦验证混合检索 + Rerank 的核心链路与效果，附带完整评估体系与实验报告 | Streamlit 前端 + FastAPI 服务 |
 | **产品级系统** | [`product/`](product/) | 把验证版链路产品化：多知识库管理、文档上传入库、多轮对话、日志与可观测、深色模式 | Vue 3 + Element Plus 前端 + FastAPI 后端 |
 | **Agentic 版** | [`agent/`](agent/) | 把「怎么检索」交给 LLM 逐轮决策：意图路由、改写 query、选策略、判断证据是否足够，最多 3 轮收敛 | React 18 + Vite 前端 + FastAPI 后端 |
+| **Agentic 本地版** | [`qwen_rag/`](qwen_rag/) | 与 Agentic 版同构，但决策模型换成本机 Ollama 中的 Qwen3-8B：完全离线、零 API 费用 | React 18 + Vite 前端 + FastAPI 后端 |
 
-三版的索引、数据与配置相互独立，检索链路本身完全一致；差异只在**由谁决定检索**——前两版跑固定管道，第三版由 LLM 逐轮调度。
+各形态的索引、数据与配置相互独立，检索链路本身完全一致；差异只在**由谁决定检索**——前两版跑固定管道，后两版由 LLM 逐轮调度（云端 DeepSeek / 本地 Qwen3）。
 
 ---
 
@@ -132,6 +133,10 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── backend/          FastAPI 服务 + src/agent 调度层（loop / state / tools / prompts）
 │   ├── frontend/         React 18 四页应用（智能问答 / 知识库 / 检索策略 / 日志）
 │   └── README.md         Agentic 版详细文档
+├── qwen_rag/             Agentic 本地版（React + FastAPI + Ollama/Qwen3）
+│   ├── backend/          与 agent 同构，LLM 改为本地 Qwen（8001）
+│   ├── frontend/         与 agent 同构，端口 5174，已下线图片入口
+│   └── README.md         本地 Qwen 版详细文档
 ├── docs/                 项目文档与界面截图（docs/images/*.png）
 │   ├── 项目迁移.md       第三版设计与迁移文档（架构 / 提示词 / 评估口径）
 │   ├── spec.md           第三版执行规格
@@ -144,8 +149,8 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 
 ## 五、快速开始
 
-> 三种形态的索引、数据、配置相互独立，可按需单独运行。详细步骤见各自的 README。
-> 端口上，`product/` 与 `agent/` 都使用 8000 / 5173，不要同时启动；`demo/` 使用 8100 / 8501，可与任一版并行。
+> 各种形态的索引、数据、配置相互独立，可按需单独运行。详细步骤见各自的 README。
+> 端口上，`product/` 与 `agent/` 都使用 8000 / 5173，不要同时启动；`qwen_rag/` 使用 8001 / 5174，`demo/` 使用 8100 / 8501，可与任一版并行。
 
 ### 验证版（`demo/`）
 
@@ -207,6 +212,29 @@ npm run dev                        # http://localhost:5173/agent
 ```
 
 详见 [agent/README.md](agent/README.md)。
+
+### Agentic 本地版（`qwen_rag/`）
+
+与上一版同构，只需把 LLM 换成本机 Ollama 中的 Qwen3：先把 `ollama serve` 常驻，并确保已 `ollama pull qwen3:8b`，然后：
+
+```powershell
+# 后端（无需 API Key）
+cd qwen_rag\backend
+uv venv --python 3.11 .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+Copy-Item .env.example .env        # 默认 ollama + qwen3:8b，端口 8001
+.\.venv\Scripts\Activate.ps1
+python scripts\init_db.py
+python scripts\seed_data.py
+python -m src.api.main             # http://127.0.0.1:8001
+
+# 前端（另开一个终端）
+cd qwen_rag\frontend
+npm install
+npm run dev                        # http://localhost:5174/agent
+```
+
+详见 [qwen_rag/README.md](qwen_rag/README.md)。
 
 ---
 
