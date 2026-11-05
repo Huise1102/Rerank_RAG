@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.agent.prompts import AGENT_SYSTEM
+from src.agent.prompts import AGENT_SYSTEM, intent_instruction
 from src.core.config import settings
 from src.generation.prompt import PromptContext, contexts_from_results
 from src.retrieval.base import RetrievalResult
@@ -23,6 +23,8 @@ class AgentState:
     kb_id: int
     history: list[tuple[str, str]] = field(default_factory=list)
 
+    #: 决策前的意图识别结果：``chat``（正常交流）或 ``kb``（知识库问答）
+    intent: str = "kb"
     #: 喂给 LLM 的消息列表（含系统提示、历史、assistant(tool_calls)、tool 结果）
     messages: list[dict[str, Any]] = field(default_factory=list)
     #: 累积证据（按 chunk_id 去重）
@@ -32,8 +34,9 @@ class AgentState:
     rounds: int = 0
 
     def build_initial(self) -> None:
-        """构造首轮决策上下文：system + 最近历史 + 当前问题。"""
-        self.messages = [{"role": "system", "content": AGENT_SYSTEM}]
+        """构造首轮决策上下文：system（含意图说明） + 最近历史 + 当前问题。"""
+        system = f"{AGENT_SYSTEM}\n\n{intent_instruction(self.intent)}"
+        self.messages = [{"role": "system", "content": system}]
         turns = max(settings.generation.history_max_turns, 0) * 2
         for role, content in list(self.history)[-turns:] if turns else []:
             if role in ("user", "assistant") and content:
