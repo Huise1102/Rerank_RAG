@@ -156,7 +156,7 @@ python scripts\seed_data.py
 python -m src.api.main
 ```
 
-后端默认监听 `http://127.0.0.1:8000`，交互式文档见 `http://127.0.0.1:8000/docs`。
+后端默认监听 `http://127.0.0.1:8002`，交互式文档见 `http://127.0.0.1:8002/docs`。
 
 ### 前端
 
@@ -168,9 +168,9 @@ npm run dev
 
 ### 访问地址
 
-- 前端：http://localhost:5173
-- 后端 API：http://localhost:8000（`/api/v1` 为业务前缀，`/health` 健康检查）
-- 交互式文档：http://localhost:8000/docs
+- 前端：http://localhost:5172
+- 后端 API：http://localhost:8002（`/api/v1` 为业务前缀，`/health` 健康检查）
+- 交互式文档：http://localhost:8002/docs
 
 > 首次启动会在后台线程预热向量与精排模型（本地模型体积较大，首次加载需要一定时间）。`/health` 中的 `warmed_up` 反映预热进度。
 
