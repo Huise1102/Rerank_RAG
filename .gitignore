@@ -20,5 +20,8 @@ Thumbs.db
 *.log
 *.tmp
 
+# 运行时模型配置（含 API Key，仅保存在本机）
+agent/backend/data/model_config.json
+
 # 本地一键启动脚本
 start_all.py
