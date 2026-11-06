@@ -19,3 +19,6 @@ Thumbs.db
 # 运行时产物
 *.log
 *.tmp
+
+# 本地一键启动脚本
+start_all.py
