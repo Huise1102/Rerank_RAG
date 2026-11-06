@@ -375,7 +375,7 @@ class APISettings(_Section):
     """FastAPI 服务。"""
 
     host: str = "0.0.0.0"
-    #: 产品版占 8002（与 demo 8001、agent 8003、qwen_rag 8004 错开）
+    #: 产品版占 8002（与 demo 8001、agent 8003 错开）
     port: int = Field(default=8002, ge=1, le=65535)
     reload: bool = False
     api_prefix: str = "/api/v1"
