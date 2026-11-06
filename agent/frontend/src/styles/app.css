@@ -1,3 +1,194 @@
+/* ---------- 模型配置页 ---------- */
+.model-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.model-current__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--app-accent);
+  flex: 0 0 auto;
+}
+
+.model-current__dot.is-local {
+  background-color: var(--app-success);
+}
+
+.model-current__text {
+  font-size: 14px;
+  color: var(--app-text-regular);
+}
+
+.model-current__text b {
+  color: var(--app-text);
+}
+
+.model-current__name {
+  margin-left: 8px;
+  font-family: var(--app-mono);
+  font-size: 12.5px;
+  color: var(--app-text-secondary);
+}
+
+.model-current__time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.model-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.model-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 6px;
+  background-color: var(--app-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.model-mode:hover {
+  border-color: var(--app-accent);
+  background-color: var(--app-surface-soft);
+}
+
+.model-mode.is-active {
+  border-color: var(--app-accent);
+  background-color: var(--app-accent-soft);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+}
+
+.model-mode__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background-color: var(--app-surface-sunken);
+  color: var(--app-accent-dark);
+  font-family: var(--app-serif);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.model-mode__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-mode__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.model-mode__sub {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.model-mode__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.model-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.preset-tab {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 4px;
+  background-color: var(--app-surface);
+  color: var(--app-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.preset-tab:hover {
+  border-color: var(--app-accent);
+  color: var(--app-accent-dark);
+}
+
+.preset-tab.is-active {
+  border-color: var(--app-accent);
+  background-color: var(--app-accent-soft);
+  color: var(--app-accent-dark);
+  font-weight: 600;
+}
+
+.model-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.model-test {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 3px solid var(--app-border-strong);
+}
+
+.model-test.is-ok {
+  border-left-color: var(--app-success);
+}
+
+.model-test.is-bad {
+  border-left-color: var(--app-danger);
+}
+
+.model-test__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.model-test__msg {
+  font-size: 13px;
+  color: var(--app-text-regular);
+  word-break: break-word;
+}
+
+.model-test__reply {
+  font-size: 12.5px;
+  color: var(--app-text-muted);
+  font-family: var(--app-mono);
+}
+
+@media (max-width: 720px) {
+  .model-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
 /* ============================================================
    React 应用组件样式（app.css）
    配合 assets/theme.css 使用；无框架依赖，纯手写组件样式。
@@ -1386,3 +1577,38 @@ select.field {
   font-size: 12px;
   color: var(--app-danger);
 }
+
+/* ---------- 正文引用标记 ---------- */
+.cite-ref {
+  color: var(--app-accent-dark);
+  font-weight: 600;
+  padding: 0 1px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cite-ref:hover {
+  background-color: var(--app-accent-soft);
+  color: var(--app-accent);
+  text-decoration: underline;
+}
+
+.cite-ref--invalid {
+  color: var(--app-danger);
+  text-decoration: underline dotted;
+}
+
+.stream-cursor {
+  display: inline-block;
+  color: var(--app-accent);
+  animation: stream-blink 1s steps(2, start) infinite;
+}
+
+@keyframes stream-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+
