@@ -23,31 +23,43 @@ from src.db.models.message import Message
 
 logger = get_logger(__name__)
 
+#: 会话隔离标识：不同项目共用同一数据库，但只能读写自己的会话
+APP_KEY = "agent"
+
 
 async def create_conversation(
-    db: AsyncSession, kb_id: int, *, title: str | None = None
+    db: AsyncSession, kb_id: int, *, title: str | None = None, app_key: str = APP_KEY
 ) -> Conversation:
-    conv = Conversation(kb_id=kb_id, title=(title or None))
+    conv = Conversation(kb_id=kb_id, title=(title or None), app_key=app_key)
     db.add(conv)
     await db.commit()
     await db.refresh(conv)
     return conv
 
 
-async def get_conversation(db: AsyncSession, conversation_id: int) -> Conversation | None:
-    return await db.get(Conversation, conversation_id)
+async def get_conversation(
+    db: AsyncSession, conversation_id: int, app_key: str = APP_KEY
+) -> Conversation | None:
+    stmt = select(Conversation).where(
+        Conversation.id == conversation_id, Conversation.app_key == app_key
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def list_conversations(db: AsyncSession, kb_id: int | None = None) -> list[Conversation]:
-    stmt = select(Conversation)
+async def list_conversations(
+    db: AsyncSession, kb_id: int | None = None, app_key: str = APP_KEY
+) -> list[Conversation]:
+    stmt = select(Conversation).where(Conversation.app_key == app_key)
     if kb_id is not None:
         stmt = stmt.where(Conversation.kb_id == kb_id)
     rows = await db.execute(stmt.order_by(Conversation.id.desc()))
     return list(rows.scalars().all())
 
 
-async def delete_conversation(db: AsyncSession, conversation_id: int) -> bool:
-    conv = await db.get(Conversation, conversation_id)
+async def delete_conversation(
+    db: AsyncSession, conversation_id: int, app_key: str = APP_KEY
+) -> bool:
+    conv = await get_conversation(db, conversation_id, app_key)
     if conv is None:
         return False
     await db.delete(conv)
@@ -55,13 +67,15 @@ async def delete_conversation(db: AsyncSession, conversation_id: int) -> bool:
     return True
 
 
-async def delete_conversations(db: AsyncSession, kb_id: int | None = None) -> int:
-    """清空会话（可按知识库过滤），返回删除条数。
+async def delete_conversations(
+    db: AsyncSession, kb_id: int | None = None, app_key: str = APP_KEY
+) -> int:
+    """清空本项目的会话（可按知识库过滤），返回删除条数。
 
     会话下的消息由外键 ``conversations.id ON DELETE CASCADE`` 在库层一并删除，
     故这里只删会话行即可。
     """
-    stmt = delete(Conversation)
+    stmt = delete(Conversation).where(Conversation.app_key == app_key)
     if kb_id is not None:
         stmt = stmt.where(Conversation.kb_id == kb_id)
     result = await db.execute(stmt)
