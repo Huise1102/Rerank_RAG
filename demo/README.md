@@ -378,7 +378,7 @@ streamlit run app.py
 #   界面：http://127.0.0.1:5171
 ```
 
-> **端口约定**：四版全部错开——`demo/` **8001 / 5171**、`product/` 8002 / 5172、`agent/` 8003 / 5173、`qwen_rag/` 8004 / 5174，可同时启动。如需改端口，demo 侧用环境变量 `RAG_API__PORT`、`RAG_FRONTEND__API_BASE_URL`（或 `.streamlit/config.toml` 的 `server.port`）覆盖。
+> **端口约定**：三版全部错开——`demo/` **8001 / 5171**、`product/` 8002 / 5172、`agent/` 8003 / 5173，可同时启动。如需改端口，demo 侧用环境变量 `RAG_API__PORT`、`RAG_FRONTEND__API_BASE_URL`（或 `.streamlit/config.toml` 的 `server.port`）覆盖。
 
 **接口一览**（同时挂载在 `/api/v1` 前缀下）：
 
