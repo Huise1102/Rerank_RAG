@@ -27,8 +27,10 @@ from src.agent.prompts import (
 from src.agent.state import AgentState
 from src.agent.tools import _doc_to_client, execute_retrieve
 from src.core.config import settings
+from src.core.model_config import active_model
+from src.generation.agent_llm import get_agent_llm
 from src.generation.citation import extract_citations
-from src.generation.llm import ChatMessage, get_llm_client
+from src.generation.llm import ChatMessage
 
 #: 硬约束：单问题最多决策轮数（第 3 轮必须收敛）
 MAX_DECISION_ROUNDS: int = settings.agent.max_decision_rounds
@@ -55,7 +57,7 @@ class AgentLoop:
     """LLM 驱动的检索决策循环。用法：``AgentLoop().run(question, kb_id, history)``。"""
 
     def __init__(self, llm_client=None) -> None:
-        self.llm = llm_client or get_llm_client()
+        self.llm = llm_client or get_agent_llm()
         self.max_rounds = MAX_DECISION_ROUNDS
         self.max_retrieve_calls = settings.agent.max_retrieve_calls
 
@@ -204,7 +206,7 @@ class AgentLoop:
         try:
             resp = self.llm.chat(
                 messages,
-                model=settings.agent.model,
+                model=active_model(),
                 temperature=0.0,
                 max_tokens=16,
             )
@@ -254,8 +256,8 @@ class AgentLoop:
 
     @staticmethod
     def _model(state: AgentState) -> str:
-        """带图时改用多模态模型（文本模型收到 image_url 块会直接 400）。"""
-        return settings.llm.vision_model if state.image else settings.agent.model
+        """按当前模型配置选择模型；带图时优先多模态模型。"""
+        return active_model(image=bool(state.image))
 
     @staticmethod
     def _parse_args(raw: Any) -> dict[str, Any]:
