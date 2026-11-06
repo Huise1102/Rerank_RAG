@@ -5,6 +5,7 @@ const MENUS = [
   { path: '/agent', label: '智能问答', glyph: '智' },
   { path: '/knowledge', label: '知识库', glyph: '识' },
   { path: '/strategy', label: '检索策略', glyph: '检' },
+  { path: '/model', label: '模型配置', glyph: '型' },
   { path: '/logs', label: '日志', glyph: '日' },
 ]
 
