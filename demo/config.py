@@ -564,7 +564,7 @@ class EvaluationSettings(_Section):
 class APISettings(_Section):
     """阶段 4 使用：FastAPI 服务。"""
     host: str = "127.0.0.1"
-    #: 验证版占 8001（与 product 8002、agent 8003、qwen_rag 8004 错开）；可用 RAG_API__PORT 覆盖
+    #: 验证版占 8001（与 product 8002、agent 8003 错开）；可用 RAG_API__PORT 覆盖
     port: int = Field(default=8001, ge=1, le=65535)
     reload: bool = False
     workers: int = Field(default=1, ge=1)
