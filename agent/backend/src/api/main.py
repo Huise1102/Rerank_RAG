@@ -67,7 +67,10 @@ def _warmup_background() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.ensure_dirs()
-    logger.info("服务启动 | %s", settings.summary())
+    from src.core.model_config import get_config
+
+    cfg = get_config()  # 载入 data/model_config.json（不存在时用 .env 默认值）
+    logger.info("服务启动 | %s | 模型 %s/%s", settings.summary(), cfg.provider, cfg.model)
     if settings.api.warmup_on_startup:
         threading.Thread(target=_warmup_background, name="model-warmup", daemon=True).start()
     yield
