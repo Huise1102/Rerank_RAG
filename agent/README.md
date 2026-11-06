@@ -82,7 +82,9 @@ flowchart LR
 - 稀疏召回：BM25Okapi + jieba 分词
 - 融合：RRF（k=60）；精排：BAAI/bge-reranker-v2-m3 交叉编码器
 - 向量库：Chroma（本地持久化）
-- 决策与生成：DeepSeek `deepseek-chat`（OpenAI 兼容接口，原生 Function Calling，`temperature=0`）
+- 决策与生成：可在「模型配置」页切换两种来源（`temperature=0`）：
+  - 在线 API：DeepSeek `deepseek-chat` 或任意 OpenAI 兼容接口（填 API Key / base_url / model）
+  - 本地模型：Ollama 原生 `/api/chat`（默认 `qwen3:8b`，支持 `think` 与 `num_ctx`）
 
 ### Agent 实现
 
@@ -195,7 +197,8 @@ npm run dev
 - 后端 API：http://localhost:8003（业务前缀 `/api/v1`）
 - 交互式文档：http://localhost:8003/docs
 
-> 四版端口已全部错开：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173、`qwen_rag/` 8004 / 5174，可同时启动。
+> 三版端口已全部错开：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173，可同时启动。
+> `qwen_rag/` 已合并进 `agent/`，本地 Ollama 能力通过「模型配置」页切换，不再单独占用 8004 / 5174。
 
 ---
 
@@ -223,6 +226,12 @@ npm run dev
 - 检索链路参数（`DENSE_TOP_K=50` / `SPARSE_TOP_K=50` / `TOP_K=20` / `RRF_K=60` / `RERANK__TOP_K=5` / `CONTEXT_MAX_CHARS=6000`）一般无需修改
 
 安全提示：`.env` 已被 `agent/.gitignore` 忽略，密钥只放本地。
+
+### 模型配置（运行时热切换）
+
+- 页面：前端「模型配置」（`/model`），接口 `GET/PUT /api/v1/model-config`、`POST /api/v1/model-config/test`、`GET /api/v1/model-config/ollama-models`
+- 保存立即生效，无需重启；配置持久化到 `backend/data/model_config.json`（含密钥，已在根 `.gitignore` 中忽略）
+- 在线模式可填任意 OpenAI 兼容服务的 `api_key` / `base_url` / `model`，默认保留 DeepSeek；本地模式填 Ollama 地址与模型名（可读取已安装模型列表）
 
 ---
 
