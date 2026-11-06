@@ -36,7 +36,7 @@ def _abs(p: str | Path) -> Path:
 
 
 DeviceType = Literal["auto", "cpu", "cuda", "mps"]
-LLMProvider = Literal["deepseek", "openai", "custom"]
+LLMProvider = Literal["deepseek", "openai", "custom", "ollama"]
 EmbeddingProvider = Literal["huggingface", "local", "api"]
 FusionStrategy = Literal["dense", "sparse", "rrf", "weighted"]
 RerankBackend = Literal["cross_encoder", "flag_embedding"]
@@ -317,6 +317,10 @@ class LLMSettings(_Section):
     vision_model: str = Field(default="deepseek-flash", description="支持图片输入的模型名")
     #: 图片转为 data URL 后的最大字符数（约 8 MiB 原图）
     image_max_chars: int = Field(default=12_000_000, ge=100_000)
+
+    #: 本地 Ollama 专属参数（provider=ollama 时生效）
+    think: bool = Field(default=False, description="Ollama 是否输出思维链")
+    num_ctx: int = Field(default=8192, ge=1024, description="Ollama 上下文窗口")
 
     @field_validator("base_url", mode="after")
     @classmethod
