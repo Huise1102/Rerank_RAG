@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -36,6 +37,20 @@ VALID_STRATEGIES: tuple[str, ...] = ("vector", "bm25", "hybrid", "hybrid_rerank"
 #: 构建块开关默认值：全开
 DEFAULT_STRATEGIES: dict[str, bool] = {"vector": True, "bm25": True, "fusion": True, "rerank": True}
 
+
+
+def _preload_store_stack() -> None:
+    """在旁路线程里预热"索引侧"依赖（chromadb / jieba），与模型侧导入重叠。
+
+    ``import torch`` + ``import transformers`` 要 20 秒左右，而 ``import chromadb``
+    还要 1.5~3 秒，两者之间没有依赖关系，串行做纯属浪费。失败不影响主流程：
+    真正用到时会再导入一次并抛出原始错误。
+    """
+    for module in ("chromadb", "jieba"):
+        try:
+            __import__(module)
+        except Exception as exc:  # noqa: BLE001 - 预热失败不应影响启动
+            logger.debug("旁路预热 %s 失败: %s", module, exc)
 
 
 @dataclass
@@ -199,13 +214,24 @@ class RetrievalPipeline:
         预热检索器与精排模型，返回各自耗时。
 
         FastAPI 启动时调用，避免第一个真实请求承担约 20 秒的加载延迟。
+
+        启动耗时几乎全是 ``import torch`` / ``import transformers``（实测 20 秒上下），
+        模型权重本身只占 1 秒左右。chromadb 与 jieba 的导入和它们互不依赖，
+        因此放在旁路线程里同时导入（详见 ``_preload_store_stack``），可省下数秒。
         """
         used: dict[str, float] = {}
         t0 = time.perf_counter()
-        used["vector"] = round(self.vector.warmup(), 3)
-        used["bm25"] = round(self.bm25.warmup(), 3)
-        if include_reranker and settings.rerank.enabled:
-            used["reranker"] = round(self.reranker.load(), 3)
+        preload = threading.Thread(
+            target=_preload_store_stack, name="preload-store", daemon=True,
+        )
+        preload.start()
+        try:
+            used["vector"] = round(self.vector.warmup(), 3)
+            used["bm25"] = round(self.bm25.warmup(), 3)
+            if include_reranker and settings.rerank.enabled:
+                used["reranker"] = round(self.reranker.load(), 3)
+        finally:
+            preload.join()
         used["total"] = round(time.perf_counter() - t0, 3)
         logger.info("检索管线预热完成: kb=%d %s", self.kb_id, used)
         return used
