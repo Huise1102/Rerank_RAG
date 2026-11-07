@@ -68,5 +68,7 @@ def execute_retrieve(state: AgentState, query: str, strategy: str) -> dict[str, 
         "rendered": rendered,
         "docs": [_doc_to_client(r) for r in new],
         "stats": resp.stats,
+        "timing": resp.timing,
+        "top_k": (resp.params or {}).get("top_k"),
         "elapsed_ms": elapsed_ms,
     }
