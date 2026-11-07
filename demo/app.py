@@ -453,16 +453,45 @@ def _url(path: str) -> str:
     return f"{settings.frontend.api_base_url.rstrip('/')}{path}"
 
 
-def api_health() -> dict[str, Any]:
-    r = requests.get(_url("/health"), timeout=15)
+#: 侧边栏元数据每次 rerun 都会用到，但内容几乎不变，且都不该拖慢首屏：
+#:   - /strategies 是静态枚举：进程内取一次并常驻缓存；
+#:   - /health 只用于状态展示：缓存 10 秒。
+#: 两者都使用 3 秒短超时 —— 后端卡住时前端最多等 3 秒，而不是 15 秒把整页拖住。
+_META_TIMEOUT = 3
+_HEALTH_TTL = 10.0
+_health_cache: tuple[float, dict[str, Any]] | None = None
+_strategies_cache: dict[str, Any] | None = None
+
+
+def api_health(*, timeout: int = 15) -> dict[str, Any]:
+    r = requests.get(_url("/health"), timeout=timeout)
     r.raise_for_status()
     return r.json()
 
 
-def api_strategies() -> dict[str, Any]:
-    r = requests.get(_url("/strategies"), timeout=15)
+def api_strategies(*, timeout: int = 15) -> dict[str, Any]:
+    r = requests.get(_url("/strategies"), timeout=timeout)
     r.raise_for_status()
     return r.json()
+
+
+def cached_strategies() -> dict[str, Any]:
+    """检索策略是静态枚举，进程内只请求一次；失败不缓存，下次 rerun 会重试。"""
+    global _strategies_cache
+    if _strategies_cache is None:
+        _strategies_cache = api_strategies(timeout=_META_TIMEOUT)
+    return _strategies_cache
+
+
+def cached_health() -> dict[str, Any]:
+    """健康状态短期缓存，刷新页面时不再同步等后端。"""
+    global _health_cache
+    now = time.monotonic()
+    if _health_cache is not None and now - _health_cache[0] < _HEALTH_TTL:
+        return _health_cache[1]
+    data = api_health(timeout=_META_TIMEOUT)
+    _health_cache = (now, data)
+    return data
 
 
 def api_query(question: str, strategy: str, use_stream: bool = True) -> Iterator[dict[str, Any]]:
@@ -700,7 +729,7 @@ def render_assistant_extras(msg: dict[str, Any]) -> None:
 # 关掉自动多页导航（.streamlit/config.toml）+ 压缩间距（见 _CSS）+ 低频内容进 expander，一屏显示全部模块。
 with st.sidebar:
     try:
-        strategy_data = api_strategies()
+        strategy_data = cached_strategies()
         options = {item["value"]: item for item in strategy_data["retrieval"]}
     except Exception:  # noqa: BLE001 - 后端未启动时用内置默认值，保证界面可打开
         options = {
@@ -735,7 +764,7 @@ with st.sidebar:
         )
     connected = True
     try:
-        health = api_health()
+        health = cached_health()
     except Exception as exc:  # noqa: BLE001
         health = {}
         connected = False
