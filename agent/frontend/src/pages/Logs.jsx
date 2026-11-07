@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listRetrievalLogs, systemLogs } from '../api/log'
+import { clearRetrievalLogs, clearSystemLogs, listRetrievalLogs, systemLogs } from '../api/log'
 import { useKbStore } from '../stores/kbStore'
 import { message } from '../utils/toast'
 
@@ -30,8 +30,8 @@ export default function Logs() {
     kb.fetchKbs()
   }, [])
 
-  async function loadLogs() {
-    setLoading(true)
+  async function loadLogs(silent = false) {
+    if (!silent) setLoading(true)
     try {
       const data = await listRetrievalLogs({
         page,
@@ -42,7 +42,7 @@ export default function Logs() {
     } catch (e) {
       /* 拦截器已提示 */
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -59,9 +59,39 @@ export default function Logs() {
     }
   }
 
+  async function clearRetrieval() {
+    if (!window.confirm('确定清空所有检索日志吗？此操作不可恢复。')) return
+    try {
+      const res = await clearRetrievalLogs()
+      message.success(`已清空 ${res.deleted ?? 0} 条检索日志`)
+      setPage(1)
+      await loadLogs()
+    } catch (e) {
+      /* 拦截器已提示 */
+    }
+  }
+
+  async function clearSystem() {
+    if (!window.confirm('确定清空系统日志文件吗？此操作不可恢复。')) return
+    try {
+      await clearSystemLogs()
+      message.success('系统日志已清空')
+      await loadSystem()
+    } catch (e) {
+      /* 拦截器已提示 */
+    }
+  }
+
   useEffect(() => {
     loadLogs()
   }, [page, pageSize])
+
+  // 检索日志实时刷新：激活检索日志页时每 3 秒静默拉取当前页
+  useEffect(() => {
+    if (tab !== 'retrieval') return
+    const timer = window.setInterval(() => loadLogs(true), 3000)
+    return () => window.clearInterval(timer)
+  }, [tab, page, pageSize, kbFilter])
 
   const totalPages = Math.max(1, Math.ceil(logs.total / pageSize))
 
@@ -100,6 +130,9 @@ export default function Logs() {
             <span className="text-muted" style={{ fontSize: 13 }}>
               共 {logs.total} 条
             </span>
+            <button className="btn btn--sm btn--danger" onClick={clearRetrieval}>
+              清空检索日志
+            </button>
           </div>
 
           {loading ? (
@@ -154,6 +187,9 @@ export default function Logs() {
           <div className="filter-bar">
             <button className="btn btn--sm" disabled={sysLoading} onClick={loadSystem}>
               {sysLoading ? '加载中…' : '刷新'}
+            </button>
+            <button className="btn btn--sm btn--danger" onClick={clearSystem}>
+              清空系统日志
             </button>
             {sysMeta?.exists === false ? (
               <span className="text-danger" style={{ fontSize: 13 }}>
