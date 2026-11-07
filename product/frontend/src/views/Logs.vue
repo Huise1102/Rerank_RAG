@@ -25,6 +25,9 @@
               <el-icon><Refresh /></el-icon>
               <span>刷新</span>
             </el-button>
+            <el-button type="danger" plain @click="clearRetrieval">
+              <span>清空检索日志</span>
+            </el-button>
           </div>
 
           <el-table :data="logs" v-loading="logsLoading" stripe style="width: 100%">
@@ -85,6 +88,9 @@
               <el-icon><Refresh /></el-icon>
               <span>刷新</span>
             </el-button>
+            <el-button type="danger" plain @click="clearSystem">
+              <span>清空系统日志</span>
+            </el-button>
           </div>
 
           <pre v-loading="systemLoading" class="log-view scroll-area">{{ systemLogText || '（暂无日志）' }}</pre>
@@ -95,9 +101,10 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useKbStore } from '@/stores/kb'
-import { getRetrievalLogs, getSystemLogs } from '@/api/log'
+import { clearRetrievalLogs, clearSystemLogs, getRetrievalLogs, getSystemLogs } from '@/api/log'
 
 const kbStore = useKbStore()
 
@@ -117,10 +124,32 @@ const level = ref('')
 const keyword = ref('')
 const levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
 
+let pollTimer = null
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(() => loadRetrieval(true), 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+watch(activeTab, (name) => {
+  if (name === 'retrieval') startPolling()
+  else stopPolling()
+})
+
 onMounted(async () => {
   if (!kbStore.kbs.length) await kbStore.fetchKbs()
   await loadRetrieval()
+  if (activeTab.value === 'retrieval') startPolling()
 })
+
+onUnmounted(() => stopPolling())
 
 function onTabChange(name) {
   if (name === 'system' && !systemLogText.value) {
@@ -133,8 +162,8 @@ function reloadRetrieval() {
   loadRetrieval()
 }
 
-async function loadRetrieval() {
-  logsLoading.value = true
+async function loadRetrieval(silent = false) {
+  if (!silent) logsLoading.value = true
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (kbFilter.value) params.kb_id = kbFilter.value
@@ -146,7 +175,7 @@ async function loadRetrieval() {
     logs.value = []
     total.value = 0
   } finally {
-    logsLoading.value = false
+    if (!silent) logsLoading.value = false
   }
 }
 
@@ -162,6 +191,37 @@ async function loadSystem() {
     systemLogText.value = ''
   } finally {
     systemLoading.value = false
+  }
+}
+
+async function clearRetrieval() {
+  try {
+    await ElMessageBox.confirm('确定清空所有检索日志吗？此操作不可恢复。', '清空检索日志', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await clearRetrievalLogs()
+    ElMessage.success('检索日志已清空')
+    page.value = 1
+    await loadRetrieval()
+  } catch (e) {
+    /* 拦截器已提示 */
+  }
+}
+
+async function clearSystem() {
+  try {
+    await ElMessageBox.confirm('确定清空系统日志文件吗？此操作不可恢复。', '清空系统日志', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await clearSystemLogs()
+    ElMessage.success('系统日志已清空')
+    await loadSystem()
+  } catch (e) {
+    /* 拦截器已提示 */
   }
 }
 
