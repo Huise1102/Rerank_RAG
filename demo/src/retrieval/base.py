@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -94,14 +95,20 @@ class BaseRetriever(ABC):
     def __init__(self, strategy: str | None = None) -> None:
         self.strategy = (strategy or settings.chunk.default_strategy).strip().lower()
         self._loaded = False
+        self._load_lock = threading.RLock()
         self._load_seconds: float = 0.0
         self.last_seconds: float = 0.0  # 最近一次检索耗时
     def warmup(self) -> float:
-        """显式预热（加载索引/模型），返回耗时秒数。"""
+        """显式预热（加载索引/模型），返回耗时秒数。
+
+        预热线程与首个查询可能同时进入这里：加锁并二次检查，保证只真正加载一次，
+        后来者等待同一次加载完成。否则同一个大模型会被并发加载两遍，启动时间直接翻倍。
+        """
         t0 = time.perf_counter()
-        if not self._loaded:
-            self._load()
-            self._loaded = True
+        with self._load_lock:
+            if not self._loaded:
+                self._load()
+                self._loaded = True
         self._load_seconds = time.perf_counter() - t0
         return self._load_seconds
 
