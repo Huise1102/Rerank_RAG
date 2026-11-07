@@ -171,9 +171,11 @@ class AgentLoop:
                 {"role": "tool", "tool_call_id": call.get("id", ""), "content": result["rendered"]},
             )
             step = self._step(round_no, "retrieve", tool="retrieve",
-                              args={"query": query, "strategy": result["strategy"]},
+                              args={"query": query, "strategy": result["strategy"],
+                                    "top_k": result["top_k"]},
                               result_count=result["result_count"], docs=result["docs"],
                               strategy=result["strategy"], stats=result["stats"],
+                              timing=result["timing"],
                               usage=decision.usage, elapsed_ms=self._elapsed(round_t0))
             state.trace.append(step)
             yield {"type": "step", "step": step}
@@ -291,6 +293,7 @@ class AgentLoop:
     def _step(round_no: int, action: str, *, tool: str | None, args: dict[str, Any] | None,
               result_count: int = 0, docs: list[dict[str, Any]] | None = None,
               strategy: str = "", stats: dict[str, Any] | None = None,
+              timing: dict[str, float] | None = None,
               usage: dict[str, Any] | None = None, elapsed_ms: int = 0) -> dict[str, Any]:
         return {
             "round": round_no,
@@ -301,6 +304,7 @@ class AgentLoop:
             "docs": docs or [],
             "strategy": strategy,
             "stats": stats,
+            "timing": timing or {},
             "llm_usage": usage or {},
             "elapsed_ms": elapsed_ms,
         }
