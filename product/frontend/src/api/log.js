@@ -9,3 +9,13 @@ export function getRetrievalLogs(params) {
 export function getSystemLogs(params) {
   return request.get('/logs/system', { params })
 }
+
+// 清空检索日志
+export function clearRetrievalLogs() {
+  return request.delete('/logs/retrieval')
+}
+
+// 清空系统日志文件
+export function clearSystemLogs() {
+  return request.delete('/logs/system')
+}
