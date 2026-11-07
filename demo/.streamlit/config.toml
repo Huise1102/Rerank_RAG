@@ -38,6 +38,12 @@ primaryColor = "#3b7dd8"       # st.toggle 开启色（唯一需要主题令牌�
 headless = true
 port = 5171                      # 三版前端端口：demo 5171 / product 5172 / agent 5173
 fileWatcherType = "auto"
+# 默认会递归监听工作目录（demo/）下的所有子目录。.venv 有两万多个文件、
+# indexes 有 47MB、logs 还被后端持续写入 —— 监听它们只会拖慢启动、
+# 并在索引/日志变化时产生无意义的重载信号，故排除。路径相对启动目录。
+folderWatchBlacklist = [".venv", "data", "indexes", "logs", "__pycache__"]
+# 改文件后不自动重跑，刷新页面仍然会重新执行脚本；避免演示时被误触发
+runOnSave = false
 
 [browser]
 gatherUsageStats = false
