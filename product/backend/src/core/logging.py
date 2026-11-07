@@ -123,6 +123,21 @@ def setup_logging(level: str | None = None) -> None:
     _configured = True
 
 
+def clear_log_file() -> dict[str, Any]:
+    """清空应用日志文件。
+
+    先移除 loguru 的 sink（关闭文件句柄，避免 Windows 上截断被占用文件失败），
+    再清空内容，最后重新 :func:`setup_logging` 打开。返回清空的路径与字节数。
+    """
+    path = settings.log.dir / settings.log.file_name
+    size = path.stat().st_size if path.exists() else 0
+    _loguru_logger.remove()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    setup_logging()
+    return {"path": str(path), "bytes_cleared": size}
+
+
 class PercentStyleLogger:
     """把 ``%``-风格调用适配到 loguru。
 
