@@ -211,7 +211,7 @@ flowchart TB
 | 向量库       | Chroma 0.5.20（本地持久化）         | 落盘即可用，无需独立服务；小规模语料够用                                       |
 | 稀疏检索      | rank\_bm25（BM25Okapi）+ jieba | 纯 Python、零依赖、中文分词成熟                                        |
 | Embedding | `BAAI/bge-large-zh-v1.5`     | 1024 维，中文检索榜单长期领先；本地推理无 API 成本                             |
-| Rerank    | `BAAI/bge-reranker-v2-m3`    | 交叉编码器，多语言；官方已标注支持 `sentence-transformers`，无需 FlagEmbedding |
+| Rerank    | `BAAI/bge-reranker-v2-m3`    | 交叉编码器，多语言；用 transformers 直接前向，无需 sentence-transformers/FlagEmbedding |
 | LLM       | DeepSeek `deepseek-chat`     | OpenAI 兼容接口、中文强、价格低                                        |
 | 后端        | FastAPI + Uvicorn            | 同步 `def` 路由自动进线程池，适配阻塞式检索/生成                               |
 | 前端        | Streamlit                    | 迭代快；本项目前端只做展示，不参与任何计算                                      |
@@ -283,7 +283,7 @@ python -m pip install -r requirements.txt
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `pydantic >=2.9,<2.10`    | langchain-core 0.2.x 内部仍用 pydantic v1 的 `class Config` 写法，该写法在 pydantic 2.10 被移除，会抛 `PydanticUserError: Please use 'model_config'` |
 | `chromadb >=0.5.5,<0.6.0` | 所有支持 chromadb 1.x 的 `langchain-chroma`（>=0.2.4）都要求 `langchain-core>=0.3.60`，与 LangChain 0.2.x 硬冲突                                  |
-| 不安装 `FlagEmbedding`       | `bge-reranker-v2-m3` 已被官方标注支持 `sentence-transformers`，直接用 `CrossEncoder` 加载即可，省下约 1.5 GB 的 datasets/accelerate/peft 传递依赖           |
+| 不安装 `FlagEmbedding`       | `bge-reranker-v2-m3` 是一个 `num_labels=1` 的分类头，用 `transformers` 的 `AutoModelForSequenceClassification` 直接前向即可，省下约 1.5 GB 的 datasets/accelerate/peft 传递依赖 |
 
 ### 5.3 模型下载与离线模式
 
@@ -369,7 +369,7 @@ python -m src.generation.cli ask "~"  # 真实问答（消耗 token）
 ### 6.2 启动后端 API + 前端界面
 
 ```powershell
-# 终端 1：后端（启动时后台线程预热检索管线，约 10 秒）
+# 终端 1：后端（启动时后台线程预热检索管线，约 25~30 秒，期间 /health 已可访问）
 python -m src.api.main
 #   接口文档：http://127.0.0.1:8001/docs
 
@@ -523,9 +523,9 @@ python -m src.evaluation.cli all                      # 检索 + 消融 + 出图
 
 ### 8.1 预热必须放后台线程
 
-精排模型 2.2 GB，加载需十几秒。若在 lifespan 里同步等待，服务在这段时间内**完全不响应**
-（连 `/health` 都不通，前端只会显示"连接失败"）。改成后台线程后实测：服务启动即可用，
-预热 9.9 秒完成，期间 `/health` 正常返回 `warmed_up=false`。
+精排模型 2.2 GB，加上 `torch` / `transformers` 的模块导入，冷启动约 25~30 秒（改造前约 50 秒）。若在 lifespan 里同步等待，服务在这段时间内**完全不响应**（连 `/health` 都不通，前端只会显示"连接失败"）。改成后台线程后：服务启动即可用，期间 `/health` 正常返回 `warmed_up=false`。
+
+在此基础上还有两项优化：① 预热时用旁路线程并行导入 `chromadb` / `jieba`（与 `torch` / `transformers` 无依赖关系，可省数秒）；② 不再导入 `sentence-transformers`（它连带导入训练/评估模块约 30 秒），Embedding 与精排均改为 `transformers` 直接前向。
 
 ### 8.2 同步路由用 `def`，不要滥用 `async def`
 
