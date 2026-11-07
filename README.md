@@ -84,10 +84,10 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 
 ### 检索与模型（三版共用）
 
-- 稠密召回：`BAAI/bge-large-zh-v1.5`（sentence-transformers，本地推理，维度 1024）
+- 稠密召回：`BAAI/bge-large-zh-v1.5`（transformers 直连推理，本地离线，维度 1024）
 - 稀疏召回：`BM25Okapi` + `jieba` 中文分词
 - 融合：RRF（默认）或加权融合
-- 精排：`BAAI/bge-reranker-v2-m3` 交叉编码器（CrossEncoder）
+- 精排：`BAAI/bge-reranker-v2-m3` 交叉编码器（transformers 直连，保留原始 logits）
 - 向量库：Chroma（LangChain 集成）
 - 生成：DeepSeek / 任意 OpenAI 兼容接口（`deepseek-chat`；图像问答用 `deepseek-flash`），或本机 Ollama 中的 Qwen3（`/api/chat` 原生接口）——两者由 Agentic 版的「模型配置」页热切换
 
