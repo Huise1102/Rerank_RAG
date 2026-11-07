@@ -59,10 +59,10 @@
 
 ### 检索与模型
 
-- 稠密召回：BAAI/bge-large-zh-v1.5（sentence-transformers，本地推理，维度 1024）
+- 稠密召回：BAAI/bge-large-zh-v1.5（transformers 直连推理，本地离线，维度 1024）
 - 稀疏召回：BM25Okapi + jieba 中文分词
 - 融合：RRF（默认）或加权融合
-- 精排：BAAI/bge-reranker-v2-m3 交叉编码器（sentence-transformers CrossEncoder）
+- 精排：BAAI/bge-reranker-v2-m3 交叉编码器（transformers 直连，保留原始 logits）
 - 向量库：Chroma（LangChain Chroma 集成）
 - 生成：DeepSeek（OpenAI 兼容接口）
 
