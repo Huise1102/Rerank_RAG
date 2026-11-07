@@ -258,3 +258,17 @@ Agentic 版已内置本地模型能力，只需本机常驻 `ollama serve` 并�
 - **Agentic 版的多模态未接入**：接口保留 `image` 字段，但决策仅使用文本问题。
 - **模型缓存**：三版首次运行均需联网或已具备本地模型缓存（bge-large-zh-v1.5 与 bge-reranker-v2-m3）。
 - **密钥安全**：真实密钥与数据库口令请自行填写到各自的 `.env`，不要提交到仓库（仓库 `.gitignore` 已忽略相关文件）。
+
+---
+
+## 八、致谢
+
+本项目的检索与生成链路建立在大量优秀的开源工作上，在此向作者与维护者致谢：
+
+- **模型**：北京智源人工智能研究院（BAAI）开源的 [`bge-large-zh-v1.5`](https://huggingface.co/BAAI/bge-large-zh-v1.5) 与 [`bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)，分别承担稠密召回与交叉编码器精排；以及 Ollama 社区的 `qwen3:8b` 本地模型。
+- **推理与检索**：Hugging Face 的 [transformers](https://github.com/huggingface/transformers)、[Chroma](https://github.com/chroma-core/chroma)、[rank_bm25](https://github.com/dorianbrown/rank_bm25)、[jieba](https://github.com/fxsjy/jieba)。
+- **服务与界面**：FastAPI / Uvicorn / Pydantic、Streamlit、Vue 3 + Vite、React + Vite。
+- **生成服务**：DeepSeek 提供的对话模型 API。
+
+同时感谢开源社区所有提交 issue、修复缺陷与撰写文档的贡献者——没有这些基础设施，本项目无法以如此小的成本把「混合检索 + Rerank」完整跑通。
+
