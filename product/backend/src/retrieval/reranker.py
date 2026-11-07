@@ -10,7 +10,7 @@
 需要展示"相关度百分比"或用 ``score_threshold`` 卡阈值时打开它（sigmoid 映射到 0~1）。
 不同 query 之间的分数不可直接比较，评估时只能用于排序。
 
-``config.rerank.backend``：``cross_encoder``（默认，CrossEncoder，无需 FlagEmbedding 约 1.5 GB 依赖）、
+``config.rerank.backend``：``cross_encoder``（默认，transformers 直接前向，无需 FlagEmbedding 约 1.5 GB 依赖）、
 ``flag_embedding``（FlagReranker，与官方示例逐一对应，保留供答辩时交叉验证）。
 
 （从 demo/src/retrieval/reranker.py 逐字复制，仅把 config 导入改为 src.core.config。）
@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 from pathlib import Path
 from typing import Any, Sequence
@@ -51,6 +52,69 @@ def _sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 
+class _TransformerCrossEncoder:
+    """用 transformers 直接对 (query, doc) 前向打分，替代 sentence-transformers 的 CrossEncoder。
+
+    唯一目的是启动速度：``import sentence_transformers`` 会连带导入训练/评估等模块
+    （本机实测约 30 秒），而精排只需要一次前向推理。
+    bge-reranker-v2-m3 是 ``num_labels=1`` 的回归头。sentence-transformers 的 CrossEncoder
+    默认对它套 Sigmoid（返回 0~1 概率）；这里保留**原始 logits**：排序结果完全一致
+    （sigmoid 单调），但 ``score_threshold=0.0`` 能真正过滤无关候选（sigmoid 后恒 > 0，
+    阈值形同虚设）。需要 0~1 分数时由 ``normalize_score=True`` 统一做一次 sigmoid。
+    """
+
+    def __init__(self, model_ref: str, device: str, max_length: int) -> None:
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        self._tokenizer = AutoTokenizer.from_pretrained(model_ref)
+        self._model = (
+            AutoModelForSequenceClassification.from_pretrained(model_ref).to(device).eval()
+        )
+        self._device = device
+        self._max_length = max_length
+
+    def predict(
+        self,
+        pairs: Sequence[Sequence[str]],
+        *,
+        batch_size: int = 32,
+        show_progress_bar: bool = False,
+        convert_to_numpy: bool = True,
+    ):
+        """打分，签名与 ``CrossEncoder.predict`` 兼容，返回 (n,) 的分数数组。"""
+        import numpy as np
+        import torch
+
+        if not pairs:
+            return np.zeros((0,), dtype="float32")
+
+        bs = max(1, int(batch_size))
+        batches = range(0, len(pairs), bs)
+        if show_progress_bar:
+            from tqdm import tqdm
+
+            batches = tqdm(batches, desc="精排", unit="批", ncols=90)
+
+        scores = []
+        with torch.inference_mode():
+            for start in batches:
+                batch = [[str(q), str(d)] for q, d in pairs[start : start + bs]]
+                features = self._tokenizer(
+                    batch,
+                    padding=True,
+                    truncation=True,
+                    max_length=self._max_length,
+                    return_tensors="pt",
+                )
+                features = {k: v.to(self._device) for k, v in features.items()}
+                logits = self._model(**features).logits
+                # 单标签回归头取唯一 logit；多标签时取最后一维（与 CrossEncoder 的取法一致）
+                scores.append(logits[:, -1].detach().cpu().numpy())
+
+        values = np.concatenate(scores, axis=0)
+        return values if convert_to_numpy else values.tolist()
+
+
 class Reranker:
     """
     交叉编码器精排器（惰性加载，可跨查询复用）。
@@ -77,6 +141,7 @@ class Reranker:
         self._model: Any = None
         self._device = "unknown"
         self._loaded = False
+        self._load_lock = threading.RLock()
         self.load_seconds: float = 0.0
         self.last_seconds: float = 0.0
     @property
@@ -84,37 +149,42 @@ class Reranker:
         return self._loaded
 
     def load(self) -> float:
-        """加载模型，返回耗时秒数（幂等）。"""
-        if self._loaded:
-            return 0.0
-        t0 = time.perf_counter()
-        cfg = settings.rerank
-        device = self._pick_device()
+        """加载模型，返回耗时秒数（幂等）。
 
-        if self.backend == "flag_embedding":
-            from FlagEmbedding import FlagReranker
+        预热线程与首个查询可能同时触发加载，加锁保证只加载一次：否则 2.2 GB 的模型
+        会被并发读两遍，内存峰值和启动时间都会翻倍。
+        """
+        with self._load_lock:
+            if self._loaded:
+                return 0.0
+            t0 = time.perf_counter()
+            cfg = settings.rerank
+            device = self._pick_device()
 
-            # 与 embedding 模型等其他大模型的加载互斥，见 core/model_lock.py
-            with MODEL_LOAD_LOCK:
-                self._model = FlagReranker(
-                    self.model_name,
-                    use_fp16=(device == "cuda" and cfg.use_fp16),
-                )
-        else:
-            from sentence_transformers import CrossEncoder
+            if self.backend == "flag_embedding":
+                from FlagEmbedding import FlagReranker
 
-            ref = self._resolve_ref()
-            with MODEL_LOAD_LOCK:
-                self._model = CrossEncoder(ref, device=device, max_length=cfg.max_length)
+                # 与 embedding 模型等其他大模型的加载互斥，见 core/model_lock.py
+                with MODEL_LOAD_LOCK:
+                    self._model = FlagReranker(
+                        self.model_name,
+                        use_fp16=(device == "cuda" and cfg.use_fp16),
+                    )
+            else:
+                ref = self._resolve_ref()
+                with MODEL_LOAD_LOCK:
+                    self._model = _TransformerCrossEncoder(
+                        ref, device=device, max_length=cfg.max_length,
+                    )
 
-        self._device = device
-        self._loaded = True
-        self.load_seconds = time.perf_counter() - t0
-        logger.info(
-            "Reranker 就绪: 模型=%s 后端=%s device=%s 加载耗时=%.1fs",
-            self.model_name, self.backend, device, self.load_seconds,
-        )
-        return self.load_seconds
+            self._device = device
+            self._loaded = True
+            self.load_seconds = time.perf_counter() - t0
+            logger.info(
+                "Reranker 就绪: 模型=%s 后端=%s device=%s 加载耗时=%.1fs",
+                self.model_name, self.backend, device, self.load_seconds,
+            )
+            return self.load_seconds
 
     def _pick_device(self) -> str:
         if self._device_pref and self._device_pref != "auto":
