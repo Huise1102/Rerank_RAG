@@ -6,11 +6,11 @@ from collections import deque
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.logging import get_logger
+from src.core.logging import clear_log_file, get_logger
 from src.db.models.retrieval_log import RetrievalLog
 from src.db.session import get_db
 from src.schemas.log import LogsPage, RetrievalLogOut
@@ -63,4 +63,23 @@ def system_logs(
             if kw and kw not in line:
                 continue
             kept.append(line)
-    return {"lines": list(kept), "path": str(path), "exists": True}
+    # 最新的一行在最前，便于日志窗口自上而下按时间倒序阅读
+    return {"lines": list(reversed(kept)), "path": str(path), "exists": True}
+
+
+@router.delete("/logs/retrieval", summary="清空检索日志")
+async def clear_retrieval_logs(db: AsyncSession = Depends(get_db)) -> dict:
+    """删除 retrieval_logs 表全部记录。"""
+    result = await db.execute(delete(RetrievalLog))
+    await db.commit()
+    deleted = int(result.rowcount or 0)
+    logger.info("清空检索日志: %s 条", deleted)
+    return {"ok": True, "deleted": deleted}
+
+
+@router.delete("/logs/system", summary="清空系统日志")
+def clear_system_logs() -> dict:
+    """清空 logs/app.log 内容（先释放 loguru 句柄再截断）。"""
+    info = clear_log_file()
+    logger.info("清空系统日志: 释放 %s 字节", info.get("bytes_cleared", 0))
+    return {"ok": True, **info}
