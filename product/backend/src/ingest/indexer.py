@@ -128,10 +128,73 @@ def resolve_local_snapshot(model_name: str) -> Path | None:
         return None
 
 
-def load_embedder(device: str | None = None, *, offline: bool | None = None):
-    """加载 bge-large-zh-v1.5（sentence-transformers）。
+class _TransformerEmbedder:
+    """直接用 transformers 前向编码，替代 SentenceTransformer 的模型包装。
 
-    1. **离线优先**：sentence-transformers 加载时会访问 HuggingFace 校验缓存（即使文件已下全），
+    唯一目的是启动速度：``import sentence_transformers`` 会连带导入 CrossEncoder 与
+    训练/评估模块（本机实测约 30 秒），而检索只需要一次前向推理。
+    语义与 SentenceTransformer 完全一致：bge-large-zh-v1.5 的 1_Pooling 配置是
+    CLS 池化（取 last_hidden_state[:, 0]），再按需 L2 归一化。
+    """
+
+    def __init__(self, model_ref: str, device: str, max_seq_length: int) -> None:
+        from transformers import AutoModel, AutoTokenizer
+
+        self._tokenizer = AutoTokenizer.from_pretrained(model_ref)
+        self._model = AutoModel.from_pretrained(model_ref).to(device).eval()
+        self._device = device
+        self.max_seq_length = max_seq_length
+
+    def encode(
+        self,
+        texts: Sequence[str],
+        *,
+        batch_size: int = 32,
+        normalize_embeddings: bool = True,
+        convert_to_numpy: bool = True,
+        show_progress_bar: bool = False,
+    ):
+        """批量编码为向量，签名与 ``SentenceTransformer.encode`` 兼容。"""
+        import numpy as np
+        import torch
+
+        texts = [str(t) for t in texts]
+        dim = int(self._model.config.hidden_size)
+        if not texts:
+            return np.zeros((0, dim), dtype="float32")
+
+        bs = max(1, int(batch_size))
+        batches = range(0, len(texts), bs)
+        if show_progress_bar:
+            from tqdm import tqdm
+
+            batches = tqdm(batches, desc="向量化", unit="批", ncols=90)
+
+        chunks = []
+        with torch.inference_mode():
+            for start in batches:
+                batch = texts[start : start + bs]
+                features = self._tokenizer(
+                    batch,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_seq_length,
+                    return_tensors="pt",
+                )
+                features = {k: v.to(self._device) for k, v in features.items()}
+                hidden = self._model(**features).last_hidden_state[:, 0, :]
+                if normalize_embeddings:
+                    hidden = torch.nn.functional.normalize(hidden, p=2, dim=1)
+                chunks.append(hidden.detach().cpu().numpy())
+
+        vectors = np.concatenate(chunks, axis=0)
+        return vectors if convert_to_numpy else vectors.tolist()
+
+
+def load_embedder(device: str | None = None, *, offline: bool | None = None):
+    """加载 bge-large-zh-v1.5（transformers 前向，不导入 sentence-transformers）。
+
+    1. **离线优先**：加载时会访问 HuggingFace 校验缓存（即使文件已下全），
        国内网络下会 connect timeout 并触发 5 轮指数退避，表现为程序卡住几十分钟；
        因此默认走 ``HF_HUB_OFFLINE``，只要本地有快照就完全不联网。
     2. **加载前预检**：先用 ``local_files_only=True`` 确认本地有模型，没有则立刻抛出可操作的
@@ -142,7 +205,6 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
     import os
 
     import torch
-    from sentence_transformers import SentenceTransformer
 
     cfg = settings.embedding
     use_offline = cfg.offline if offline is None else offline
@@ -170,7 +232,7 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
                 f" snapshot_download('{cfg.resolved_model}')\"\n"
                 f"或关闭离线模式：RAG_EMBEDDING__OFFLINE=false"
             )
-        # 未缓存且允许联网：交给 sentence-transformers 自行下载
+        # 未缓存且允许联网：交给 transformers 自行下载
         model_ref = cfg.resolved_model
 
     if device and device != "auto":
@@ -182,8 +244,7 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
 
     # 与精排模型等其他大模型的加载互斥，避免并发 from_pretrained 拿到 meta 参数
     with MODEL_LOAD_LOCK:
-        model = SentenceTransformer(model_ref, device=target)
-    model.max_seq_length = cfg.max_length
+        model = _TransformerEmbedder(model_ref, target, cfg.max_length)
     return model, target
 
 
