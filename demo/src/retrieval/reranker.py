@@ -54,8 +54,10 @@ class _TransformerCrossEncoder:
 
     唯一目的是启动速度：``import sentence_transformers`` 会连带导入训练/评估等模块
     （本机实测约 30 秒），而精排只需要一次前向推理。
-    bge-reranker-v2-m3 是 ``num_labels=1`` 的回归头，CrossEncoder 默认用 Identity 激活，
-    因此直接取 ``logits[:, 0]`` 与原实现等价。
+    bge-reranker-v2-m3 是 ``num_labels=1`` 的回归头。sentence-transformers 的 CrossEncoder
+    默认对它套 Sigmoid（返回 0~1 概率）；这里保留**原始 logits**：排序结果完全一致
+    （sigmoid 单调），但 ``score_threshold=0.0`` 能真正过滤无关候选（sigmoid 后恒 > 0，
+    阈值形同虚设）。需要 0~1 分数时由 ``normalize_score=True`` 统一做一次 sigmoid。
     """
 
     def __init__(self, model_ref: str, device: str, max_length: int) -> None:
