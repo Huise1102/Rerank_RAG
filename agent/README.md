@@ -78,7 +78,7 @@ flowchart LR
 
 ### 检索与模型
 
-- 稠密召回：BAAI/bge-large-zh-v1.5（sentence-transformers，本地推理，1024 维）
+- 稠密召回：BAAI/bge-large-zh-v1.5（transformers 直连推理，本地离线，1024 维）
 - 稀疏召回：BM25Okapi + jieba 分词
 - 融合：RRF（k=60）；精排：BAAI/bge-reranker-v2-m3 交叉编码器
 - 向量库：Chroma（本地持久化）
