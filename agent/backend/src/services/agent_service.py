@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.agent.loop import AgentLoop
 from src.core.logging import get_logger
 from src.db.models.knowledge_base import KnowledgeBase
+from src.db.models.retrieval_log import RetrievalLog
 from src.services.chat_service import (
     _recent_history,
     _save_message,
@@ -32,6 +33,31 @@ def _run_agent(kb_id: int, question: str, history: list[tuple[str, str]],
                image: str | None = None) -> Any:
     """在线程池跑一次 AgentLoop（阻塞）。"""
     return AgentLoop().run(question, kb_id, history, image)
+
+
+async def _log_retrievals(db: AsyncSession, kb_id: int, result: Any, question: str) -> None:
+    """按决策轨迹中的每次 retrieve 写一条检索日志（失败不阻断主流程）。"""
+    steps = [s for s in (result.trace or []) if s.get("action") == "retrieve"]
+    if not steps:
+        return
+    try:
+        for step in steps:
+            args = step.get("args") or {}
+            timing = step.get("timing") or {}
+            db.add(
+                RetrievalLog(
+                    kb_id=kb_id,
+                    query=args.get("query") or question,
+                    strategy=step.get("strategy"),
+                    top_k=args.get("top_k"),
+                    latency=round(float(timing.get("total", 0.0)), 4),
+                    result_count=step.get("result_count"),
+                )
+            )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        logger.warning("写检索日志失败: %s", exc)
 
 
 def _latency_payload(result: Any, total_ms: int) -> dict[str, Any]:
@@ -86,6 +112,7 @@ async def agent_chat(
         db, conversation_id, role="assistant", content=result.answer,
         citations=result.citations, retrieved_docs=result.retrieved_docs, latency=latency,
     )
+    await _log_retrievals(db, kb.id, result, text)
 
     logger.info(
         "Agent 问答完成 kb=%d conv=%d 轮数=%d 引用=%d 耗时=%.2fs%s",
@@ -180,6 +207,7 @@ async def agent_stream_events(bundle: dict[str, Any]) -> AsyncIterator[str]:
                 db2, conversation_id, role="assistant", content=result.answer,
                 citations=result.citations, retrieved_docs=result.retrieved_docs, latency=latency,
             )
+            await _log_retrievals(db2, bundle["kb_id"], result, bundle["question"])
     except Exception as exc:  # noqa: BLE001
         logger.warning("Agent 流式落库失败: %s", exc)
 
