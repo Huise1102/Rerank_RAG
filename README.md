@@ -133,7 +133,6 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── frontend/         React 18 五页应用（智能问答 / 知识库 / 检索策略 / 模型配置 / 日志）
 │   └── README.md         Agentic 版详细文档
 ├── docs/                 项目文档与界面截图（docs/images/*.png）
-│   ├── 项目迁移.md       第三版设计与迁移文档（架构 / 提示词 / 评估口径）
 │   ├── spec.md           第三版执行规格
 │   └── tasks.md          第三版任务清单
 ├── LICENSE               PolyForm Noncommercial License 1.0.0
