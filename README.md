@@ -132,7 +132,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── backend/          FastAPI 服务 + src/agent 调度层（loop / state / tools / prompts）
 │   ├── frontend/         React 18 五页应用（智能问答 / 知识库 / 检索策略 / 模型配置 / 日志）
 │   └── README.md         Agentic 版详细文档
-├── docs/                 项目文档与界面截图（docs/images/*.png）
+├── docs/                 项目规格、任务清单与界面截图（docs/images/*.png）
 │   ├── spec.md           第三版执行规格
 │   └── tasks.md          第三版任务清单
 ├── LICENSE               PolyForm Noncommercial License 1.0.0
@@ -245,7 +245,7 @@ Agentic 版已内置本地模型能力，只需本机常驻 `ollama serve` 并�
 
 > **关于评测产物**：完整报告、逐题 CSV 与对比图由验证版评测流水线在本地生成（`demo/data/eval/results/`），出于体积与标注公开性的考虑**不入仓库**（见 [demo/.gitignore](demo/.gitignore#L22-L27)）；测试集（`data/testset.json`）及其构建脚本同样未公开。因此本页只呈现结论指标，不提供产物链接——如需复跑，需自备领域语料并自行构建测试集。
 
-> 说明：**产品级系统与 Agentic 版均不包含评估代码**；验证版的完整评估体系保留在 `demo/`，Agentic 版的评估口径（80 条分层测试集、路由/轮数等程序化指标、`task_completion` 裁判提示词）见 [docs/项目迁移.md §10](docs/项目迁移.md)。
+> 说明：**产品级系统与 Agentic 版均不包含评估代码**；验证版的完整评估体系保留在 `demo/`，Agentic 版的评估口径（80 条分层测试集、路由/轮数等程序化指标、`task_completion` 裁判提示词）见 [docs/spec.md](docs/spec.md) 的「范围与三大硬约束」。
 
 ---
 
