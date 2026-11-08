@@ -1,13 +1,13 @@
 # 第三版（Agentic）迁移实现规格 Spec
 
-> 依据 `docs/项目迁移.md` 定稿的执行级规格：锁定每个文件的改动、函数签名、数据契约与验收方式。
-> 设计文档为背景，本文档为**执行口径**；两者冲突时以本文为准。
+> 第三版（Agentic）的执行级规格：锁定每个文件的改动、函数签名、数据契约与验收方式。
+> 本文档为**执行口径**，背景与用法以 [`agent/README.md`](../agent/README.md) 及代码实现为准。
 
 ## 0. 范围与三大硬约束
 
 - 在三版之外新增 `agent/`（后端 + 前端），三版索引/数据/配置相互独立；`product/` 与 `demo/` 不改动。
 - 约束 1：单问题 Agent 最多 3 轮决策，第 3 轮强制收敛（`MAX_DECISION_ROUNDS=3`）。
-- 约束 2：评估模块具体（见 `docs/项目迁移.md` §10，本次实现不新增评估代码，仅保留指标口径）。
+- 约束 2：评估模块具体（本次实现不新增评估代码，仅保留指标口径，见 [`agent/README.md`](../agent/README.md) 的「评估方案」）。
 - 约束 3：复用现有检索/生成/引用/会话基础设施；新增代码仅限「调度层 + API + schema + 前端」。
 - 前端只保留**智能问答**入口：固定管道问答页（`ChatQuery`）不保留；后端同步下线 `POST /chat`、`POST /chat/stream`。
 
@@ -51,8 +51,8 @@ evidences_max: int = 20
 导出 `AgentLoop`、`AgentResult`、`MAX_DECISION_ROUNDS`。
 
 ### 2.5 新增：`src/agent/prompts.py`
-- `AGENT_SYSTEM`（见 `项目迁移.md` §9.1 全文）。
-- `TOOL_SCHEMAS`（见 §9.2：`retrieve`、`ask_clarification` 两份 JSON Schema）。
+- `AGENT_SYSTEM`（系统提示词全文，见 `src/agent/prompts.py`）。
+- `TOOL_SCHEMAS`（`retrieve`、`ask_clarification` 两份 JSON Schema）。
 - `FORCE_ANSWER_INSTRUCTION = "已达决策轮次上限，请立即直接输出最终回答，禁止再调用任何工具。"`
 
 ### 2.6 新增：`src/agent/state.py`
@@ -64,7 +64,7 @@ evidences_max: int = 20
 - `append_turn(assistant_msg, tool_result_msg)`：把两则消息追加进 `messages`。
 
 ### 2.7 新增：`src/agent/tools.py`
-- `STRATEGY_SWITCHES`：四档映射（见 `项目迁移.md` §4.3 表）。
+- `STRATEGY_SWITCHES`：四档映射（`vector` / `bm25` / `hybrid` / `hybrid_rerank` 对应的开关组合）。
 - `strategy_to_switches(name) -> dict[str,bool]`。
 - `execute_retrieve(state, query, strategy) -> dict`：
   - `from src.services.retrieval_service import retrieve` → `resp = retrieve(state.kb_id, query, strategy_to_switches(strategy))`。
@@ -168,7 +168,7 @@ evidences_max: int = 20
 
 ## 6. 范围外（本次不实现）
 
-- 评估代码/测试集脚本（口径见 `项目迁移.md` §10，仅文档）。
+- 评估代码/测试集脚本（仅保留指标口径，见 [`agent/README.md`](../agent/README.md) 的「评估方案」）。
 - 独立 `GET /agent/trace/{id}` 端点（轨迹已内嵌 `latency.agent_trace`，按需后续加）。
 - 图片多模态走 Agent（`image` 字段保留但首版仅透传不启用视觉决策）。
 - 真实 API Key、MySQL/MinIO/Celery 部署（沿用 product 启动方式，不在本规格内执行）。
