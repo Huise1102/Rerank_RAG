@@ -47,7 +47,7 @@
 ## T8 文档
 - [x] `agent/README.md` 重写为独立项目文档（与 `demo/README.md`、`product/README.md` 同构：功能/架构/技术栈/目录/启动/配置/API/轨迹契约/评估口径/限制）。
 - [x] `agent/backend/.env.example` 的模型缓存与语料目录改为相对路径（`../../.hf-cache`、`../../product/resource`），换机器免改绝对路径。
-- [x] `docs/项目迁移.md`、`docs/spec.md`、`docs/tasks.md` 与最终实现对齐（4 页、`/chat` 已下线、`DecisionTrace` 实际字段）。
+- [x] `docs/spec.md`、`docs/tasks.md` 与最终实现对齐（4 页、`/chat` 已下线、`DecisionTrace` 实际字段）。
 - **验证**：文档内路由、目录、字段名与代码逐项核对一致。
 
 ## T9 下线固定管道问答（后端）
