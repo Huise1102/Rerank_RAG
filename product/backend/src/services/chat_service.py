@@ -1,14 +1,11 @@
-"""对话业务逻辑（chat_service.py）。
+"""对话业务逻辑。
 
-多轮对话 + 流式输出。生成侧复用 src/generation 模块（prompt / llm / citation），检索侧
-复用 src/services/retrieval_service。
+多轮对话与流式输出。生成侧复用生成模块，检索侧复用检索服务。
 
-关键约束：
-- 检索与 LLM 调用都是**阻塞**操作，必须在 `run_in_threadpool` 里执行，避免堵住事件循环。
-- 流式先累积完整文本，再由 generation.llm 的 stream_response 统一收尾做引用解析，
-  避免分片把 ``[1]`` 切断导致映射失败。
-- 消息持久化只存 4 个 JSON 列（citations / retrieved_docs / latency），
-  ``strategy`` 与 ``stats`` 无独立列，随 ``latency`` 一起存、读取时再拆出。
+检索与模型调用都是阻塞操作，必须在线程池里执行，避免堵住事件循环。
+流式先累积完整文本，再由生成模块的流式接口统一收尾做引用解析，
+避免分片把引用标记切断导致映射失败。
+消息持久化只存引用的 JSON 列，策略与统计字段随耗时字段一起存、读取时再拆出。
 """
 
 from __future__ import annotations
@@ -37,10 +34,10 @@ from src.retrieval.base import RetrievalResult
 
 logger = get_logger(__name__)
 
-#: 异步取阻塞迭代器下一个元素时的"结束"哨兵
+# 异步取阻塞迭代器下一个元素时的结束哨兵
 _SENTINEL = object()
 
-#: 会话隔离标识：不同项目共用同一数据库，但只能读写自己的会话
+# 会话隔离标识，不同项目共用同一数据库，但只能读写自己的会话
 APP_KEY = "product"
 
 
@@ -87,10 +84,9 @@ async def delete_conversation(
 async def delete_conversations(
     db: AsyncSession, kb_id: int | None = None, app_key: str = APP_KEY
 ) -> int:
-    """清空本项目的会话（可按知识库过滤），返回删除条数。
+    """清空本项目的会话，可按知识库过滤，返回删除条数。
 
-    会话下的消息由外键 ``conversations.id ON DELETE CASCADE`` 在库层一并删除，
-    故这里只删会话行即可。
+    会话下的消息由数据库外键级联删除，这里只删会话行即可。
     """
     stmt = delete(Conversation).where(Conversation.app_key == app_key)
     if kb_id is not None:
@@ -101,7 +97,7 @@ async def delete_conversations(
 
 
 async def list_messages(db: AsyncSession, conversation_id: int) -> list[dict[str, Any]]:
-    """读取会话消息，并把 latency 里嵌着的 strategy / stats 拆出来。"""
+    """读取会话消息，并把耗时字段里嵌着的策略与统计拆出来。"""
     rows = await db.execute(
         select(Message).where(Message.conversation_id == conversation_id).order_by(Message.id.asc())
     )
@@ -126,7 +122,7 @@ async def list_messages(db: AsyncSession, conversation_id: int) -> list[dict[str
 
 
 async def _recent_history(db: AsyncSession, conversation_id: int) -> list[tuple[str, str]]:
-    """取会话历史为 ``[(role, content), ...]``（供 prompt 组装多轮上下文）。"""
+    """取会话历史为角色与内容组成的二元组列表，供上下文组装多轮对话。"""
     rows = await db.execute(
         select(Message.role, Message.content)
         .where(Message.conversation_id == conversation_id)
@@ -136,7 +132,7 @@ async def _recent_history(db: AsyncSession, conversation_id: int) -> list[tuple[
 
 
 def _doc_to_client(r: RetrievalResult) -> dict[str, Any]:
-    """把检索结果转成前端 RetrievalDetail 需要的扁平字段。"""
+    """把检索结果转成前端需要的扁平字段。"""
     return {
         "chunk_id": r.chunk_id,
         "rank": r.rank,
@@ -261,9 +257,9 @@ async def chat(
     strategies: dict[str, bool] | None = None,
     image: str | None = None,
 ) -> dict[str, Any]:
-    """执行一次完整问答（非流式），返回前端 ChatResponse 结构。
+    """执行一次完整问答，非流式，返回前端响应结构。
 
-    ``image`` 为图片 data URL；传入后改用多模态模型，图片作为资料的一部分。
+    image 为图片 data URL；传入后改用多模态模型，图片作为资料的一部分。
     """
     sw = _resolve_strategies(kb, strategies)
     text = (question or "").strip()
