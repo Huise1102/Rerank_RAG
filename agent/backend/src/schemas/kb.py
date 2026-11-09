@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core.config import settings
 
-#: 构建块开关的合法键
+# 构建块开关的合法键
 STRATEGY_KEYS = ("vector", "bm25", "fusion", "rerank")
 
 
