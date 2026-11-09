@@ -2,14 +2,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listConversations, listMessages, deleteConversation, clearConversations } from '@/api/chat'
 
-// 引用来源：兼容数组或 { citations: [...] } 两种返回形态
+// 引用来源，兼容数组与带 citations 字段的对象
 export function normalizeCitations(raw) {
   if (Array.isArray(raw)) return raw
   if (raw && Array.isArray(raw.citations)) return raw.citations
   return []
 }
 
-// 检索文档块：兼容数组或 { results / retrieved_docs: [...] }
+// 检索文档块，兼容数组与带 retrieved_docs 或 results 字段的对象
 export function normalizeDocs(raw) {
   if (Array.isArray(raw)) return raw
   if (raw && Array.isArray(raw.retrieved_docs)) return raw.retrieved_docs
@@ -73,7 +73,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 清空会话列表：清空后回到"新建会话"状态，避免仍停留在已删会话上
+  // 清空会话列表并回到新建会话状态
   async function clearAllConversations(kbId) {
     const data = await clearConversations(kbId)
     conversations.value = []
