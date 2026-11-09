@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { message } from '../utils/toast'
 
-// 后端统一返回 { detail: "..." } 的 FastAPI 错误体，这里尽量摘出人类可读文案并提示。
+// 从 FastAPI 错误体中提取可读的错误文案
 export function extractError(error) {
   const resp = error?.response
   const data = resp?.data
