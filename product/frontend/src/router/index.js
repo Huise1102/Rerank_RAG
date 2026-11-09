@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 
-// 四个业务页面：问答 / 知识库 / 检索策略 / 日志（无登录页、无设置页、无评估页）
+// 四个业务页面：问答、知识库、检索策略、日志
 const routes = [
   {
     path: '/',
