@@ -1,4 +1,4 @@
-"""知识库表（无用户体系）。enabled_strategies 存 4 个构建块开关。"""
+"""知识库表，记录分块策略与各构建块开关。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
-#: 默认全开的构建块开关
+# 默认全开的构建块开关
 DEFAULT_STRATEGIES: dict[str, bool] = {"vector": True, "bm25": True, "fusion": True, "rerank": True}
 
 
@@ -24,7 +24,7 @@ class KnowledgeBase(Base):
     enabled_strategies: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=lambda: dict(DEFAULT_STRATEGIES), nullable=False
     )
-    #: 启用开关：仅启用的知识库可在「问答」页选用
+    # 启用开关，仅启用的知识库可在问答页选用
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="1", nullable=False
     )
