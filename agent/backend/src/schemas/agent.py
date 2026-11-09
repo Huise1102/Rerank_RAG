@@ -1,7 +1,6 @@
-"""Agent 智能问答相关 Pydantic 模型（第三版）。
+"""Agent 智能问答的请求与响应模型。
 
-与 ``chat.py`` 的差异：请求**去掉 strategy**（策略由 Agent 逐轮决定），响应**新增
-agent_trace / rounds / is_clarification**。
+请求不含策略，策略由 Agent 逐轮决定；响应新增决策轨迹、决策轮数与澄清标记。
 """
 
 from __future__ import annotations
@@ -12,10 +11,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class AgentChatRequest(BaseModel):
-    """Agent 问答请求。question 与 image 至少提供一个。
+    """Agent 问答请求，问题与图片至少提供一个。
 
-    ``image`` 为图片 data URL（``data:image/png;base64,...``）；传入后 Agent 改用多模态模型，
-    图片作为决策上下文的一部分参与检索与作答。
+    图片为数据链接，传入后 Agent 改用多模态模型，图片作为决策上下文的一部分参与检索与作答。
     """
 
     kb_id: int
