@@ -2,10 +2,10 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { listKbs } from '@/api/kb'
 
-// 默认全开：向量 + BM25 + 融合 + 精排
+// 默认四个构建块全部开启：向量、BM25、融合、精排
 export const DEFAULT_STRATEGIES = { vector: true, bm25: true, fusion: true, rerank: true }
 
-// 预置知识库名称（种子数据）
+// 预置知识库名称
 export const PRESET_KB_NAME = '法律领域'
 
 export function normalizeStrategies(raw) {
@@ -24,7 +24,7 @@ export const useKbStore = defineStore('kb', () => {
 
   const currentKb = computed(() => kbs.value.find((k) => k.id === currentKbId.value) || null)
 
-  // 已启用的知识库（问答页只能选用这些）
+  // 已启用的知识库
   const activeKbs = computed(() => kbs.value.filter((k) => k.is_active !== false))
 
   const currentStrategies = computed(() =>
@@ -43,7 +43,7 @@ export const useKbStore = defineStore('kb', () => {
     }
   }
 
-  // 保证当前选中项有效：优先「法律领域」，否则第一项
+  // 保证当前选中项有效，优先选择「法律领域」，否则取第一项
   function ensureCurrentKb() {
     if (!kbs.value.length) {
       currentKbId.value = null
