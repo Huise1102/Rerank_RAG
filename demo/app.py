@@ -1,6 +1,6 @@
-"""Streamlit 前端：经 HTTP 调用 FastAPI 后端的问答与入库接口。
-视觉全部由 ``inject_theme()`` 注入的 CSS 覆盖原生组件实现，是样式的唯一来源。
-前端不做检索，只渲染回答、引用与调试面板。
+"""Streamlit 前端，通过 HTTP 调用后端接口完成问答与入库。
+
+页面样式全部由注入的 CSS 覆盖原生组件，是该文件唯一的外观来源。前端不做检索，只渲染回答、引用与调试面板。
 """
 
 from __future__ import annotations
@@ -33,13 +33,10 @@ import streamlit as st  # noqa: E402
 from config import settings  # noqa: E402
 
 
-#: 配色总表
-#:   背景 #fbf8f2 ｜ 侧边栏 #f5f0e6 ｜ 卡片 #faf8f2 ｜ 分隔线 #e0d8c8 ｜ 文字 #2c2c2c
-#:   次要 #6b5f3f ｜ 标签 #8a7a5a ｜ 强调 #8b6f47 ｜ 正常 #5a7a4a ｜ 错误 #a02828
-#:   开关开启色 #3b7dd8（唯一有意偏离主色调的颜色，见下方 st.toggle 规则）
-#: 约束：不用渐变、不用毛玻璃、圆角 ≤4px、不用 emoji；字体链优先思源宋体，回退系统宋体。
-#: 不要给 `span` / `div` 写通配 font-family：Streamlit 图标靠「图标名 + 连字字体」
-#: 显示，通配规则会抢掉连字字体，页面直接印出 `keyboard_arrow_down` 等图标名。
+# 配色总表，背景为米白，侧边栏与卡片使用浅暖色，引用与强调色为棕褐，正常状态为绿色，异常状态为红色
+# 开关开启状态使用蓝色，是全页唯一偏离主色调的颜色，用于区分开关状态
+# 样式约束：不使用渐变与毛玻璃，圆角不超过四像素，不使用 emoji，字体优先思源宋体，回退系统宋体
+# 不要给 span 与 div 写通配字体规则：Streamlit 图标依赖图标名与连字字体显示，通配规则会抢掉连字字体，页面会直接显示图标名
 _CSS = """
 /* ================= 基础：浅色米白，无渐变无毛玻璃 ================= */
 html, body, .stApp {
@@ -416,12 +413,12 @@ section[data-testid="stSidebar"] [data-testid="stCheckbox"]:has(input:checked)
 
 
 def inject_theme() -> None:
-    """注入唯一一份视觉样式；改外观只改 _CSS，不替换组件。"""
+    """注入全部页面样式，外观调整只改样式表，不替换组件。"""
     st.markdown(f"<style>{_CSS}</style>", unsafe_allow_html=True)
 
 
 def render_hero() -> None:
-    """渲染顶部标题区：纯文字 div，不依赖图片。"""
+    """渲染顶部标题区，纯文字布局，不使用图片。"""
     st.markdown(
         f"""
         <div class="app-hero">
@@ -433,8 +430,7 @@ def render_hero() -> None:
     )
 
 
-#: 引用编号 ``[1]``、``[2,3]``、``[1-3]``、``[1、2]`` 等写法都要命中。
-#: 负向前瞻 ``(?!\()`` 排掉 markdown 链接 ``[1](url)``，避免给链接文字染色。
+# 匹配引用编号的多种写法，负向前瞻排除 Markdown 链接，避免给链接文字着色
 _CITE_RE = re.compile(r"\[(\d+(?:\s*[-–,，、]\s*\d+)*)\](?!\()")
 
 
@@ -446,17 +442,16 @@ TIMEOUT = settings.frontend.request_timeout
 
 
 class BackendError(RuntimeError):
-    """与后端通信失败（连接错误、超时或非 2xx 响应）。"""
+    """与后端通信失败，包括连接错误、超时或非成功状态码。"""
 
 
 def _url(path: str) -> str:
     return f"{settings.frontend.api_base_url.rstrip('/')}{path}"
 
 
-#: 侧边栏元数据每次 rerun 都会用到，但内容几乎不变，且都不该拖慢首屏：
-#:   - /strategies 是静态枚举：进程内取一次并常驻缓存；
-#:   - /health 只用于状态展示：缓存 10 秒。
-#: 两者都使用 3 秒短超时 —— 后端卡住时前端最多等 3 秒，而不是 15 秒把整页拖住。
+# 侧边栏元数据每次重跑页面都会读取，但内容几乎不变，且不应拖慢首屏：
+# 策略列表是静态枚举，进程内取一次并缓存；健康状态只用于展示，缓存十秒
+# 两者都使用三秒短超时，后端卡住时前端最多等待三秒
 _META_TIMEOUT = 3
 _HEALTH_TTL = 10.0
 _health_cache: tuple[float, dict[str, Any]] | None = None
@@ -476,7 +471,7 @@ def api_strategies(*, timeout: int = 15) -> dict[str, Any]:
 
 
 def cached_strategies() -> dict[str, Any]:
-    """检索策略是静态枚举，进程内只请求一次；失败不缓存，下次 rerun 会重试。"""
+    """检索策略是静态枚举，进程内只请求一次；失败时不缓存，下次运行会重试。"""
     global _strategies_cache
     if _strategies_cache is None:
         _strategies_cache = api_strategies(timeout=_META_TIMEOUT)
@@ -484,7 +479,7 @@ def cached_strategies() -> dict[str, Any]:
 
 
 def cached_health() -> dict[str, Any]:
-    """健康状态短期缓存，刷新页面时不再同步等后端。"""
+    """健康状态短期缓存，刷新页面时无需同步等待后端。"""
     global _health_cache
     now = time.monotonic()
     if _health_cache is not None and now - _health_cache[0] < _HEALTH_TTL:
@@ -543,7 +538,7 @@ def api_query(question: str, strategy: str, use_stream: bool = True) -> Iterator
 
 
 def _extract_error(resp: requests.Response) -> str:
-    """从错误响应里提取可读信息。"""
+    """从错误响应中提取可读信息。"""
     try:
         body = resp.json()
         detail = body.get("detail", body)
@@ -576,7 +571,7 @@ def api_ingest_status(task_id: str) -> dict[str, Any]:
 
 st.set_page_config(
     page_title=settings.frontend.page_title,
-    # 不使用 emoji 作图标；配置里是 Streamlit 的 Material 符号（字体连字，非 emoji）
+    # 图标使用 Streamlit 的 Material 符号，属于字体连字，不使用 emoji
     page_icon=settings.frontend.page_icon,
     layout=settings.frontend.layout,
 )
@@ -584,14 +579,14 @@ st.set_page_config(
 inject_theme()
 
 if "messages" not in st.session_state:
-    st.session_state.messages = []      # [{role, content, citations, docs, latency, stats}]
+    st.session_state.messages = []      # 会话消息结构，含角色、内容、引用、文档、耗时与统计
 if "show_debug" not in st.session_state:
     st.session_state.show_debug = settings.frontend.show_debug_panel
 
 
 
 def render_user_bubble(text: str) -> None:
-    """用户消息：右对齐 div，不显示头像。"""
+    """渲染用户消息，右对齐，不显示头像。"""
     st.markdown(
         '<div class="msg-user">'
         '<div class="msg-label">提问</div>'
@@ -645,7 +640,7 @@ def render_citations(citations: dict[str, Any]) -> None:
 
 def render_debug(docs: list[dict[str, Any]], latency: dict[str, Any],
                  stats: dict[str, Any] | None = None) -> None:
-    """渲染检索调试面板：左列文档块、右列耗时与召回统计。"""
+    """渲染检索调试面板，左列为文档块，右列为耗时与召回统计。"""
     col1, col2 = st.columns([3, 2])
 
     with col1:
@@ -709,7 +704,7 @@ def render_debug(docs: list[dict[str, Any]], latency: dict[str, Any],
 
 
 def render_assistant_extras(msg: dict[str, Any]) -> None:
-    """回答下方的耗时行、引用来源与调试面板。"""
+    """渲染回答下方的耗时行、引用来源与调试面板。"""
     lat = msg.get("latency") or {}
     parts = []
     if lat.get("retrieve_ms"):
@@ -726,7 +721,7 @@ def render_assistant_extras(msg: dict[str, Any]) -> None:
         with st.expander("检索调试面板", expanded=False):
             render_debug(msg.get("docs") or [], lat, msg.get("stats"))
 
-# 关掉自动多页导航（.streamlit/config.toml）+ 压缩间距（见 _CSS）+ 低频内容进 expander，一屏显示全部模块。
+# 关闭自动多页导航、压缩间距并把低频内容收进折叠面板，使全部模块一屏可见
 with st.sidebar:
     try:
         strategy_data = cached_strategies()
@@ -752,7 +747,7 @@ with st.sidebar:
     )
     st.caption(options[strategy]["description"])
 
-    # 输出与调试开关并排，省一行高度
+    # 输出方式与调试开关并排，节省一行高度
     col_a, col_b = st.columns(2)
     with col_a:
         use_stream = st.toggle("流式", value=True, key="toggle_stream",
@@ -773,7 +768,7 @@ with st.sidebar:
     if connected:
         status_raw = health.get("status", "unknown")
         status_text = {"ok": "正常", "degraded": "降级", "error": "异常"}.get(status_raw, status_raw)
-        # 用 keyed container 给标题着色，两套颜色见 _CSS 的 exp_status_* 规则
+        # 用带 key 的容器给标题着色，两种状态的颜色定义在样式表中
         status_key = "exp_status_ok" if status_raw == "ok" else "exp_status_bad"
     else:
         status_text = "未连接"
@@ -896,7 +891,7 @@ if prompt:
     error: str | None = None
 
     with st.container(key="ai-live"):
-        # 用文字标签替代 loading 与头像：检索阶段显示进度，拿到 meta 后恢复为"回答"
+        # 用文字标签表示进度与状态：检索阶段显示进度，拿到元信息后切换为回答
         label_box = st.empty()
         label_box.markdown('<div class="msg-label">回答 · 正在检索…</div>', unsafe_allow_html=True)
         answer_box = st.empty()
