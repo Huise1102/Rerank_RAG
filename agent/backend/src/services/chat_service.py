@@ -1,12 +1,7 @@
-"""会话与消息持久化（chat_service.py）。
+"""会话与消息持久化。
 
-第三版问答链路由 ``agent_service`` 驱动；本模块只保留会话管理、消息落库与 SSE 编码
-（``create_conversation`` / ``_recent_history`` / ``_save_message`` / ``sse`` 被其复用），
-固定管道版的检索+生成逻辑已下线。
-
-关键约束：
-- 消息只存 4 个 JSON 列（citations / retrieved_docs / latency），
-  ``strategy`` 与 ``stats`` 无独立列，随 ``latency`` 一起存、读取时再拆出。
+本模块只保留会话管理、消息落库与事件流编码，供问答服务复用。
+消息只存四个 JSON 列，策略与统计信息随延迟列一起存，读取时再拆出。
 """
 
 from __future__ import annotations
@@ -23,7 +18,7 @@ from src.db.models.message import Message
 
 logger = get_logger(__name__)
 
-#: 会话隔离标识：不同项目共用同一数据库，但只能读写自己的会话
+# 会话隔离标识：不同项目共用同一数据库，但只能读写自己的会话
 APP_KEY = "agent"
 
 
@@ -70,11 +65,7 @@ async def delete_conversation(
 async def delete_conversations(
     db: AsyncSession, kb_id: int | None = None, app_key: str = APP_KEY
 ) -> int:
-    """清空本项目的会话（可按知识库过滤），返回删除条数。
-
-    会话下的消息由外键 ``conversations.id ON DELETE CASCADE`` 在库层一并删除，
-    故这里只删会话行即可。
-    """
+    """清空本项目的会话，可按知识库过滤，返回删除条数。"""
     stmt = delete(Conversation).where(Conversation.app_key == app_key)
     if kb_id is not None:
         stmt = stmt.where(Conversation.kb_id == kb_id)
@@ -109,7 +100,7 @@ async def list_messages(db: AsyncSession, conversation_id: int) -> list[dict[str
 
 
 async def _recent_history(db: AsyncSession, conversation_id: int) -> list[tuple[str, str]]:
-    """取会话历史为 ``[(role, content), ...]``（供 prompt 组装多轮上下文）。"""
+    """取会话历史为角色与内容对，供多轮上下文组装。"""
     rows = await db.execute(
         select(Message.role, Message.content)
         .where(Message.conversation_id == conversation_id)
