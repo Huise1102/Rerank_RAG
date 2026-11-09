@@ -77,12 +77,10 @@ async def get_document(db: AsyncSession, doc_id: int) -> Document | None:
 
 
 def read_document_bytes(doc: Document) -> bytes:
-    """读取文档原始内容，供在线预览 / 下载。
+    """读取文档原始内容，供在线预览与下载。
 
-    上传的文档落在 storage/（或 MinIO），而预置语料是只读引用 product/resource/ 下的文件
-    （``file_path`` 为绝对路径），两种形态都要支持。
-
-    :raises FileNotFoundError: 原始文件已不存在或丢失
+    上传的文档落在对象存储，预置语料是只读引用的绝对路径文件，两种形态都要支持。
+    原始文件不存在时抛出 FileNotFoundError。
     """
     path = Path(doc.file_path)
     if path.is_absolute():
@@ -93,13 +91,10 @@ def read_document_bytes(doc: Document) -> bytes:
 
 
 async def delete_document(db: AsyncSession, doc_id: int) -> dict[str, Any] | None:
-    """删除数据库记录并立即返回；原始文件与索引分块的后台清理由调用方调度。
+    """删除数据库记录并立即返回，原始文件与索引分块的清理由调用方调度。
 
-    索引清理（Chroma 删集合 + 全量重嵌入 + BM25 重建）是分钟级重活，若放在请求路径里
-    会占死事件循环，导致 /health 等所有接口挂起、前端表现为"后端失联"。故这里只做
-    毫秒级的 DB 删除，返回清理所需信息，由后台任务在线程池内执行。
-
-    :returns: ``{doc_id, kb_id, file_path, strategy, filename}``；文档不存在时返回 ``None``
+    索引清理是分钟级重活，放在请求路径里会占死事件循环，导致所有接口挂起。
+    这里只做毫秒级的数据库删除，返回清理所需信息，由后台任务在线程池内执行。
     """
     doc = await db.get(Document, doc_id)
     if doc is None:
@@ -120,11 +115,11 @@ async def delete_document(db: AsyncSession, doc_id: int) -> dict[str, Any] | Non
 
 
 def cleanup_document_artifacts(kb_id: int, file_path: str, strategy: str, filename: str) -> None:
-    """后台清理被删文档的原始文件与索引分块（同步函数，供线程池/后台任务调用）。
+    """后台清理被删文档的原始文件与索引分块，供线程池或后台任务调用。
 
-    分块的 source 记录的是**入库时实际读取的文件名**：上传文件在存储里带哈希前缀
-    （如 ``kb_1/b5df89d7_报告.pdf -> source="b5df89d7_报告.pdf"``），与 ``filename`` 不同，
-    用 filename 过滤会一块都匹配不到、留下孤儿分块，故必须用 ``Path(file_path).name``。
+    分块的来源记录的是入库时实际读取的文件名，上传文件在存储里带哈希前缀，
+    与文件名不同，用文件名过滤会一块都匹配不到并留下孤儿分块，
+    因此必须取文件路径的文件名部分。
     """
     import time
 
