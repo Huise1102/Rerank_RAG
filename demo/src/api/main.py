@@ -1,8 +1,6 @@
-"""FastAPI 应用：/health、/query、/query/stream、/retrieve、/ingest、/strategies、/config。
-启动：``python -m src.api.main``；路径同时挂在 ``/api/v1`` 前缀下，完整文档见 ``/docs``。
+"""FastAPI 应用，提供健康检查、问答、流式问答、检索、入库、策略与配置等接口，路径同时挂载在版本前缀下。
 
-两个关键决策：预热必须放后台线程（同步等待会让服务在模型加载期间连 /health 都不响应）；
-检索/生成是阻塞操作，路由用普通 ``def`` 交给线程池，声明 ``async def`` 会阻塞事件循环。
+预热放在后台线程，避免服务在模型加载期间连健康检查都无法响应；检索与生成都是阻塞操作，路由使用普通同步函数交给线程池执行，若声明为异步函数会阻塞事件循环。
 """
 
 from __future__ import annotations
@@ -15,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-# 允许 `python -m src.api.main` 直接运行
+# 允许以模块方式直接运行本文件
 if __package__ in (None, ""):  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -48,7 +46,7 @@ logger = get_logger(__name__)
 
 __version__ = "0.4.0"
 
-#: 检索策略的展示信息（前端下拉框直接用这份）
+# 检索策略的展示信息，前端下拉框直接使用
 RETRIEVAL_STRATEGIES: list[dict[str, str]] = [
     {"value": "vector", "label": "向量检索（仅语义）",
      "description": "BGE 稠密向量检索，擅长语义相近但用词不同的表达"},
@@ -71,7 +69,7 @@ CHUNK_STRATEGIES: list[dict[str, str]] = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动/关闭钩子。"""
+    """启动与关闭钩子。"""
     setup_logging()
     logger.info("=" * 70)
     logger.info("RAG 问答系统 API 启动中…")
@@ -84,7 +82,7 @@ async def lifespan(app: FastAPI):
     app.state.warmup_thread = None
 
     if settings.api.warmup_on_startup:
-        # 后台线程预热：不阻塞启动，/health 可查询进度
+        # 后台线程预热，不阻塞启动，健康检查可查询进度
         def _warmup() -> None:
             try:
                 service.warmup()
@@ -103,13 +101,13 @@ async def lifespan(app: FastAPI):
 
 
 def _service(request: Request):
-    """取服务单例（测试时可通过 app.state 替换）。"""
+    """获取服务单例，测试时可通过应用状态替换。"""
     return getattr(request.app.state, "service", None) or get_service()
 
 
 def _resolve_strategy(request: Request, body_strategy: str | None = None) -> str:
     """
-    解析检索策略：``?strategy=bm25`` 与请求体 ``strategy`` 都支持，两者都给时以请求体为准。
+    解析检索策略，查询参数与请求体均可指定，两者都给出时以请求体为准。
     """
     from_query = request.query_params.get("strategy")
     chosen = body_strategy or from_query or DEFAULT_STRATEGY
@@ -127,7 +125,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, tags=["系统"],
             summary="健康检查")
 def health(request: Request) -> HealthResponse:
-    """返回服务与各依赖组件状态。不加载模型，因此预热未完成时也能立即返回。"""
+    """返回服务与各依赖组件状态。不加载模型，预热未完成时也能立即返回。"""
     service = _service(request)
     raw_components = service.health_components()
     components = [
@@ -143,7 +141,7 @@ def health(request: Request) -> HealthResponse:
         logger.warning("读取索引状态失败: %s", exc)
         index = None
 
-    # 判定整体状态：检索与生成可用即算 ok
+    # 整体状态判定：检索与生成可用即视为正常
     critical = {"llm", "vector_store", "bm25"}
     not_ready = {c.name for c in components if not c.ready}
     if not not_ready:
@@ -165,7 +163,7 @@ def health(request: Request) -> HealthResponse:
 
 @router.post("/warmup", tags=["系统"], summary="手动触发预热（幂等）")
 def warmup(request: Request) -> dict[str, Any]:
-    """显式预热。已预热时立即返回上次结果。"""
+    """显式预热，已预热时立即返回上次结果。"""
     service = _service(request)
     state = service.warmup()
     return state.to_dict()
@@ -175,14 +173,11 @@ def warmup(request: Request) -> dict[str, Any]:
              summary="问答：检索 + 生成（非流式）")
 def query(request: Request, payload: QueryRequest | None = None) -> QueryResponse:
     """
-    执行一次完整问答。请求体可省略，此时从查询参数取 ``question``/``strategy``；
-    两者同时给策略时以请求体为准。示例::
-
-        POST /query   {"question": "学校规章制度的适用范围是怎么规定的？", "strategy": "hybrid_rerank"}
+    执行一次完整问答。请求体可省略，此时从查询参数取问题与策略；两者同时给出策略时以请求体为准。
     """
     body = payload
     if body is None:
-        # 无请求体：从查询参数构造（便于浏览器/curl 直接调）
+        # 无请求体时从查询参数构造，便于用浏览器或命令行直接调用
         question = request.query_params.get("question")
         if not question or not question.strip():
             raise HTTPException(
@@ -210,7 +205,7 @@ def query(request: Request, payload: QueryRequest | None = None) -> QueryRespons
     except HTTPException:
         raise
     except RuntimeError as exc:
-        # LLM 未配置或全部模型调用失败：可预期的运维问题，返回 503 并带原因
+        # 大模型未配置或全部模型调用失败属于可预期的运维问题，返回服务不可用并带上原因
         logger.error("问答失败: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -218,9 +213,9 @@ def query(request: Request, payload: QueryRequest | None = None) -> QueryRespons
 @router.post("/query/stream", tags=["问答"], summary="问答：流式（SSE）")
 def query_stream(payload: QueryRequest, request: Request):
     """
-    流式问答，返回 ``text/event-stream``；每条事件为一行 ``data: {json}``，
-    ``type`` 依次为 ``meta``（检索结果与耗时）、``delta``（答案增量）、
-    ``done``（完整 QueryResponse）、``error``。
+    流式问答，返回服务端推送事件流，每条事件为一行数据。
+
+    事件类型依次为元信息，含检索结果与耗时；答案增量；完成，含完整响应；以及错误。
     """
     service = _service(request)
     strategy = _resolve_strategy(request, payload.strategy)
@@ -245,7 +240,7 @@ def query_stream(payload: QueryRequest, request: Request):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            # 关闭 nginx 缓冲，否则流式响应会被攒成一坨再发（部署到反代后必须）
+            # 关闭反向代理缓冲，否则流式响应会被攒成一批再发送
             "X-Accel-Buffering": "no",
         },
     )
@@ -255,8 +250,9 @@ def query_stream(payload: QueryRequest, request: Request):
              summary="仅检索（返回两路召回明细）")
 def retrieve(payload: RetrieveRequest, request: Request) -> RetrieveResponse:
     """
-    只检索不生成。``stats`` 含 dense/sparse/overlap/dense_only/sparse_only，
-    供前端调试面板展示两路各召回多少、多少是重叠的。
+    只检索不生成。
+
+    统计字段包含两路各召回多少条、重叠多少条以及仅由单路召回的条数，供前端调试面板展示。
     """
     service = _service(request)
     strategy = _resolve_strategy(request, payload.strategy)
@@ -280,7 +276,7 @@ def strategies() -> StrategiesResponse:
 
 @router.get("/config", tags=["系统"], summary="当前生效配置（密钥已脱敏）")
 def get_config() -> dict[str, Any]:
-    """返回脱敏后的配置。``to_dict()`` 会把 API Key 替换为 ``sk-abc...xyz``。"""
+    """返回脱敏后的配置，API Key 会被替换为只保留头尾的形式。"""
     data = settings.to_dict(hide_secrets=True)
     data["project_root"] = str(PROJECT_ROOT)
     data["version"] = __version__
@@ -298,10 +294,9 @@ async def ingest(
     force: bool = Form(default=False, description="忽略文件指纹，强制重新解析所有文件"),
 ) -> IngestResponse:
     """
-    上传 PDF 触发**增量**入库：立即返回 ``task_id``，用
-    ``GET /ingest/status/{task_id}`` 轮询进度（向量化在 CPU 上需数分钟）。
+    上传 PDF 触发增量入库，立即返回任务编号，通过状态接口轮询进度。
 
-    参数名兼容两种写法：单文件 ``file``，多文件 ``files``（可重复）。
+    单文件与多文件两种参数名都支持。
     """
     uploads: list[UploadFile] = []
     if file is not None:
@@ -333,8 +328,7 @@ async def ingest(
             rejected.append(f"{upload.filename}: {type(exc).__name__}: {exc}")
             continue
 
-        # conflict 三种取值必须显式区分：""=新文件保存成功；"identical"=内容完全一致
-        # （幂等，不算保存、不触发重建）；其它字符串=同名但内容不同，拒绝并要求改名。
+        # 冲突结果分三类：空串表示新文件保存成功；内容一致表示重复上传，直接复用；其他字符串表示同名但内容不同，拒绝并提示改名
         if conflict == "identical":
             accepted.append(path.name)
             continue
@@ -348,8 +342,7 @@ async def ingest(
         raise HTTPException(status_code=422, detail="; ".join(rejected))
 
     if not saved_paths:
-        # 没有新落盘文件：内容一致时幂等返回；但 force=true 必须真的强制重灌，否则
-        # "强制重新解析"在上传同名同内容文件时会静默失效
+        # 没有新落盘文件时，内容一致可幂等返回；但强制重新入库必须真正重灌，否则上传同名同内容文件时强制选项会静默失效
         if not force:
             return IngestResponse(
                 task_id="", status="done", accepted_files=accepted,
@@ -363,7 +356,7 @@ async def ingest(
                 detail="已有入库任务正在执行，请等待完成后再提交",
             )
 
-    # 入库范围是 raw 目录下全部 PDF：清单里未变的会被跳过，但索引必须包含所有文件，故提交整个目录。
+    # 入库范围是原始目录下全部 PDF：清单中未变化的文件会被跳过，但索引必须覆盖所有文件，因此提交整个目录
     all_pdfs = sorted(settings.paths.raw_dir.rglob("*.pdf"))
     try:
         task = manager.submit(all_pdfs, strategy=strategy, force=force)
@@ -388,7 +381,7 @@ def delete_ingested_file(file_name: str) -> IngestResponse:
     """
     从语料中移除一个文件并重建索引，重建同样走后台任务。
 
-    上传错文件时需要一个"撤销"手段，否则只能手动删文件，容易漏掉清单与索引的同步。
+    上传错文件时提供撤销手段，避免手动删文件后清单与索引不同步。
     """
     from src.api.ingest import sanitize_filename
 
@@ -404,7 +397,7 @@ def delete_ingested_file(file_name: str) -> IngestResponse:
     target.unlink()
     logger.info("已从语料目录删除文件: %s", safe)
 
-    # 同步从清单中移除，否则下次入库会认为它"仍需处理"却找不到文件
+    # 同步从清单中移除，否则下次入库会认为该文件仍需处理却找不到文件
     manifest = ingest_module.load_manifest()
     manifest.get("files", {}).pop(safe, None)
     ingest_module.save_manifest(manifest)
@@ -463,9 +456,9 @@ def ingest_manifest() -> dict[str, Any]:
 
 def create_app(*, warmup: bool | None = None) -> FastAPI:
     """
-    创建 FastAPI 应用。
+    创建应用。
 
-    :param warmup: 覆盖 ``settings.api.warmup_on_startup``；测试传 False 可跳过模型加载。
+    预热参数可覆盖配置中的启动预热开关，测试时传假值可跳过模型加载。
     """
     if warmup is not None:
         object.__setattr__(settings.api, "warmup_on_startup", warmup)
@@ -483,7 +476,7 @@ def create_app(*, warmup: bool | None = None) -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # CORS：Streamlit 前端跑在 5171
+    # 跨域配置，前端开发服务器端口与后端不同
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.api.cors_origins,
@@ -511,19 +504,19 @@ def create_app(*, warmup: bool | None = None) -> FastAPI:
 
     @app.exception_handler(ValueError)
     async def _value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
-        """把业务层的 ValueError 统一转成 422，避免暴露 500 堆栈给前端。"""
+        """把业务层抛出的值错误统一转为 422，避免把 500 堆栈暴露给前端。"""
         logger.warning("请求处理出现 ValueError: %s", exc)
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     return app
 
 
-#: uvicorn / gunicorn 的入口对象
+# 服务进程的入口对象
 app = create_app()
 
 
 def main() -> int:
-    """命令行启动：python -m src.api.main"""
+    """命令行启动入口。"""
     import uvicorn
 
     setup_logging()
@@ -535,7 +528,7 @@ def main() -> int:
         port=cfg.port,
         reload=cfg.reload,
         log_level=cfg.log_level.lower(),
-        # access 日志统一走我们的 logger
+        # 访问日志统一交给本项目的日志器输出
         access_log=True,
     )
     return 0
