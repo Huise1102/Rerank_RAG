@@ -17,7 +17,7 @@ class Conversation(Base):
     kb_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False
     )
-    #: 所属项目（product / agent），用于隔离不同前端的会话
+    # 所属项目标识，用于隔离不同前端的会话
     app_key: Mapped[str] = mapped_column(String(20), nullable=False, server_default="", default="")
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
