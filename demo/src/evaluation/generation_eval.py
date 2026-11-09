@@ -1,10 +1,8 @@
-"""生成质量评估：每种策略跑「检索 → 生成 → LLM 裁判打分」，输出平均分。
+"""生成质量评估，对每种策略依次执行检索、生成与大模型裁判打分，输出平均分。
 
-每条样本消耗两次 LLM 调用（生成约 4000 + 裁判约 1500 tokens），10 条题 × 4 策略 ≈ 80 次
-调用。检索类指标不消耗 token 可放心全量跑，生成类务必先小样本验证：``--limit N`` 只跑前
-N 条，``config.evaluation.generation_sample`` 是配置级抽样上限。
+每条样本消耗两次大模型调用，一次生成与一次裁判；检索类指标不消耗额度可以全量执行，生成类评估建议先用小样本验证。样本条数可由命令参数或配置级抽样上限控制。
 
-维度：``faithfulness``（是否编造）、``answer_relevancy``（是否切题），两者独立。
+评分维度为忠实度，用于识别编造，以及答案相关性，用于判断是否切题，两者相互独立。
 """
 
 from __future__ import annotations
@@ -28,9 +26,9 @@ logger = get_logger(__name__)
 class GenerationEvalResult:
     """生成质量评估结果。"""
 
-    #: 策略 -> 该策略下所有裁判结果
+    # 策略与该策略下所有裁判结果
     scores: dict[str, list[JudgeScore]] = field(default_factory=dict)
-    #: 策略 -> 逐条明细（问题、答案、引用、耗时），便于人工复核
+    # 策略与逐条明细，包含问题、答案、引用与耗时，便于人工复核
     records: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     testset_path: str = ""
     chunk_strategy: str = ""
@@ -38,11 +36,11 @@ class GenerationEvalResult:
     limit: int = 0
     started_at: str = ""
     finished_at: str = ""
-    #: 生成阶段累计 token（按策略）
+    # 生成阶段累计调用量，按策略统计
     tokens: dict[str, int] = field(default_factory=dict)
 
     def summary_frame(self) -> "Any":
-        """主对比表：每行一个策略，列为各维度平均分。"""
+        """主对比表，每行一个策略，列包含各维度平均分。"""
         import pandas as pd
 
         rows: list[dict[str, Any]] = []
@@ -63,7 +61,7 @@ class GenerationEvalResult:
         return df[[c for c in cols if c in df.columns]]
 
     def category_frame(self) -> "Any":
-        """分维度表：策略 × 类别 × 平均分。"""
+        """分维度表，每行对应策略、类别与平均分的组合。"""
         import pandas as pd
 
         metrics = list(settings.evaluation.judge_metrics)
@@ -89,13 +87,9 @@ class GenerationEvalResult:
 
     def per_question_frame(self) -> "Any":
         """
-        逐题明细：含答案与裁判理由，人工复核用。
+        逐题明细，含答案与裁判理由，供人工复核。
 
-        另附两个可程序化发现幻觉的字段，不依赖裁判的主观描述：
-
-        - ``n_retrieved`` / ``n_contexts``：检索条数 vs 真正进 prompt 的条数，两者不等
-          说明被上下文预算裁剪过，引用编号的有效范围以 ``n_contexts`` 为准。
-        - ``invalid_citations``：模型引用了但不存在的编号个数（如只有 5 条上下文却写 `[9]`）。
+        另附两个可程序化发现幻觉的字段，不依赖裁判的主观描述：检索条数与真正进入指令模板的条数，两者不等说明被上下文预算裁剪过，引用编号的有效范围以真正进入指令模板的条数为准；越界引用个数，即模型引用了但不存在的编号数量。
         """
         import pandas as pd
 
@@ -129,19 +123,18 @@ class GenerationEvalResult:
 
 def _stratified_sample(items: Sequence[TestItem], n: int) -> list[TestItem]:
     """
-    分层抽样：按类别轮流取，保证小样本也覆盖三个类别。
+    分层抽样，按类别轮流取，保证小样本也覆盖三个类别。
 
-    测试集按「语义泛化 → 术语精确 → 多跳推理」顺序排列，直接取前 N 条会全是语义泛化类；
-    而生成评估每条约 5500 token，小样本是常态，只覆盖一类的得分容易被误读成整体生成质量。
+    测试集按语义泛化、术语精确、多跳推理的顺序排列，直接取前若干条会全是语义泛化类；而生成评估每条消耗大量调用额度，小样本是常态，只覆盖一类的得分容易被误读为整体生成质量。
 
-    抽样是确定性的（按类别轮流 + 原顺序），同输入必得同样本，保证多策略评同一批题。
+    抽样是确定性的，按类别轮流并按原顺序取，同样输入得到同样本，保证多策略评估同一批题。
     """
     if n <= 0 or n >= len(items):
         return list(items)
     buckets: dict[str, list[TestItem]] = {}
     for it in items:
         buckets.setdefault(it.category or "未分类", []).append(it)
-    # 类别顺序按首次出现固定，避免 dict 顺序在不同 Python 版本下漂移
+    # 类别顺序按首次出现固定，避免不同 Python 版本下字典顺序漂移
     order = list(buckets)
     picked: list[TestItem] = []
     idx = 0
@@ -170,11 +163,9 @@ def evaluate_generation(
     show_progress: bool = True,
 ) -> GenerationEvalResult:
     """
-    对每种策略跑「检索 → 生成 → 裁判打分」。
+    对每种策略依次执行检索、生成与裁判打分。
 
-    ``limit`` 为抽样条数（0 表示全部，或取配置的 ``generation_sample``），抽样按类别
-    分层进行，避免"前 N 条全是语义泛化类"。``judge`` 与 ``llm_client`` 可注入 mock，
-    测试时零 token。
+    样本上限为零表示全部，否则取配置的抽样条数；抽样按类别分层进行，避免前若干条全是同一类别。裁判与生成客户端均可注入模拟对象，测试时不消耗调用额度。
     """
     from src.generation.llm import LLMClient, get_llm_client
     from src.retrieval.pipeline import get_pipeline
@@ -239,16 +230,13 @@ def evaluate_generation(
                 gen_seconds = time.perf_counter() - t0
                 tokens += int((response.usage or {}).get("total_tokens", 0) or 0)
 
-                # 裁判必须拿到生成阶段**实际使用**的上下文，而不是检索到的全部结果：
-                # 生成会按 context_max_chars 预算裁剪（本项目 6000 字，例如 vector 检索
-                # 20 条只用 19 条进 prompt），编号体系不一致会把模型的正常引用误判成
-                # "引用了不存在的编号"（假阳性幻觉）。
+                # 裁判必须拿到生成阶段实际使用的上下文，而不是检索到的全部结果：生成阶段会按上下文预算裁剪，检索二十条可能只有十九条进入指令模板，编号体系不一致会把模型的正常引用误判为引用了不存在的编号
                 judge_contexts = list(response.contexts) or list(retrieval.results)
                 score = judge.score(
                     item.question, judge_contexts, response.answer,
                     strategy=strategy, category=item.category,
                 )
-            except Exception as exc:  # noqa: BLE001 - 单题失败继续跑后面的
+            except Exception as exc:  # noqa: BLE001 - 单题失败时继续评估其余题目
                 logger.warning("[%s] 问题「%s」评估失败：%s", strategy, item.question[:24], exc)
                 score = JudgeScore(question=item.question, strategy=strategy,
                                    category=item.category, error=f"{type(exc).__name__}: {exc}")
@@ -262,9 +250,9 @@ def evaluate_generation(
                 "question": item.question,
                 "category": item.category,
                 "answer": response.answer if response is not None else "",
-                # n_contexts = 真正进入 prompt 的条数（决定引用编号的有效范围）
+                # 真正进入指令模板的条数，决定引用编号的有效范围
                 "n_contexts": len(response.contexts) if response is not None else 0,
-                # n_retrieved = 检索返回条数（两者不等说明被上下文预算裁剪过）
+                # 检索返回条数，与真正进入指令模板的条数不等时说明被上下文预算裁剪过
                 "n_retrieved": len(retrieval.results) if retrieval is not None else 0,
                 "citations": len(report.citations) if report is not None else 0,
                 "invalid_indices": list(getattr(report, "invalid_indices", []) or []) if report else [],
@@ -291,9 +279,9 @@ def save_generation_results(
     stem: str = "generation_comparison",
 ) -> dict[str, Path]:
     """
-    导出生成评估结果到 ``data/eval/results/``：
-    ``{stem}.csv`` 策略 × 平均分、``{stem}_by_category.csv`` 策略 × 类别、
-    ``{stem}_per_question.csv`` 逐题明细（含答案与裁判理由）、``{stem}.md``。
+    导出生成评估结果，包括主表、分类别表、逐题明细与 Markdown 报告，返回各文件路径。
+
+    逐题明细是否导出由保存原始记录开关决定。
     """
     directory = Path(out_dir) if out_dir else settings.evaluation.result_dir
     directory.mkdir(parents=True, exist_ok=True)
