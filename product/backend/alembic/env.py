@@ -1,8 +1,6 @@
-"""Alembic 迁移环境（异步引擎版）。
+"""Alembic 迁移环境，使用异步引擎执行迁移。
 
-从 ``src.core.config.settings.database.url`` 取连接串（aiomysql），用
-``AsyncEngine`` 跑迁移；``target_metadata`` 指向本项目所有 ORM 模型，
-支持 ``alembic revision --autogenerate`` 自动比对。
+连接串取自配置中的数据库地址，目标元数据指向全部 ORM 模型。
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-#: 后端项目根：alembic/env.py -> alembic -> backend
+# 后端项目根目录，向上两级
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
