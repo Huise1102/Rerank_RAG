@@ -1,9 +1,6 @@
-"""阶段 3 —— 提示词组装（prompt.py）：把检索到的文档块拼成 LLM 的 prompt。
+"""指令模板组装，把检索到的文档块拼成发给大模型的消息。
 
-系统提示词要写三条约束：仅依据上下文回答（否则模型用参数里的常识作答）、标注来源编号
-[1][2]（有引用标注时幻觉率显著下降）、上下文不足时明确说明。引用格式要求只在动态追加
-片段里写一遍，config 的 system_prompt 里不重复。上下文按分数降序填到字符预算，每条前带
-``[1] 来源：测试.pdf 页码：18`` —— 编号是 [1] 能解析回文档块的前提。
+系统指令约束模型只依据上下文回答、标注来源编号、在资料不足时明确说明。引用格式说明由引用风格动态追加，配置中的系统指令不重复书写。上下文按分数从高到低填入字符预算，每条前带编号与来源页码，编号是答案中的引用能解析回文档块的前提。
 """
 
 from __future__ import annotations
@@ -13,7 +10,7 @@ from typing import Any, Iterable, Sequence
 
 from config import settings
 
-#: 引用标注风格 -> 给模型的排版要求
+# 引用标注风格对应的排版要求
 _CITATION_INSTRUCTIONS: dict[str, str] = {
     "bracket": "回答时用 [编号] 标注每条结论的依据来源，例如：应在规定期限内提出申请[1]。",
     "inline": "回答时在句末用（来源：文件名 第N页）的形式标注依据。",
@@ -23,8 +20,9 @@ _CITATION_INSTRUCTIONS: dict[str, str] = {
 
 @dataclass
 class PromptContext:
-    """送入 prompt 的单条上下文。``index`` 是模型看到的编号（从 1 开始），citation.py
-    依赖它把 [n] 映射回文档块。
+    """送入指令模板的单条上下文。
+
+    index 是模型看到的编号，从 1 开始，引用解析依赖它把编号映射回文档块。
     """
 
     index: int
@@ -35,7 +33,7 @@ class PromptContext:
     chunk_id: str = ""
 
     def header(self, *, include_source: bool = True, include_scores: bool = False) -> str:
-        """生成 ``[1] 来源：xxx 页码：xxx`` 这一行。"""
+        """生成条目首行，包含编号、来源、页码，可选相关度。"""
         if not include_source:
             return f"[{self.index}]"
         parts = [f"[{self.index}]"]
@@ -52,7 +50,7 @@ class PromptContext:
 
 @dataclass
 class BuiltPrompt:
-    """组装好的 prompt（消息列表）及其元信息。"""
+    """组装好的消息列表及元信息。"""
 
     messages: list[dict[str, str]]
     contexts: list[PromptContext] = field(default_factory=list)
@@ -72,7 +70,7 @@ class BuiltPrompt:
 
 
 def contexts_from_results(results: Iterable[Any], *, start_index: int = 1) -> list[PromptContext]:
-    """把检索结果（``RetrievalResult`` 或字典）转成 ``PromptContext``，两种输入都兼容。"""
+    """把检索结果转为上下文列表，兼容结果对象与字典两种输入。"""
     contexts: list[PromptContext] = []
     for offset, item in enumerate(results):
         if isinstance(item, dict):
@@ -109,12 +107,9 @@ def select_within_budget(
     contexts: Sequence[PromptContext],
     max_chars: int | None = None,
 ) -> tuple[list[PromptContext], int]:
-    """按字符预算裁剪上下文（保持原顺序，即分数从高到低）。
+    """按字符预算裁剪上下文，保持原顺序即分数从高到低。
 
-    按顺序累加、超预算即停，而不是跳过超长的那条继续塞后面的：结果已按相关性降序，
-    为塞一条低相关短文本而丢掉高相关长文本得不偿失。单条若超过预算一半，截断而不是
-    整条丢弃（长文档块的开头通常就是最关键的定义或条款）。
-    :returns: (保留的上下文, 被丢弃的条数)
+    按顺序累加，超出预算即停止，不跳过超长条目继续追加：结果已依相关性排序，为一个低相关短文本而丢弃高相关长文本并不划算。单条若超过一半预算，截断保留开头，因为长文档块的开头通常就是关键定义或条款。返回保留的上下文与被丢弃的条数。
     """
     budget = max_chars if max_chars is not None else settings.generation.context_max_chars
     kept: list[PromptContext] = []
@@ -145,7 +140,7 @@ def select_within_budget(
 
 
 class PromptBuilder:
-    """把系统提示词 + 上下文 + 问题组装成 OpenAI 格式的消息列表。"""
+    """把系统指令、上下文与问题组装成消息列表。"""
 
     def __init__(
         self,
@@ -168,16 +163,19 @@ class PromptBuilder:
         self.include_source = cfg.include_source if include_source is None else include_source
         self.include_scores = cfg.include_scores if include_scores is None else include_scores
         self.context_max_chars = context_max_chars or cfg.context_max_chars
-        #: 没有可用上下文时的固定回复（不调用 LLM，直接返回）
+        # 没有可用上下文时的固定回复，不调用大模型直接返回
         self.no_context_reply = cfg.no_context_reply
     def build_system_prompt(self) -> str:
-        """在配置的系统提示词后追加引用格式要求（排版约定与安全底线分开，便于按场景切换）。"""
+        """在配置的系统指令后追加引用格式说明。
+
+        排版约定与安全底线分开书写，便于按场景切换引用风格。
+        """
         extra = _CITATION_INSTRUCTIONS.get(self.citation_style, "")
         if self.citation_style == "none":
             return self.system_prompt
         return f"{self.system_prompt.rstrip()}\n{extra}"
     def render_context(self, contexts: Sequence[PromptContext]) -> str:
-        """渲染上下文块，每条前带 ``[编号] 来源：xxx 页码：xxx``。"""
+        """渲染上下文块，每条前带编号、来源与页码。"""
         return "\n\n".join(
             ctx.render(include_source=self.include_source, include_scores=self.include_scores)
             for ctx in contexts
@@ -189,13 +187,11 @@ class PromptBuilder:
         *,
         history: Sequence[tuple[str, str]] | None = None,
     ) -> BuiltPrompt:
-        """组装完整 prompt。
+        """组装完整消息列表。
 
-        :param contexts: ``PromptContext`` 或检索结果列表/字典均可（本方法自行归一化）
-        :param history: 多轮对话历史 ``[(role, content), ...]``，只保留最近若干轮
-        :returns: BuiltPrompt，``messages`` 可直接喂给 OpenAI SDK
+        上下文可直接传入上下文对象或检索结果，方法内部自行归一化；对话历史只保留最近若干轮。返回对象中的消息列表可直接交给大模型接口。
         """
-        # 允许直接传检索结果，否则调用方会拿到 AttributeError: no attribute 'header'
+        # 允许直接传入检索结果，避免调用方遇到缺少 header 方法的属性错误
         items = list(contexts or [])
         if items and not isinstance(items[0], PromptContext):
             items = contexts_from_results(items)
@@ -206,7 +202,7 @@ class PromptBuilder:
             block = self.render_context(selected)
             user_content = self.user_template.format(context=block, question=question.strip())
         else:
-            # 无上下文：仍然走"不足则说明"的路径，而不是伪造上下文
+            # 无上下文时仍走资料不足的说明路径，不伪造上下文
             user_content = self.user_template.format(context="（无可用参考资料）", question=question.strip())
 
         messages: list[dict[str, str]] = [{"role": "system", "content": self.build_system_prompt()}]
@@ -232,7 +228,7 @@ def build_messages(
     *,
     history: Sequence[tuple[str, str]] | None = None,
 ) -> BuiltPrompt:
-    """便捷函数：一条语句完成组装（自动判断是 PromptContext 还是检索结果）。"""
+    """便捷组装函数，自动判断传入的是上下文对象还是检索结果。"""
     items = list(contexts)
     if items and not isinstance(items[0], PromptContext):
         items = contexts_from_results(items)
