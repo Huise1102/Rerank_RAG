@@ -1,11 +1,8 @@
-"""真实模型加载验证（需已下载 BGE 模型）。
+"""真实模型加载验证，需要已下载 BGE 模型。
 
-1. bge-large-zh-v1.5：可加载、输出 1024 维，语义相近句余弦相似度更高
-2. query 加检索指令前缀后相似度确有提升（bge 官方推荐用法）
-3. bge-reranker-v2-m3：可通过 CrossEncoder 加载并对 (query, doc) 打分
-4. 精排能把真正相关的文档排在前面
+验证向量模型可加载并输出 1024 维，语义相近的句子余弦相似度更高，查询加检索指令前缀后相似度确有提升。
 
-运行：``.venv\\Scripts\\python.exe scripts\\verify_models.py``
+验证精排模型可加载并对查询与文档打分，且能把真正相关的文档排在前面。
 """
 
 from __future__ import annotations
