@@ -1,10 +1,6 @@
-"""检索指标：Recall@k、Hit@k、MRR、Precision@k、nDCG@k。
+"""检索指标，包括召回率、命中率、平均倒数排名、准确率与归一化折损累计增益。
 
-Recall@k 的分母是相关文档总数，相关文档多于一个时命中其中一个只算部分召回；
-Hit@k 只问是否至少命中一个。两者一起报才能区分"漏没漏"和"有没有找到"。
-
-``hybrid_rerank`` 只返回 ``rerank.top_k`` 条，其 Recall@10/@20 必然等于 Recall@5，
-这是策略特性不是 bug，精排的价值体现在 Recall@1/@5 与 MRR/nDCG 上。
+召回率的分母是相关文档总数，相关文档多于一个时只命中其中一个只算部分召回；命中率只判断是否至少命中一个。两者同时报告才能区分漏检与未找到。混合后精排策略只返回精排保留条数，其较大截断位置的召回率必然等于精排保留位置的召回率，这是策略特性而非缺陷，精排价值体现在首位与前列的指标上。
 """
 
 from __future__ import annotations
@@ -17,11 +13,9 @@ from typing import Any, Iterable, Sequence
 
 def recall_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> float:
     """
-    Recall@k：前 k 条中命中的相关文档数 / 相关文档总数。
+    召回率，即前若干条中命中的相关文档数除以相关文档总数。
 
-    :param retrieved: 检索返回的 chunk_id，按相关性降序
-    :param relevant: 标注的相关 chunk_id 集合
-    :param k: 截断位置；relevant 为空或 k<=0 时返回 0.0
+    前若干条指按相关性降序排列的检索结果；相关文档为空或截断位置非正时返回零。
     """
     rel = set(relevant)
     if not rel or k <= 0:
@@ -31,7 +25,7 @@ def recall_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> fl
 
 
 def hit_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> float:
-    """Hit@k：前 k 条命中至少一个相关文档则为 1，否则 0。多跳题看"有没有找到任何依据"。"""
+    """命中率，前若干条中至少命中一个相关文档为 1，否则为 0，多跳题据此判断是否找到任何依据。"""
     rel = set(relevant)
     if not rel or k <= 0:
         return 0.0
@@ -39,7 +33,7 @@ def hit_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> float
 
 
 def reciprocal_rank(retrieved: Sequence[str], relevant: Iterable[str], k: int | None = None) -> float:
-    """MRR 的单项：第一个命中位置的倒数；未命中返回 0。"""
+    """首个命中位置的名次倒数，未命中返回 0。"""
     rel = set(relevant)
     if not rel:
         return 0.0
@@ -51,7 +45,7 @@ def reciprocal_rank(retrieved: Sequence[str], relevant: Iterable[str], k: int | 
 
 
 def precision_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> float:
-    """Precision@k：前 k 条里相关文档占比（送进 LLM 的上下文有多少是噪声）。"""
+    """准确率，即前若干条中相关文档的占比，可反映送入大模型的上下文中噪声的比例。"""
     if k <= 0:
         return 0.0
     top = list(retrieved[:k])
@@ -63,10 +57,9 @@ def precision_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) ->
 
 def dcg_at_k(gains: Sequence[float], k: int) -> float:
     """
-    折损累计增益：``Σ gain_i / log2(i+1)``（i 从 1 开始）。
+    折损累计增益，按名次对增益值做对数折损后求和，名次从 1 开始。
 
-    标准写法 ``(2^rel - 1) / log2(i+1)`` 在二元相关性下 ``2^1-1 = 1``，
-    因此直接用 gain 值，兼容二元与分级标注。
+    标准形式按相关度做指数加权，在二元相关性下指数项恒为 1，因此直接使用增益值，同时兼容二元与分级标注。
     """
     total = 0.0
     for i, gain in enumerate(gains[:k], 1):
@@ -76,9 +69,9 @@ def dcg_at_k(gains: Sequence[float], k: int) -> float:
 
 def ndcg_at_k(retrieved: Sequence[str], relevant: Iterable[str], k: int) -> float:
     """
-    nDCG@k（二元相关性）：``DCG@k / IDCG@k``。
+    归一化折损累计增益，即实际折损累计增益除以理想排序下的折损累计增益。
 
-    理想排序下 m = min(|相关|, k) 个相关文档占据前 m 位，故 ``IDCG = Σ 1/log2(i+1)``。
+    理想排序下相关文档占据最前面的位置，其数量取相关文档总数与截断位置的较小值。
     """
     rel = set(relevant)
     if not rel or k <= 0:
@@ -97,25 +90,25 @@ class ItemMetrics:
 
     question: str = ""
     category: str = ""
-    #: 每个 k 对应的 Recall
+    # 各截断位置对应的召回率
     recall: dict[int, float] = field(default_factory=dict)
     hit: dict[int, float] = field(default_factory=dict)
     precision: dict[int, float] = field(default_factory=dict)
     mrr: float = 0.0
     ndcg: float = 0.0
-    #: 第一个命中结果的名次（未命中为 0）
+    # 首个命中结果的名次，未命中为 0
     first_hit_rank: int = 0
     n_retrieved: int = 0
     n_relevant: int = 0
-    #: 命中的相关 id 与漏掉的相关 id，用于错误分析
+    # 命中的相关编号与漏掉的相关编号，用于错误分析
     hits: list[str] = field(default_factory=list)
     missed: list[str] = field(default_factory=list)
-    #: 本次检索耗时（秒），来自 pipeline 的分步统计
+    # 单次检索耗时，单位为秒，来自检索管线的分步统计
     seconds: float = 0.0
     timing: dict[str, float] = field(default_factory=dict)
 
     def to_row(self, strategy: str = "") -> dict[str, Any]:
-        """摊平为一行，便于写入 DataFrame / CSV。"""
+        """摊平为一行，便于写入表格或文件。"""
         row: dict[str, Any] = {
             "strategy": strategy,
             "category": self.category,
@@ -174,7 +167,7 @@ def evaluate_item(
 
 
 def aggregate(items: Sequence[ItemMetrics], recall_ks: Sequence[int] = (1, 3, 5, 10, 20)) -> dict[str, Any]:
-    """把多条样本的指标求平均（macro-average，即各题等权）。"""
+    """把多条样本的指标求平均，各题等权。"""
     if not items:
         return {"n": 0}
     n = len(items)
