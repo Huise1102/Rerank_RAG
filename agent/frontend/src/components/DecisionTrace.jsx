@@ -1,6 +1,6 @@
 import { DocLine } from './RetrievalDetail'
 
-// 行动标签：agent 后端 trace 里的 action 字段
+// 决策动作对应的中文标签
 const ACTION_LABELS = {
   intent: '意图识别',
   answer: '直接作答',
