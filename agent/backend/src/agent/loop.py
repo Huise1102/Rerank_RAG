@@ -1,16 +1,12 @@
-"""调度循环（loop.py）：第三版核心 —— LLM 逐轮决策，最多 3 轮必须收敛。
+"""调度循环，由 LLM 逐轮决策，最多 3 轮必须收敛。
 
-ReAct 式循环：每轮 LLM 要么调用一个工具（retrieve / ask_clarification），要么直接输出
-最终答案（不调工具即 content）。保底机制对应「最多 3 次决策」与「知识库优先」约束：
-1. ``MAX_DECISION_ROUNDS`` 封顶 for 循环；
-2. 不调工具直接输出 content = 最终答案，立即退出；
-3. 触顶/异常后追加「必须作答」指令强制 LLM 输出，绝不无限循环；
-4. **意图识别**：进入循环前先由 LLM 判断是正常交流（CHAT）还是知识库问答（KB）；
-   CHAT 直接作答不检索，KB 则启用检索优先守卫（带图提问按 image 分支放行）；
-5. **检索优先**（仅 KB）：首次检索之前不许直接作答——正文先缓存不推送，模型若仍
-   不调用 retrieve，则追加系统拦截指令并要求重新决策；再拒绝就由系统兜底检索一次。
+每轮 LLM 要么调用一个工具，要么直接输出最终答案。
+四项保底机制：轮数上限封顶循环；不调用工具即视为最终答案并退出；
+触顶或异常后追加必须作答的指令；进入循环前先判断正常交流还是知识库问答。
+正常交流直接作答不检索，知识库问答启用检索优先守卫，带图提问按图片分支放行。
+检索优先规则下，首次检索前不直接作答，正文先缓存不推送，
+模型仍不调用检索时追加系统拦截指令并要求重新决策，再拒绝由系统兜底检索一次。
 """
-
 from __future__ import annotations
 
 import json
@@ -32,10 +28,10 @@ from src.generation.agent_llm import get_agent_llm
 from src.generation.citation import extract_citations
 from src.generation.llm import ChatMessage
 
-#: 硬约束：单问题最多决策轮数（第 3 轮必须收敛）
+# 单问题最多决策轮数，第 3 轮必须收敛
 MAX_DECISION_ROUNDS: int = settings.agent.max_decision_rounds
 
-#: 意图识别只带最近 N 条历史，避免长上下文拖慢分类
+# 意图识别只带最近 N 条历史，避免长上下文拖慢分类
 INTENT_HISTORY_MESSAGES: int = 4
 
 
@@ -54,14 +50,14 @@ class AgentResult:
 
 
 class AgentLoop:
-    """LLM 驱动的检索决策循环。用法：``AgentLoop().run(question, kb_id, history)``。"""
+    """LLM 驱动的检索决策循环。"""
 
     def __init__(self, llm_client=None) -> None:
         self.llm = llm_client or get_agent_llm()
         self.max_rounds = MAX_DECISION_ROUNDS
         self.max_retrieve_calls = settings.agent.max_retrieve_calls
 
-    # ---- 公开入口 ----
+    # 公开入口
 
     def run(self, question: str, kb_id: int, history: list[tuple[str, str]],
             image: str | None = None) -> AgentResult:
@@ -78,10 +74,10 @@ class AgentLoop:
                    image: str | None = None) -> Iterator[dict[str, Any]]:
         """流式决策循环。
 
-        yield ``{"type": "step"}``（每轮决策轨迹）、``{"type": "delta"}``（最终答案文本增量）、
-        ``{"type": "result"}``（结束，含 AgentResult）。决策轮调工具时通常不产出正文，
-        因此 delta 可直接向前端推送，无需等整轮结束。
+        依次产出决策步骤、最终答案文本增量与带结果对象的结束事件。
+        决策轮调用工具时通常不产出正文，因此文本增量可直接推送给前端。
         """
+
         state = AgentState(question=question, kb_id=kb_id, history=history, image=image)
         intent, intent_usage, intent_ms = self._classify_intent(question, history, image)
         state.intent = intent
@@ -128,7 +124,7 @@ class AgentLoop:
                     buffered = []
                     decision = self._forced_retrieve_call(state.question)
 
-            # 不调工具 = 直接输出最终答案（含 [n] 引用）→ 结束
+            # 不调用工具即直接输出最终答案，流程结束
             if not decision.tool_calls:
                 for text in buffered:
                     yield {"type": "delta", "delta": text}
@@ -152,7 +148,7 @@ class AgentLoop:
                 yield {"type": "result", "result": self._clarify(state, (args.get("question") or "").strip())}
                 return
 
-            # 触发上限：未知工具 / 检索次数用尽 → 强制作答
+            # 触发上限，遇到未知工具或检索次数用尽时强制作答
             query = (args.get("query") or "").strip()
             if name != "retrieve" or not query or retrieve_calls >= self.max_retrieve_calls:
                 step = self._step(round_no, "force_answer", tool=name or None, args=args,
@@ -184,16 +180,16 @@ class AgentLoop:
         for event in self._force_finish_stream(state):
             yield event
 
-    # ---- 内部 ----
+    # 内部实现
 
     def _classify_intent(
         self, question: str, history: list[tuple[str, str]], image: str | None = None
     ) -> tuple[str, dict[str, Any], int]:
-        """意图识别：先判断正常交流（chat）还是知识库问答（kb），再进入决策循环。
+        """意图识别，先判断正常交流还是知识库问答，再进入决策循环。
 
-        带图提问直接归为 ``image``：图片本身就是参考资料，不为描述图片强制检索；
-        分类失败或无法解析时回落到 ``kb``（宁可多检索一次，也不放过幻觉）。
-        返回 ``(intent, usage, elapsed_ms)``。
+        带图提问直接归为图片意图，图片本身就是参考资料，不为描述图片强行检索；
+        分类失败或无法解析时回落到知识库问答，宁可多检索一次也不放过幻觉。
+        返回意图、用量与耗时。
         """
         if image:
             return "image", {}, 0
