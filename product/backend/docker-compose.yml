@@ -1,13 +1,8 @@
-# =============================================================================
-# 产品级领域知识库系统 —— Docker Compose
-# 一键启动：MySQL + Redis + MinIO + 后端(FastAPI)
-# 前端（Vue3）单独用 `npm run dev` 启动，或自行构建后用 nginx 托管。
-#
-# 使用：在本目录执行
-#   docker compose up -d --build
-# 需要 DeepSeek 密钥时先导出环境变量：
-#   set RAG_LLM__API_KEY=sk-xxxx   （PowerShell: $env:RAG_LLM__API_KEY="sk-xxxx"）
-# =============================================================================
+# 产品级领域知识库系统容器编排配置
+# 启动 MySQL、Redis、MinIO 与 FastAPI 后端
+# 前端在 product/frontend 目录单独启动，或构建后由 nginx 托管
+# 在本目录执行 docker compose 启动，首次启动会构建镜像
+# 需要 DeepSeek 密钥时，先在宿主机设置环境变量 RAG_LLM__API_KEY
 
 services:
   mysql:
@@ -85,7 +80,7 @@ services:
       RAG_MINIO__ACCESS_KEY: minioadmin
       RAG_MINIO__SECRET_KEY: minioadmin
       RAG_MINIO__BUCKET: rag-documents
-      # LLM（密钥从宿主机环境变量透传）
+      # 大模型配置，密钥从宿主机环境变量透传
       RAG_LLM__API_KEY: ${RAG_LLM__API_KEY:-}
       RAG_LLM__MODEL: ${RAG_LLM__MODEL:-deepseek-chat}
       RAG_LLM__BASE_URL: https://api.deepseek.com/v1
@@ -102,7 +97,7 @@ services:
     command: >
       sh -c "python scripts/init_db.py && uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
 
-  # Celery worker（可选：需要异步解析文档时启用）
+  # Celery 异步任务进程，需要异步解析文档时启用
   worker:
     build:
       context: .
