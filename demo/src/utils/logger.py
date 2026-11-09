@@ -1,11 +1,6 @@
-"""通用日志配置（src/utils/logger.py）。
+"""通用日志配置。
 
-API 是常驻服务，日志需落盘。
-
-要点：``setup_logging()`` 幂等，多次调用（uvicorn reload、Streamlit 重跑、
-测试导入）不会重复挂 handler 造成同一日志打印多遍；显式 UTF-8 编码，
-否则中文与 emoji 在 GBK 控制台抛 UnicodeEncodeError；按大小轮转避免写满磁盘；
-httpx/urllib3 等第三方库设为 WARNING，避免淹没关键日志。
+服务是常驻进程，日志需要同时输出到控制台并写入轮转文件。配置函数可重复调用，不会重复挂载处理器导致同一日志打印多遍；输出显式使用 UTF-8，避免中文在 GBK 控制台抛出编码错误；文件按大小轮转；第三方库只保留警告及以上级别。
 """
 
 from __future__ import annotations
@@ -17,14 +12,14 @@ from pathlib import Path
 
 from config import settings
 
-#: 本项目的根日志器名（所有模块都是 src.* / config）
+# 本项目的根日志器名，所有模块都位于该命名空间下
 _APP_LOGGER = "src"
 
 _configured = False
 
 
 class _Utf8StreamHandler(logging.StreamHandler):
-    """强制 UTF-8 输出的控制台 handler（Windows 下 stderr 默认 GBK）。"""
+    """强制 UTF-8 输出的控制台处理器，Windows 下标准错误默认使用 GBK。"""
 
     def __init__(self, stream=None) -> None:
         super().__init__(stream or sys.stderr)
@@ -39,7 +34,7 @@ class _Utf8StreamHandler(logging.StreamHandler):
         try:
             super().emit(record)
         except UnicodeEncodeError:
-            # 极端情况下的最后兜底：丢掉无法编码的字符而不是让程序崩掉
+            # 最后兜底，替换无法编码的字符，避免日志导致程序崩溃
             record = logging.makeLogRecord(record.__dict__)
             record.msg = str(record.msg).encode("utf-8", "replace").decode("utf-8", "replace")
             record.args = None
@@ -54,13 +49,9 @@ def setup_logging(
     force: bool = False,
 ) -> logging.Logger:
     """
-    配置根日志器：控制台 + 轮转文件。
+    配置根日志器，输出到控制台与轮转文件。
 
-    :param level: 日志级别，默认取 ``settings.log.level``
-    :param log_dir: 日志目录，默认取 ``settings.log.dir``
-    :param console: 是否输出到控制台，默认取 ``settings.log.console``
-    :param force: 为 True 时先清空已有 handler 再配置（测试用）
-    :returns: 应用根日志器
+    日志级别、目录与控制台开关默认取配置值；强制重建开关为真时先清空已有处理器再配置，供测试使用。返回应用根日志器。
     """
     global _configured
 
@@ -93,7 +84,7 @@ def setup_logging(
         ch.setFormatter(formatter)
         logger.addHandler(ch)
 
-    # 文件日志：失败也不能影响服务启动（例如目录只读）
+    # 文件日志初始化失败时只告警，不影响服务启动，例如目录只读
     try:
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / cfg.file_name
@@ -115,7 +106,7 @@ def setup_logging(
     except Exception as exc:  # noqa: BLE001
         logger.warning("文件日志初始化失败（继续使用控制台日志）: %s", exc)
 
-    # 压制第三方库的噪声日志
+    # 降低第三方库日志级别，避免淹没关键日志
     for noisy, noisy_level in (
         ("httpx", logging.WARNING),
         ("httpcore", logging.WARNING),
@@ -138,14 +129,10 @@ def setup_logging(
 
 
 def get_logger(name: str) -> logging.Logger:
-    """获取模块日志器。
-
-    与 ``src.retrieval.base.get_logger`` 不同：本函数只取日志器、不挂临时
-    handler，统一由 ``setup_logging()`` 配置，避免双重 handler 重复输出。
-    """
+    """获取模块日志器，只返回日志器，不额外挂载处理器，统一由配置函数管理。"""
     return logging.getLogger(name)
 
 
 def setup_api_logging() -> logging.Logger:
-    """API 服务启动时的便捷入口。"""
+    """服务启动时的便捷入口。"""
     return setup_logging()
