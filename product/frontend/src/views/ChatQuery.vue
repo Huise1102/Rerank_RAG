@@ -136,7 +136,7 @@
         </div>
       </section>
 
-      <!-- 右：检索详情（3/9），展示当前所选回答的召回与耗时。默认隐藏，由工具栏按钮控制显隐 -->
+      <!-- 右侧检索详情，展示当前所选回答的召回与耗时，由工具栏按钮控制显隐 -->
       <aside v-if="detailVisible" class="detail-panel">
         <div class="detail-panel__head">
           <span class="detail-panel__title">检索详情</span>
@@ -188,14 +188,14 @@ const input = ref('')
 const sending = ref(false)
 const scrollEl = ref(null)
 const fileInput = ref(null)
-//: 待发送图片的 data URL（data:image/png;base64,...）
+// 待发送图片的 data URL
 const imageDataUrl = ref('')
 let abortController = null
 
-//: 用户在对话区点选的那条回答，决定右侧「检索详情」栏展示哪一次检索
+// 用户在对话区点选的那条回答，决定右侧检索详情栏展示哪一次检索
 const selectedDetailId = ref(null)
 
-//: 右侧「检索详情」栏是否展示，默认隐藏
+// 右侧检索详情栏是否展示，默认隐藏
 const detailVisible = ref(false)
 
 // 优先展示点选的那条回答，否则回退到最近一条回答（新回答生成时自动跟随）
@@ -215,7 +215,7 @@ function selectDetail(msg) {
   if (msg.role === 'assistant') selectedDetailId.value = msg.id
 }
 
-//: DeepSeek 多模态接口支持的图片格式
+// DeepSeek 多模态接口支持的图片格式
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
@@ -253,7 +253,7 @@ function newConversation() {
   resetScrollAnchor()
 }
 
-//: 切换会话/知识库后恢复正常滚动行为（加载历史仍会直接滚到底部）
+// 切换会话或知识库后恢复正常滚动，加载历史时仍直接滚到底部
 function resetScrollAnchor() {
   anchorMsgId.value = null
   followSuppressed = false
@@ -354,8 +354,8 @@ async function scrollToBottom() {
   }
 }
 
-//: 本轮提问的锚点：新问答开始时把提问顶到消息区顶部，之后正文增长只做校正，
-//: 不再把视口拉向末尾，保证用户总是从回答开头读起。
+// 本轮提问的锚点，新问答开始时把提问顶到消息区顶部
+// 之后正文增长只做位置校正，用户始终从回答开头读起。
 const anchorMsgId = ref(null)
 
 function adjustAnchor() {
@@ -366,7 +366,7 @@ function adjustAnchor() {
   if (!target) return
   const boxTop = el.getBoundingClientRect().top
   el.scrollTop += target.getBoundingClientRect().top - boxTop - 12
-  //: 内容高度足够时才可能真正对齐；对齐后解除锚定，之后不再自动滚动
+  // 内容高度足够时才能对齐，对齐后解除锚定并停止自动滚动
   if (Math.abs(target.getBoundingClientRect().top - boxTop - 12) <= 2) {
     anchorMsgId.value = null
   }
@@ -378,11 +378,11 @@ async function anchorToMessage(id) {
   adjustAnchor()
 }
 
-//: 本轮回答生成期间禁用"贴底跟随"：锚点一旦对齐就解除，但此后正文继续增长时
-//: 若内容仍不够高，贴底逻辑会把提问顶出视口，因此整轮回答期间都不再跟随底部。
+// 本轮回答生成期间禁用贴底跟随，因为正文继续增长时
+// 贴底会把提问顶出视口。
 let followSuppressed = false
 
-//: 跟随滚动：锚定期间只校正提问位置；锚定结束且未禁用跟随时，仅在用户本来就贴着底部时才跟随
+// 跟随滚动，锚定期间只校正提问位置，锚定结束且未禁用跟随时仅在贴近底部时跟随
 function followScroll() {
   if (anchorMsgId.value != null) {
     adjustAnchor()
@@ -396,20 +396,19 @@ function followScroll() {
   }
 }
 
-//: 吐字速率（字/毫秒）：约 180 字/秒，落在可读的"打字机"节奏上，比模型输出慢，
-//: 但又不至于让人干等。按时间计额度而非按帧计数，与浏览器帧率无关（headless 下
-//: requestAnimationFrame 频率远高于 60fps，按帧限速会失效）。
+// 吐字速率，单位为每毫秒字数，约每秒 180 字
+// 按时间计算额度，与浏览器帧率无关。
 const REVEAL_CHARS_PER_MS = 0.19
-//: 积压超过该字数时提速到约 360 字/秒，避免超长回答拖出很长的尾巴
+// 积压超过该字数时提速到约每秒 360 字
 const REVEAL_BACKLOG = 800
 const REVEAL_CHARS_PER_MS_MAX = 0.38
 
 /**
  * 流式增量的吐字器。
  *
- * 逐条增量触发「整段 markdown 重解析 + v-html 重绘 + 强制滚底」会把主线程长时间占满，
- * 浏览器几乎没有机会绘制，观感就成了整段文字瞬间出现。这里把增量攒进缓冲、按时间额度
- * 吐字：既保证正文以可读节奏逐步长出来，又把重绘次数从每秒两百多次降到帧率级别。
+ * 逐条增量重解析 Markdown 并整体重绘会长时间占用主线程，
+ * 这里先把增量缓冲，再按时间额度逐步写入正文，
+ * 既降低重绘频率，又保持可读的吐字节奏。
  */
 function createStreamReveal(target) {
   let pending = ''
@@ -420,8 +419,8 @@ function createStreamReveal(target) {
 
   const pump = (ts) => {
     rafId = null
-    //: 相邻两帧的真实间隔即本帧额度的时间基数。空闲后（后台标签页 rAF 停摆、模型停顿）
-    //: 首帧间隔可能极长，故上限 50ms，避免攒出巨额额度把积压一次倒光。
+    // 相邻两帧的间隔作为本帧额度的时间基数
+    // 首帧或停顿后的间隔可能极长，上限 50 毫秒，避免一次倒出大量积压。
     const dt = lastTs === null ? 16 : Math.min(50, Math.max(0, ts - lastTs))
     lastTs = ts
     credit += dt * (pending.length > REVEAL_BACKLOG ? REVEAL_CHARS_PER_MS_MAX : REVEAL_CHARS_PER_MS)
@@ -437,7 +436,7 @@ function createStreamReveal(target) {
     if (pending) {
       rafId = requestAnimationFrame(pump)
     } else {
-      //: 只有额度清零；lastTs 保留，下一帧才能按真实间隔计额度
+      // 只清零额度，保留上一帧时间戳，下一帧按真实间隔计算额度
       credit = 0
       if (onDrained) {
         const done = onDrained
@@ -457,14 +456,14 @@ function createStreamReveal(target) {
       pending += delta
       schedule()
     },
-    /** 流已结束：按同一节奏把剩余正文吐完，返回吐完的 Promise */
+    /** 流已结束，按同一节奏输出剩余正文，返回输出完成的 Promise */
     finish(finalText) {
       if (finalText) {
-        // target.content 始终是最终答案的前缀，故缓冲直接按最终答案对齐，避免重复或漏字
+        // 已输出的正文始终是最终答案的前缀，缓冲直接按最终答案对齐，避免重复或漏字
         pending = finalText.slice(target.content.length)
       }
       if (!pending) return Promise.resolve()
-      //: 页面切到后台时 rAF 会停摆，这里直接落地，避免发送按钮一直转圈
+      // 页面切到后台时动画帧回调会停摆，这里直接写入全部正文
       if (document.hidden) {
         target.content += pending
         pending = ''
@@ -475,7 +474,7 @@ function createStreamReveal(target) {
         onDrained = resolve
       })
     },
-    /** 收尾兜底：停掉动画帧并把已收到的增量落地 */
+    /** 收尾处理，停止动画帧并把已收到的增量写入正文 */
     cancel() {
       if (rafId !== null) {
         cancelAnimationFrame(rafId)
@@ -533,7 +532,7 @@ async function handleSend() {
 
   input.value = ''
   imageDataUrl.value = ''
-  // 新提问后详情栏跟随这一次检索，不再停留在之前点选的回答上
+  // 新提问后详情栏跟随这一次检索，并清除点选状态
   selectedDetailId.value = null
   chatStore.messages.push({
     id: nextMessageId(),
@@ -556,12 +555,12 @@ async function handleSend() {
   })
   chatStore.messages.push(assistant)
   sending.value = true
-  //: 锚定本轮提问（而非滚到底部），回答从提问下方开始生成；本轮不再贴底跟随
+  // 锚定本轮提问，回答从提问下方开始生成，本轮不贴底跟随
   followSuppressed = true
   await anchorToMessage(userMsg.id)
 
   abortController = new AbortController()
-  //: 正文按帧吐字，避免整段瞬间砸下来
+  // 正文按帧逐步输出
   const reveal = createStreamReveal(assistant)
   try {
     const result = await chatStream({
@@ -603,7 +602,7 @@ async function handleSend() {
     assistant.streaming = false
     sending.value = false
     abortController = null
-    //: 结束时不跳到底部：只做一次锚定校正，保持阅读位置
+    // 结束时不跳到底部，只做一次锚定校正以保持阅读位置
     await nextTick()
     adjustAnchor()
   }
@@ -666,10 +665,8 @@ async function handleSend() {
   flex-basis: calc((100% - 14px) * 8 / 9);
 }
 
-/* 左：会话列表 —— 占 1/9 */
-/* 三栏按显式基准分配：先扣掉两条 14px 间隙（gap 见下方 .chat-body），剩余空间再按 1:5:3 切分。
-   不能用 flex:grow + flex-basis:0，因为 box-sizing:border-box 下 basis:0 会退化成 padding+border 的
-   高度，导致带 padding 的栏获得额外“起跑线”，比例失真。基准写死为百分比后，剩余空间恒为 0，比例精确。 */
+/* 左侧会话列表，占九分之一 */
+/* 三栏按固定百分比基准分配，先扣除两条 14 像素间隙，剩余空间按 1 比 5 比 3 切分 */
 .conv-panel {
   flex-grow: 0;
   flex-shrink: 1;
@@ -748,7 +745,7 @@ async function handleSend() {
   color: var(--app-text-muted);
 }
 
-/* 底部：清空全部对话。与「新建会话」同为默认按钮，仅在悬停时透出危险色，避免喧宾夺主 */
+/* 底部清空全部对话按钮，悬停时显示危险色 */
 .conv-clear {
   flex-shrink: 0;
   width: 100%;
@@ -762,7 +759,7 @@ async function handleSend() {
   background-color: var(--app-surface);
 }
 
-/* 中：主对话区 —— 占 5/9 */
+/* 中间主对话区，占九分之五 */
 .conv-main {
   flex-grow: 0;
   flex-shrink: 1;
@@ -776,7 +773,7 @@ async function handleSend() {
   border-radius: 6px;
 }
 
-/* 右：检索详情 —— 占 3/9 */
+/* 右侧检索详情，占九分之三 */
 .detail-panel {
   flex-grow: 0;
   flex-shrink: 1;
