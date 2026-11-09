@@ -1,6 +1,6 @@
 """诊断索引构建过程中的卡死点。
 
-用法：``.venv\\Scripts\\python.exe scripts\\diagnose_index.py recursive --timeout 180``
+以脚本方式运行，可指定分块策略与超时时间，超时后转储线程堆栈。
 """
 
 from __future__ import annotations
