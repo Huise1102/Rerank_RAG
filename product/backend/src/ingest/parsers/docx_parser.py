@@ -1,6 +1,6 @@
-"""docx 解析器：python-docx 逐段落抽取文本，段落序号作为 page。
+"""docx 解析器，用 python-docx 逐段落抽取文本，段落序号作为页码。
 
-整体视作一「文档」，total_pages = 段落数；空段落跳过，段落序号按保留的段落从 1 递增。
+空段落跳过，页码按保留的段落从 1 递增。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from src.ingest.loader import LoadedPage
 
 
 def parse_docx(path: str | Path) -> list[LoadedPage]:
-    """逐段落抽取 docx 文本，返回 ``LoadedPage`` 列表（每段一页）。"""
+    """逐段落抽取 docx 文本，返回加载页列表，每段一页。"""
     from docx import Document
 
     p = Path(path).resolve()
