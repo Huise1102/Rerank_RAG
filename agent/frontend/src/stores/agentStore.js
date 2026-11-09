@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-// Agent 问答页局部状态：当前选中用于展示「决策轨迹」的回答、轨迹面板显隐。
+// 问答页状态：当前查看轨迹的回答，以及轨迹面板的显隐。
 export const useAgentStore = create((set) => ({
   selectedMessageId: null,
   traceVisible: true,
