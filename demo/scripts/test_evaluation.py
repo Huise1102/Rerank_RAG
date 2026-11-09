@@ -1,10 +1,6 @@
-"""阶段 5 —— 评估模块自测（生成与裁判都用 mock，不消耗 LLM token）。
+"""评估模块自测，生成与裁判都使用模拟对象，不消耗大模型调用额度。
 
-覆盖 metrics 数学正确性、testset 加载与校验、retrieval_eval 指标与导出、
-judge 的 JSON 容错与并发打分、generation_eval 聚合与导出、visualize 出图、
-ablation 表结构。检索评估真实调用检索器，默认只用较快的 bm25/vector。
-
-运行：.venv\\Scripts\\python.exe scripts\\test_evaluation.py
+覆盖指标计算的正确性、测试集加载与校验、检索评估指标与导出、裁判的 JSON 容错与并发打分、生成评估聚合与导出、图表输出与消融表结构。检索评估真实调用检索器，默认只用较快的稀疏策略与向量策略。
 """
 
 from __future__ import annotations
@@ -59,8 +55,7 @@ def test_metrics() -> None:
     check("Hit@2 = 1", M.hit_at_k(r, rel, 2) == 1.0)
     check("Hit@1 = 0", M.hit_at_k(r, rel, 1) == 0.0)
 
-    # nDCG 手算：DCG=0/log2(2)+1/log2(3)+0+1/log2(5)=0.6309+0.4307=1.0616
-    #            IDCG=1/log2(2)+1/log2(3)=1.6309  ->  0.6509
+    # nDCG 手算：分子为两位命中位置的折损之和，分母为理想排序的折损之和，结果约为 0.6509
     expected = (1 / math.log2(3) + 1 / math.log2(5)) / (1 + 1 / math.log2(3))
     got = M.ndcg_at_k(r, rel, 4)
     check("nDCG@4 与手算一致", abs(got - expected) < 1e-9,
@@ -201,17 +196,16 @@ def test_retrieval_eval() -> None:
     ids = _real_chunk_ids(3)
     testset = _build_eval_testset(ids)
 
-    # 期望值须先算清；这里最容易把 Recall@1 当成 Hit@1：相关文档多于一个时，
-    # 命中一个只算部分召回 0.5，而不是 1.0。
-    #   题A：relevant=[ids0]，ids0 在第 2 位      -> Recall@1=0, MRR=0.5
-    #   题B：relevant=[ids1]，ids1 在第 1 位      -> Recall@1=1, MRR=1.0
-    #   题C：relevant=[ids0,ids1]，前 3 位都给全  -> Recall@1=0.5, Recall@5=1.0
+    # 相关文档多于一个时，命中一个只算部分召回，因此第 1 位的召回值不同于命中值。
+    # 题A 的唯一相关项排在第 2 位，前 1 位召回为零、MRR 为 0.5
+    # 题B 的唯一相关项排在第 1 位，前 1 位召回为 1、MRR 为 1
+    # 题C 有两个相关项且前 3 位都覆盖，前 1 位召回为 0.5、前 5 位召回为 1
     plans = {
         "问题A": [ids[1], ids[0], ids[2]],
         "问题B": [ids[1], ids[0], ids[2]],
         "问题C": [ids[0], ids[1], ids[2]],
     }
-    # 期望：MRR=(0.5+1.0+1.0)/3；Recall@1=(0+1+0.5)/3；Recall@5=(1+1+1)/3
+    # 期望值：MRR 取三项均值 0.8333，前 1 位召回取三项均值 0.5，前 5 位召回为 1
     exp_mrr = (0.5 + 1.0 + 1.0) / 3
     exp_r1 = (0.0 + 1.0 + 0.5) / 3
     exp_r5 = (1.0 + 1.0 + 1.0) / 3
@@ -243,7 +237,7 @@ def test_retrieval_eval() -> None:
               f"{bm25.overall([5])['recall@5']}（期望 {exp_r5:.4f}）")
         check("Recall@1 平均值正确", abs(bm25.overall([1])["recall@1"] - exp_r1) < 1e-3,
               f"{bm25.overall([1])['recall@1']}（期望 {exp_r1:.4f}）")
-        # 题A 的正确答案在第 2 位，nDCG@1 应为 0，nDCG@3 应大于 0
+        # 题A 的正确答案在第 2 位，前 1 位的 nDCG 应为 0，前 3 位的 nDCG 应大于 0
         item_a = bm25.items[0]
         check("逐题 first_hit_rank 正确", item_a.first_hit_rank == 2, str(item_a.first_hit_rank))
         check("题A nDCG@1=0 且 nDCG@5>0（位置折损生效）",
@@ -264,7 +258,7 @@ def test_retrieval_eval() -> None:
         check("per_question_frame 逐题明细", len(per_q) == 6, f"{len(per_q)} 行")
 
         md = result.markdown_table()
-        # Markdown 表格的特征是每行以 | 开头；缺 tabulate 时会退化为纯文本对齐表格
+        # Markdown 表格的特征是每行以竖线开头；缺少表格库时会退化为纯文本对齐表格
         check("markdown_table 可用", bool(md.strip()) and "strategy" in md,
               md.strip().splitlines()[0][:50])
 
