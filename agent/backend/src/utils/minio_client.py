@@ -1,7 +1,7 @@
-"""MinIO 客户端（minio_client.py）。
+"""MinIO 客户端。
 
-仅在 ``RAG_STORAGE__TYPE=minio`` 时使用；客户端与 bucket 均惰性创建并缓存，
-避免应用启动即强制依赖 MinIO 可用（毕设默认走本地存储）。
+仅在存储类型为 minio 时使用；客户端与桶均惰性创建并缓存，
+避免应用启动即强制依赖 MinIO 可用。
 """
 
 from __future__ import annotations
