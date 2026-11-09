@@ -1,7 +1,7 @@
-"""本地 Ollama 客户端（ollama_llm.py）：与在线 API 客户端同构的 chat / chat_stream。
+"""本地 Ollama 客户端，与在线 API 客户端同构，提供同步与流式对话。
 
-从 qwen_rag 迁移而来，供 agent 在“本地模型”模式下使用。Ollama 原生接口支持
-``think`` 开关与 NDJSON 流式；工具调用参数直接是对象，这里统一转成 JSON 字符串。
+Ollama 原生接口支持思考开关与逐行流式输出，
+工具调用参数直接是对象，这里统一转成 JSON 字符串。
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class OllamaLLM:
 
     @staticmethod
     def _to_ollama_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """OpenAI 风格消息 → Ollama 原生消息，并保留图片 data URL。"""
+        """把 OpenAI 风格消息转成 Ollama 原生消息，并保留图片数据链接。"""
         out: list[dict[str, Any]] = []
         name_by_id: dict[str, str] = {}
 
