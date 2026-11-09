@@ -245,7 +245,7 @@ function kbNameOf(row) {
 function latencyOf(row) {
   const v = row.latency ?? row.latency_ms
   if (typeof v !== 'number') return '—'
-  // latency 为秒则直接显示，为毫秒则换算
+  // 数值大于 100 按毫秒处理，换算成秒显示
   return v > 100 ? `${(v / 1000).toFixed(2)}s` : `${v.toFixed(3)}s`
 }
 
