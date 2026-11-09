@@ -1,7 +1,7 @@
-"""文档管理路由（document.py）。
+"""文档管理路由。
 
-上传成功后触发 Celery 任务 ``parse_and_index_document.delay(doc_id)``；
-若 Redis（broker）不可用，则退化为在线程池内同步入库，保证无异步基础设施时仍可用。
+上传成功后触发异步解析任务；消息队列不可用时退化为在线程池内同步入库，
+保证缺少异步基础设施时仍可使用。
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["文档"])
 
-#: 预览/下载时使用的 Content-Type（docx 浏览器不能内联渲染，交给本地软件打开）
+# 预览与下载时使用的 Content-Type，docx 无法在浏览器内联渲染，交给本地软件打开
 _MEDIA_TYPES = {
     "pdf": "application/pdf",
     "txt": "text/plain; charset=utf-8",
@@ -79,7 +79,7 @@ async def upload_document(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     # 文档行已落库（状态 pending），立即返回；解析入库在响应之后的后台任务里执行，
-    # 前端不必等待整条解析->分块->索引链路（否则上传大文件会长时间卡住且列表不刷新）。
+    # 前端不必等待解析、分块与索引整条链路，否则上传大文件会长时间卡住且列表不刷新。
     doc_id = doc.id
     background.add_task(_trigger_ingest, doc_id)
     return doc
@@ -135,7 +135,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
 
     # DB 记录已删除，立即返回；原始文件与索引分块拆除放到后台线程池执行，
-    # 避免长达数十秒的重建占死事件循环（此前会让 /health 挂起、前端显示"后端失联"）。
+    # 避免长达数十秒的重建占死事件循环，否则健康检查会挂起，前端显示后端失联。
     background.add_task(
         document_service.cleanup_document_artifacts,
         info["kb_id"],
