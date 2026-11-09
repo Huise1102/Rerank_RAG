@@ -1,7 +1,7 @@
-"""Agent 状态（state.py）：跨轮保存历史、累积证据与决策轨迹。
+"""Agent 状态，跨轮保存历史、累积证据与决策轨迹。
 
-证据按 ``chunk_id`` 全链路去重；渲染编号用现有 ``contexts_from_results`` 保证与
-``citation.extract_citations`` 的编号回映射一致（跨轮连续）。
+证据按分块 ID 全链路去重，渲染编号沿用检索结果转上下文的逻辑，
+与引用解析的编号回映射对应。
 """
 
 from __future__ import annotations
@@ -22,14 +22,14 @@ class AgentState:
     question: str
     kb_id: int
     history: list[tuple[str, str]] = field(default_factory=list)
-    #: 图片 data URL（可选）；非空时最后一条 user 消息改为内容块数组
+# 图片数据链接，可选；非空时最后一条用户消息是内容块数组
     image: str | None = None
 
-    #: 决策前的意图识别结果：``chat``（正常交流）/ ``kb``（知识库问答）/ ``image``（带图提问）
+# 决策前的意图识别结果，取值为正常交流、知识库问答或带图提问
     intent: str = "kb"
-    #: 喂给 LLM 的 OpenAI 消息列表（含系统提示、历史、assistant(tool_calls)、tool 结果）
+# 送给 LLM 的 OpenAI 消息列表，含系统提示、历史、工具调用与工具结果
     messages: list[dict[str, Any]] = field(default_factory=list)
-    #: 累积证据（按 chunk_id 去重）
+# 累积证据，按分块 ID 去重
     evidences: list[RetrievalResult] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
     trace: list[dict[str, Any]] = field(default_factory=list)
