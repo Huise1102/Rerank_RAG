@@ -1,7 +1,7 @@
-"""文档业务逻辑（document_service.py）。
+"""文档业务逻辑。
 
-上传只允许 pdf / docx / txt / md 四种格式，落库后状态为 pending，
-真正的解析入库由 Celery 任务（src/tasks/document_tasks.py）异步完成。
+上传只允许 pdf、docx、txt、md 四种格式，落库后状态为 pending，
+真正的解析入库由 Celery 任务异步完成。
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ async def upload_document(
     filename: str,
     content: bytes,
 ) -> Document:
-    """保存上传文件并登记文档记录（状态 pending）。
+    """保存上传文件并登记文档记录，状态为 pending。
 
-    :raises ValueError: 文件类型不支持；:raises LookupError: 知识库不存在
+    文件类型不支持时抛出 ValueError；知识库不存在时抛出 LookupError。
     """
     file_type = detect_file_type(filename)
     if not file_type:
@@ -77,12 +77,11 @@ async def get_document(db: AsyncSession, doc_id: int) -> Document | None:
 
 
 def read_document_bytes(doc: Document) -> bytes:
-    """读取文档原始内容，供在线预览 / 下载。
+    """读取文档原始内容，供在线预览与下载。
 
-    上传的文档落在 storage/（或 MinIO），而预置语料是只读引用 product/resource/ 下的文件
-    （``file_path`` 为绝对路径），两种形态都要支持。
-
-    :raises FileNotFoundError: 原始文件已不存在或丢失
+    上传的文档落在存储目录或 MinIO，而预置语料是只读引用资源目录下的文件，
+    路径为绝对路径，两种形态都要支持。
+    原始文件不存在或丢失时抛出 FileNotFoundError。
     """
     path = Path(doc.file_path)
     if path.is_absolute():
@@ -93,13 +92,12 @@ def read_document_bytes(doc: Document) -> bytes:
 
 
 async def delete_document(db: AsyncSession, doc_id: int) -> dict[str, Any] | None:
-    """删除数据库记录并立即返回；原始文件与索引分块的后台清理由调用方调度。
+    """删除数据库记录并立即返回，原始文件与索引分块的后台清理由调用方调度。
 
-    索引清理（Chroma 删集合 + 全量重嵌入 + BM25 重建）是分钟级重活，若放在请求路径里
-    会占死事件循环，导致 /health 等所有接口挂起、前端表现为"后端失联"。故这里只做
-    毫秒级的 DB 删除，返回清理所需信息，由后台任务在线程池内执行。
-
-    :returns: ``{doc_id, kb_id, file_path, strategy, filename}``；文档不存在时返回 ``None``
+    索引清理需要全量重嵌入与重建，是分钟级重活，若放在请求路径里会占死事件循环，
+    导致健康检查等所有接口挂起。因此这里只做毫秒级的库删除，返回清理所需信息，
+    由后台任务在线程池内执行。
+    文档不存在时返回空值。
     """
     doc = await db.get(Document, doc_id)
     if doc is None:
@@ -120,11 +118,11 @@ async def delete_document(db: AsyncSession, doc_id: int) -> dict[str, Any] | Non
 
 
 def cleanup_document_artifacts(kb_id: int, file_path: str, strategy: str, filename: str) -> None:
-    """后台清理被删文档的原始文件与索引分块（同步函数，供线程池/后台任务调用）。
+    """后台清理被删文档的原始文件与索引分块，同步函数，供线程池或后台任务调用。
 
-    分块的 source 记录的是**入库时实际读取的文件名**：上传文件在存储里带哈希前缀
-    （如 ``kb_1/b5df89d7_报告.pdf -> source="b5df89d7_报告.pdf"``），与 ``filename`` 不同，
-    用 filename 过滤会一块都匹配不到、留下孤儿分块，故必须用 ``Path(file_path).name``。
+    分块记录的来源是入库时实际读取的文件名：上传文件在存储里带哈希前缀，
+    与登记的文件名不同，用登记名过滤会一块都匹配不到、留下孤儿分块，
+    因此必须用存储路径的文件名。
     """
     import time
 
