@@ -1,23 +1,6 @@
-"""
-阶段 1 —— 数据入库命令行入口。
+"""数据入库命令行入口。
 
-用法::
-
-    # 1) 解析 PDF 并分块（两种策略都生成）
-    python -m src.ingest.cli load
-    python -m src.ingest.cli load --strategy fixed
-
-    # 2) 构建索引（向量 + BM25）
-    python -m src.ingest.cli index --strategy recursive
-
-    # 3) 一键完成 load + index
-    python -m src.ingest.cli all --strategy recursive
-
-    # 4) 查看索引现状
-    python -m src.ingest.cli stats
-
-    # 5) 检索自测（不依赖阶段 2 代码，仅验证索引可用）
-    python -m src.ingest.cli search "混合检索的作用" --strategy recursive
+提供解析与分块、构建索引、一键执行、查看索引现状与 BM25 检索自测五个子命令。
 """
 
 from __future__ import annotations
@@ -26,7 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# 允许以 python -m src.ingest.cli 方式运行，也允许直接 python cli.py
+# 兼容两种运行方式：以模块方式运行或直接运行脚本
 if __package__ in (None, ""):  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -51,9 +34,7 @@ def _print_header(title: str) -> None:
 
 
 def _resolve_strategies(args: argparse.Namespace, default_all: bool) -> list[str]:
-    """统一解析策略参数：--strategies（可重复） > --strategy > 配置默认；
-    default_all=True 时（load/index 命令）默认返回全部策略。
-    """
+    """解析策略参数，优先级为可重复的策略列表、单个策略、配置默认值；全部策略开关为真时返回所有可用策略。"""
     explicit = getattr(args, "strategies", None)
     if explicit:
         return list(explicit)
@@ -66,7 +47,7 @@ def _resolve_strategies(args: argparse.Namespace, default_all: bool) -> list[str
 
 
 def cmd_load(args: argparse.Namespace) -> int:
-    """解析 PDF -> 清洗 -> 分块 -> 写 data/processed/"""
+    """解析 PDF，清洗并分块，写入分块产物目录。"""
     _print_header("阶段 1 · 步骤 1/2：PDF 解析与分块")
 
     files = loader.iter_pdf_files(args.raw_dir)
@@ -128,12 +109,12 @@ def cmd_load(args: argparse.Namespace) -> int:
 
 
 def cmd_index(args: argparse.Namespace) -> int:
-    """读取分块 -> 向量化入 Chroma -> 建 BM25"""
+    """读取分块文件，向量化后写入向量库，并构建 BM25 索引。"""
     _print_header("阶段 1 · 步骤 2/2：构建索引")
 
     strategies = _resolve_strategies(args, default_all=True)
 
-    # 模型只加载一次供所有策略复用：重复加载既慢，也可能触发联网校验
+    # 模型只加载一次供所有策略复用，重复加载既慢也可能触发联网校验
     embedder = None
     if not args.skip_vector:
         try:
@@ -193,7 +174,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """仅用 BM25 做检索自测，确认索引与还原链路可用。"""
+    """只用 BM25 做检索自测，确认索引与原文字段还原链路可用。"""
     _print_header(f"阶段 1 · 索引自测（BM25）strategy={args.strategy}")
     index = indexer.load_bm25_index(args.strategy)
     print(f"语料 {len(index)} 块 | 分词器 {index.meta.get('tokenizer')} | 构建于 {index.meta.get('built_at')}")
@@ -223,13 +204,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_no_progress(p: argparse.ArgumentParser) -> None:
-        """--no-progress 放在子命令上：Argparse 不允许同名选项同时存在于父子解析器。"""
+        """关闭进度条的选项挂在子命令上，因为同一选项不能在父子解析器中重复定义。"""
         p.add_argument("--no-progress", action="store_true", help="关闭进度条")
 
     def add_strategy(p: argparse.ArgumentParser, multiple: bool = False) -> None:
         if multiple:
-            # --strategy 指定单一策略，--strategies 可重复；命令实现统一读 args.strategies
-            # （缺省时回退到 args.strategy）
+            # 单个策略由策略参数指定，多个策略由策略列表重复指定，命令实现统一读取策略列表，缺省时回退到单个策略
             p.add_argument(
                 "--strategy", default=None, choices=["fixed", "recursive"],
                 help="分块策略，默认两种都做",
