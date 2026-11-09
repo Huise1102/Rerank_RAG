@@ -1,11 +1,8 @@
-"""Agent 调度层提示词与工具 Schema（第三版新增）。
+"""Agent 调度层的系统提示与工具定义。
 
-四份内容集中于此，与现有 ``settings.generation.system_prompt``（第七节最终生成用）互不冲突：
-- ``INTENT_SYSTEM``：决策前的意图识别（正常交流 CHAT / 知识库问答 KB）
-- ``AGENT_SYSTEM``：决策大脑（按意图执行 + 逐轮检索 + 引用规则）
-- ``TOOL_SCHEMAS``：Function Calling 的工具 JSON Schema（retrieve / ask_clarification）
-- ``FORCE_ANSWER_INSTRUCTION``：触顶兜底指令
+四份内容集中在本模块，分别是意图识别、决策、工具定义与触顶兜底指令。
 """
+
 
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ INTENT_SYSTEM = """你是领域知识库问答系统的意图识别器。判断�
 
 只输出一个词：CHAT 或 KB。不要解释，不要加标点。"""
 
-#: 意图识别结果注入决策 system 提示（CHAT 可直接作答，KB 必须先检索）
+# 意图识别结果注入决策系统提示，正常交流可直接作答，知识库问答必须先检索
 INTENT_INSTRUCTIONS = {
     "chat": (
         "【意图识别结果】用户本轮属于正常交流 / 闲聊，不涉及知识库内容。"
@@ -38,7 +35,7 @@ INTENT_INSTRUCTIONS = {
 
 
 def intent_instruction(intent: str) -> str:
-    """意图 → 注入决策提示的说明。"""
+    """意图对应的决策说明。"""
     return INTENT_INSTRUCTIONS.get(intent, INTENT_INSTRUCTIONS["kb"])
 
 
@@ -80,7 +77,7 @@ AGENT_SYSTEM = """你是一个领域知识库问答系统的智能调度器（Ag
 3. 禁止声称「已检索 / 已查询 / 正在检索 / 请稍等」而实际没有调用 retrieve 工具。
 4. 检索查询使用中文规范术语。"""
 
-#: 首轮未检索却想直接作答时的系统拦截指令（由 loop 追加，强制回到检索）
+# 首轮未检索却直接作答时的系统拦截指令，由循环追加
 RETRIEVE_FIRST_INSTRUCTION = (
     "【系统拦截】该问题属于知识库问答，但你尚未调用 retrieve 就试图直接作答，已被拦截。"
     "禁止凭记忆作答，禁止声称已经检索。请立即调用 retrieve 工具（query 用规范领域术语）检索知识库。"
