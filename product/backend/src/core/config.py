@@ -1,15 +1,8 @@
-"""
-产品级领域知识库系统 —— 全局配置。
+"""产品级领域知识库系统的全局配置。
 
-沿用参考项目 demo/config.py 的结构与命名规则（分组 + ``RAG_<分组>__<字段>`` 覆盖），
-在其基础上：
-  - 路径基准改为 product/backend 根（与 demo/ 完全隔离，不指向 demo/indexes、demo/data）
-  - 新增基础设施分组：database / redis / minio / storage
-  - 去掉评估分组（新项目不做评估）
-
-分层覆盖：默认值（本文件） < .env < 系统环境变量 < 运行时显式传参。
-模块导入时自动创建 data/、indexes/、storage/、logs/。
-自检：python -m src.core.config
+配置按分组组织，环境变量以 RAG 前缀加分组名与字段名覆盖默认值，
+优先级依次为默认值、环境文件、系统环境变量、运行时传参。
+模块导入时自动创建数据、索引、存储与日志目录。
 """
 
 from __future__ import annotations
@@ -25,7 +18,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-#: 后端项目根：src/core/config.py -> src/core -> src -> backend
+# 后端项目根目录，向上三级
 PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 
 
@@ -44,12 +37,12 @@ PDFEngine = Literal["pdfplumber", "pymupdf"]
 BM25Tokenizer = Literal["jieba", "char", "whitespace"]
 StorageType = Literal["local", "minio"]
 
-#: DeepSeek 密钥格式：``sk-`` 后接 20 位以上字母数字。
+# DeepSeek 密钥格式，sk 前缀后接 20 位以上字母数字
 _API_KEY_RE = re.compile(r"^sk-[A-Za-z0-9]{20,}$")
 
 
 class _Section(BaseModel):
-    """配置分组基类。extra="forbid" 防止 .env 变量名拼错后被静默忽略。"""
+    """配置分组基类。禁止额外字段，防止环境变量名拼错后被静默忽略。"""
 
     model_config = {"extra": "forbid", "validate_assignment": True, "protected_namespaces": ()}
 
@@ -107,7 +100,7 @@ class RedisSettings(_Section):
 
 
 class MinioSettings(_Section):
-    """MinIO 对象存储（STORAGE_TYPE=minio 时启用）。"""
+    """MinIO 对象存储，仅在存储类型为 minio 时启用。"""
 
     endpoint: str = "127.0.0.1:9000"
     access_key: str = "minioadmin"
@@ -117,12 +110,12 @@ class MinioSettings(_Section):
 
 
 class StorageSettings(_Section):
-    """文件存储后端选择：local（本地 storage/，毕设默认）| minio。"""
+    """文件存储后端，可选本地 storage 目录或 minio。"""
 
     type: StorageType = "local"
 
 
-# AI 链路分组（与 demo 同名同义，保证复制过来的模块零改动可用）
+# AI 链路配置分组
 
 
 class StrategySpec(_Section):
@@ -149,7 +142,7 @@ class StrategySpec(_Section):
 
 
 class ChunkSettings(_Section):
-    """分块策略：fixed（固定长度）/ recursive（递归语义）。参数与 demo 一致。"""
+    """分块策略，支持固定长度与递归语义两种。"""
 
     default_strategy: str = Field(default="recursive", description="默认分块策略名")
 
@@ -268,7 +261,7 @@ class RerankSettings(_Section):
 
 
 class RetrievalSettings(_Section):
-    """BM25 稀疏 + Chroma 稠密 + RRF 融合。链路参数与 demo 完全一致。"""
+    """BM25 稀疏检索、Chroma 稠密检索与 RRF 融合的链路参数。"""
 
     top_k: int = Field(default=20, ge=1, le=200, description="融合后条数 = 精排候选池大小")
     dense_top_k: int = Field(default=50, ge=1, le=200, description="向量单独召回条数")
@@ -313,9 +306,9 @@ class LLMSettings(_Section):
     max_retries: int = Field(default=3, ge=0, le=10)
     stream: bool = Field(default=True)
 
-    #: 图像问答使用的多模态模型（DeepSeek OpenAI 兼容接口，支持 image_url 内容块）
+    # 图像问答使用的多模态模型，支持图片内容块
     vision_model: str = Field(default="deepseek-flash", description="支持图片输入的模型名")
-    #: 图片转为 data URL 后的最大字符数（约 8 MiB 原图）
+    # 图片转为 data URL 后的最大字符数，约 8 MiB 原图
     image_max_chars: int = Field(default=12_000_000, ge=100_000)
 
     @field_validator("base_url", mode="after")
@@ -361,13 +354,13 @@ class GenerationSettings(_Section):
         "请依据上述参考资料回答，并标注引用编号。"
     )
     no_context_reply: str = "抱歉，知识库中未检索到与该问题相关的内容，请尝试换一种问法或补充背景信息。"
-    #: 图像问答：图片内容同样视为可依据的资料，否则系统提示词会挡住模型看图作答
+    # 图像问答中图片内容同样视为可依据的资料
     image_system_rule: str = (
         "6. 若用户附带图片，图片内容视为【参考资料】的一部分，可以据此作答；"
         "图片与参考资料冲突时，须指出冲突并分别说明。"
     )
     image_user_notice: str = "【图片】用户上传了一张图片，请结合图片内容与上述参考资料回答。"
-    #: 只传图片、未输入文字时使用的默认问题
+    # 只传图片、未输入文字时使用的默认问题
     image_default_question: str = "请描述并解释这张图片的内容。"
 
 
@@ -375,7 +368,7 @@ class APISettings(_Section):
     """FastAPI 服务。"""
 
     host: str = "0.0.0.0"
-    #: 产品版占 8002（与 demo 8001、agent 8003 错开）
+    # 服务端口，产品版使用 8002
     port: int = Field(default=8002, ge=1, le=65535)
     reload: bool = False
     api_prefix: str = "/api/v1"
@@ -402,7 +395,7 @@ class LogSettings(_Section):
 
 
 class AppSettings(BaseSettings):
-    """全局配置聚合对象；业务代码统一 ``from src.core.config import settings`` 使用。"""
+    """全局配置聚合对象，业务代码统一从本模块导入 settings。"""
 
     model_config = SettingsConfigDict(
         env_file=(PROJECT_ROOT / ".env"),
@@ -418,7 +411,7 @@ class AppSettings(BaseSettings):
     language: str = "zh"
     debug: bool = False
 
-    #: 种子数据来源：product/resource/（只读引用，不复制、不改写）
+    # 种子数据来源目录，只读引用，不复制也不改写
     resource_dir: Path = Field(default=Path(r"C:\Users\98429\Desktop\基于混合检索与Rerank的领域知识库系统\product\resource"))
 
     paths: PathSettings = Field(default_factory=PathSettings)
@@ -472,7 +465,7 @@ class AppSettings(BaseSettings):
             os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
     def to_dict(self, hide_secrets: bool = True) -> dict[str, Any]:
-        """导出为普通字典；hide_secrets=True 时脱敏密钥。"""
+        """导出为普通字典，开启脱敏时隐藏密钥。"""
         data = self.model_dump(mode="json")
         if hide_secrets:
             if data.get("llm", {}).get("api_key"):
@@ -522,7 +515,7 @@ def get_settings() -> AppSettings:
     return cfg
 
 
-#: 全局唯一配置对象，业务代码统一导入它
+# 全局唯一配置对象，业务代码统一导入它
 settings: AppSettings = get_settings()
 
 
