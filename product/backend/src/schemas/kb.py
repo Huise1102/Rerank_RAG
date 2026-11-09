@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core.config import settings
 
-#: 构建块开关的合法键
+# 构建块开关的合法键
 STRATEGY_KEYS = ("vector", "bm25", "fusion", "rerank")
 
 
@@ -22,7 +22,7 @@ def _check_chunk_strategy(value: str | None) -> str | None:
 
 
 class KBCreate(BaseModel):
-    """新建知识库。enabled_strategies 缺省时全开。"""
+    """新建知识库。启用策略缺省时全开。"""
 
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=2000)
@@ -51,7 +51,7 @@ class KBUpdate(BaseModel):
 
 
 class StrategyPayload(BaseModel):
-    """单独的构建块开关更新体（PATCH /kb/{id}/strategies）。"""
+    """单独更新构建块开关的请求体。"""
 
     vector: bool = True
     bm25: bool = True
