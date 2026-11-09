@@ -20,12 +20,12 @@
 
 ## 界面预览
 
-> 以下为**产品级系统**（`product/`）的实际界面，由无头浏览器驱动真实交互后截取——其中问答页是实际发问、等待流式回答结束后再截的，检索详情面板也是脚本点开后的状态，非静态摆拍。
+> 以下为 **Agentic 版**（`agent/`）的实际界面，由无头浏览器驱动真实交互后截取——其中问答页是实际发问、等待流式回答结束、决策轨迹逐轮展开后再截的，非静态摆拍。
 
 <table>
   <tr>
-    <td align="center"><b>问答页 · 浅色</b><br /><img src="docs/images/chat.png" width="100%" /></td>
-    <td align="center"><b>问答页 · 深色科技风</b><br /><img src="docs/images/chat-dark.png" width="100%" /></td>
+    <td align="center"><b>智能问答 · 浅色</b><br /><img src="docs/images/chat.png" width="100%" /></td>
+    <td align="center"><b>智能问答 · 深色</b><br /><img src="docs/images/chat-dark.png" width="100%" /></td>
   </tr>
   <tr>
     <td align="center"><b>知识库列表</b><br /><img src="docs/images/knowledge.png" width="100%" /></td>
@@ -37,9 +37,9 @@
   </tr>
 </table>
 
-产品级系统共四个固定页面：**问答 / 知识库 / 检索策略 / 日志**，无登录页与设置页。
+Agentic 版共五个页面：**智能问答 / 知识库 / 检索策略 / 模型配置 / 日志**。智能问答页右侧是「决策轨迹」面板，逐轮展示意图判断、改写后的 query、所选检索策略、命中文档块与最终作答；「模型配置」页用于在在线 API 与本地 Ollama 之间热切换决策模型。
 
-> Agentic 版沿用同一套视觉主题，页面对应调整为 **智能问答 / 知识库 / 检索策略 / 模型配置 / 日志**，并在智能问答页右侧增加「决策轨迹」面板（本轮由 LLM 做了什么、改写了什么 query、选了哪条策略、召回哪些片段）。「模型配置」页用于在在线 API 与本地 Ollama 之间切换决策模型。
+> 产品级系统（`product/`）沿用同一套视觉主题，页面对应固定为 **问答 / 知识库 / 检索策略 / 日志**，问答页右侧为检索详情面板，其界面截图见 [`docs/images/product/`](docs/images/product/)。
 
 ---
 
@@ -132,7 +132,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── backend/          FastAPI 服务 + src/agent 调度层（loop / state / tools / prompts）
 │   ├── frontend/         React 18 五页应用（智能问答 / 知识库 / 检索策略 / 模型配置 / 日志）
 │   └── README.md         Agentic 版详细文档
-├── docs/                 项目规格、任务清单与界面截图（docs/images/*.png）
+├── docs/                 项目规格、任务清单与界面截图（docs/images/ 为 Agentic 版，docs/images/product/ 为产品级）
 │   ├── spec.md           第三版执行规格
 │   └── tasks.md          第三版任务清单
 ├── LICENSE               PolyForm Noncommercial License 1.0.0
