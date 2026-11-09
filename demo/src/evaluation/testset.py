@@ -1,10 +1,8 @@
-"""测试集加载与校验：只读取、校验、统计，不生成任何标注内容。
+"""测试集加载与校验，只读取、校验与统计，不生成标注内容。
 
-``question`` 非空不重复；``relevant_chunk_ids`` 为相关块 id 列表，须存在于当前索引（抄错会让
-该类 Recall 恒为 0）；``category`` ∈ 术语精确 / 语义泛化 / 多跳推理。
+问题文本不能为空且不能重复；相关编号列表必须存在于当前索引，抄错会让对应类别的召回率恒为零；类别取术语精确、语义泛化与多跳推理三者之一。
 
-判定粒度：chunk 按 chunk_id（同索引内比较）；page 按「文件名+页码」（跨分块策略比较，同页多块
-保序去重）—— 跨分块策略若用 chunk_id，fixed 档会全为 0。
+判定粒度：文档块按编号比较，只能在同一索引内使用；页码按文件名加页码比较，可跨分块策略使用，同一页的多个块保持顺序去重。跨策略若仍按文档块编号比较，固定长度策略的结果会全部为零。
 """
 
 from __future__ import annotations
@@ -19,26 +17,25 @@ from typing import Any, Iterable, Literal, Sequence
 
 from config import settings
 
-#: 三个必填类别
+# 三个必填类别
 CATEGORIES: tuple[str, ...] = ("术语精确", "语义泛化", "多跳推理")
 
-#: 类别别名（英文/简写也接受，统一归一化到中文）
+# 类别别名，英文与简写也接受，统一归一到中文
 _CATEGORY_ALIASES: dict[str, str] = {
     "术语精确": "术语精确", "term": "术语精确", "exact": "术语精确", "keyword": "术语精确",
     "语义泛化": "语义泛化", "semantic": "语义泛化", "paraphrase": "语义泛化",
     "多跳推理": "多跳推理", "multi-hop": "多跳推理", "multihop": "多跳推理", "reasoning": "多跳推理",
 }
 
-#: chunk_id 形如 ``recursive:测试.pdf:p18:c0:028f89c7``
+# 文档块编号由策略、文件名、页码、序号与正文哈希组成
 _CHUNK_ID_RE = re.compile(r"^(?P<strategy>[a-z_]+):(?P<source>.+):p(?P<page>\d+):c(?P<idx>\d+):[0-9a-f]{8}$")
 
 
 def parse_chunk_id(chunk_id: str) -> tuple[str, int] | None:
     """
-    从 chunk_id 解析出 ``(文件名, 页码)``。
+    从文档块编号解析出文件名与页码。
 
-    跨分块策略比较必须退到页码粒度：切到 fixed 索引后页码相同、chunk_id 完全不同，
-    若仍按 chunk_id 比对，Recall 必然恒为 0。
+    跨分块策略比较必须退到页码粒度：切换策略后页码不变而编号完全不同，若仍按编号比较，召回率必然恒为零。
     """
     m = _CHUNK_ID_RE.match(chunk_id)
     if not m:
@@ -55,16 +52,16 @@ class TestItem:
     relevant_chunk_ids: list[str] = field(default_factory=list)
     category: str = "语义泛化"
     note: str = ""
-    #: 可选：参考答案要点，裁判评分时可作参考
+    # 可选的参考答案要点，裁判评分时可作参考
     reference_answer: str = ""
-    #: 原始序号（从 1 开始），报错时能精确指到第几条
+    # 原始序号，从 1 开始，报错时能精确指到第几条
     index: int = 0
 
     def source_pages(self) -> set[tuple[str, int]]:
         """
-        标注相关块对应的 ``(文件名, 页码)`` 集合。
+        标注相关块对应的文件名与页码集合。
 
-        用于分块策略消融：不同分块策略产生不同 chunk_id，但"答案在哪一页"是稳定的。
+        用于分块策略消融：不同策略产生不同编号，但答案所在页码是稳定的。
         """
         out: set[tuple[str, int]] = set()
         for cid in self.relevant_chunk_ids:
@@ -74,7 +71,7 @@ class TestItem:
         return out
 
     def page_keys(self) -> set[str]:
-        """页码级判定键集合（形如 ``测试.pdf#p18``）。"""
+        """页码级判定键集合，由文件名与页码拼接而成。"""
         return {page_key(src, page) for src, page in self.source_pages()}
 
     def to_dict(self) -> dict[str, Any]:
@@ -160,7 +157,7 @@ class TestSet:
 
 
 def find_testset_file(path: str | Path | None = None) -> Path:
-    """定位测试集文件（显式路径 > data/testset.json > data/eval/testset.json）。"""
+    """定位测试集文件，显式路径优先，其次两个约定位置。"""
     if path is not None:
         return Path(path)
     return settings.evaluation.resolve_testset_file()
@@ -180,11 +177,7 @@ def load_testset(
     """
     加载并校验测试集。
 
-    :param validate: 是否做结构校验
-    :param check_chunk_ids: 是否校验 chunk_id 真实存在于当前索引。建议开启 —— 手抄 id
-        出错会让 Recall 永远为 0，且看起来像"检索效果差"，极难排查
-    :returns: TestSet
-    :raises FileNotFoundError: 文件不存在（附带标注指引）
+    结构校验开关与编号校验开关可分别关闭；编号校验建议开启，手抄编号出错会让召回率永远为零，且看起来像检索效果差，很难排查。文件不存在时抛出异常并提示标注步骤。
     """
     target = find_testset_file(path)
     if not target.exists():
@@ -192,7 +185,7 @@ def load_testset(
 
     raw = json.loads(target.read_text(encoding="utf-8"))
 
-    # 兼容两种顶层结构：裸数组，或 {"items": [...]}
+    # 顶层结构兼容两种写法，直接是数组，或放在 items 字段中
     if isinstance(raw, dict):
         raw_items = raw.get("items") or raw.get("questions") or []
     elif isinstance(raw, list):
@@ -276,7 +269,7 @@ def _missing_testset_hint(target: Path) -> str:
 
 
 def indexed_chunk_ids(chunk_strategy: str | None = None, limit: int | None = None) -> set[str]:
-    """读取当前索引中实际存在的 chunk_id 集合。"""
+    """读取当前索引中实际存在的文档块编号集合。"""
     from src.ingest import splitter
 
     strategy = chunk_strategy or settings.chunk.default_strategy
@@ -287,9 +280,9 @@ def indexed_chunk_ids(chunk_strategy: str | None = None, limit: int | None = Non
 
 def check_against_index(testset: TestSet, chunk_strategy: str | None = None) -> list[ValidationIssue]:
     """
-    校验测试集里的 chunk_id 是否真实存在于索引。
+    校验测试集中的文档块编号是否真实存在于索引。
 
-    抄错一个字符就会让该类问题的 Recall 恒为 0，表面上像"检索效果差"，实际是标注错误。
+    抄错一个字符就会让该类问题的召回率恒为零，表面上像检索效果差，实际是标注错误。
     """
     try:
         valid = indexed_chunk_ids(chunk_strategy)
@@ -313,7 +306,7 @@ def check_against_index(testset: TestSet, chunk_strategy: str | None = None) -> 
 
 
 def page_key(source: str, page: int | str) -> str:
-    """生成「文件+页码」形式的标注键，便于人工标注。"""
+    """生成文件加页码形式的标注键，便于人工标注。"""
     return f"{source}#p{page}"
 
 
@@ -322,10 +315,9 @@ def resolve_by_page(
     chunk_strategy: str | None = None,
 ) -> list[str]:
     """
-    把「文件名 + 页码」形式的标注转换为 chunk_id 列表。
+    把文件名加页码形式的标注转换为文档块编号列表。
 
-    人工标注用页码最省事（不用复制长 id）。注意一个页面对应多个块，该页所有块都会
-    算作相关 —— 比精确到块宽松，但比手抄 id 可靠，适合快速起步。
+    人工标注用页码最省事，无需复制长编号。注意一个页面对应多个块，该页所有块都会算作相关，比精确到块宽松，但比手抄编号可靠，适合快速起步。
     """
     from src.ingest import splitter
 
@@ -340,7 +332,7 @@ def resolve_by_page(
 
 
 def save_testset(testset: TestSet | Sequence[TestItem], path: str | Path | None = None) -> Path:
-    """把测试集写回 JSON（便于程序化生成后人工润色）。"""
+    """把测试集写回文件，便于程序化生成后人工润色。"""
     target = Path(path) if path else find_testset_file()
     target.parent.mkdir(parents=True, exist_ok=True)
     items = testset.items if isinstance(testset, TestSet) else list(testset)
@@ -352,7 +344,7 @@ def save_testset(testset: TestSet | Sequence[TestItem], path: str | Path | None 
 
 
 def format_issues(testset: TestSet, limit: int = 20) -> str:
-    """把校验问题渲染成可读文本。"""
+    """把校验问题渲染为可读文本。"""
     if not testset.issues:
         return "校验通过，未发现问题。"
     lines = []
@@ -371,10 +363,9 @@ def make_annotation_candidates(
     max_chars: int = 160,
 ) -> list[dict[str, Any]]:
     """
-    生成标注候选项：把语料按「文件 + 页码」分组，列出每块的 chunk_id 与摘要。
+    生成标注候选项，按文件名与页码分组，列出每块的编号与摘要。
 
-    ``question`` 留空、``relevant_chunk_ids`` 预填该页全部块；哪些块与哪个问题相关仍由人工
-    判断。``per_file`` 为每个文件最多列出的块数（0 表示全部），``max_chars`` 为摘要上限。
+    问题留空，相关编号预填该页全部块；哪些块与哪个问题相关仍由人工判断。每文件上限为零表示全部列出，摘要长度也受上限约束。
     """
     from src.ingest import splitter
 
@@ -410,7 +401,7 @@ def save_annotation_candidates(
     path: str | Path = "data/testset.draft.json",
     **kwargs: Any,
 ) -> Path:
-    """把标注候选项写入文件（默认 ``data/testset.draft.json``）。"""
+    """把标注候选项写入文件，默认写入数据目录下的草稿文件。"""
     target = Path(path)
     if not target.is_absolute():
         target = settings.paths.data_dir.parent / target
