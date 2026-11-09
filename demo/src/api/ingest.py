@@ -1,12 +1,8 @@
-"""增量入库：上传 PDF → 解析清洗 → 分块 → 重建索引（向量 + BM25）。
+"""增量入库，流程为上传 PDF、解析清洗、分块、重建双索引。
 
-增量依据 ``data/processed/ingest_manifest.json`` 的 sha256 与确定性 ``chunk_id``
-（文件名+页码+块序号+正文哈希，见 ``splitter.make_chunk_id``）：新增或 sha256 变化则重解析，
-文件名与 sha256 都没变则跳过，``force=True`` 忽略指纹全部重灌。重建先删集合再写入，
-等价于从零建库，因此重复上传同一文件是幂等的。
+增量依据清单文件中的校验和与确定性分块编号：新增文件或校验和变化时重新解析，文件名与校验和都未变时跳过，强制重新入库开关为真时忽略校验和全部重灌。重建先删集合再写入，等价于从零建库，重复上传同一文件是幂等的。
 
-安全约束：只接受 ``.pdf``（并校验 %PDF 魔数）、文件名净化禁止路径穿越、
-同名但内容不同的文件拒绝覆盖（要求改名重传）。
+安全约束：只接受 PDF 并校验文件头魔数，文件名净化禁止路径穿越，同名但内容不同的文件拒绝覆盖，要求改名后重传。
 """
 
 from __future__ import annotations
@@ -28,13 +24,13 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-#: 清单文件格式版本
+# 清单文件的格式版本
 MANIFEST_VERSION = 1
-#: 上传文件大小上限（字节）。215 页的教材约 1~20 MB，给足余量但避免误传大文件
+# 上传文件大小上限，取 200 MB，教材级别 PDF 通常远小于此值
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
-#: PDF 魔数
+# PDF 文件头魔数
 _PDF_MAGIC = b"%PDF"
-#: 文件名中不允许出现的字符（Windows 保留字符 + 路径分隔符）
+# 文件名中不允许出现的字符，包括 Windows 保留字符与控制字符
 _UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
@@ -44,7 +40,7 @@ def manifest_path() -> Path:
 
 
 def load_manifest() -> dict[str, Any]:
-    """读取入库清单；损坏或不存在时返回空清单（不抛异常，避免阻断入库）。"""
+    """读取入库清单，文件损坏或不存在时返回空清单，不抛异常以免阻断入库。"""
     path = manifest_path()
     if not path.exists():
         return {"version": MANIFEST_VERSION, "files": {}}
@@ -59,7 +55,7 @@ def load_manifest() -> dict[str, Any]:
 
 
 def save_manifest(data: dict[str, Any]) -> Path:
-    """原子写入清单（先写临时文件再替换，避免中途失败留下半个文件）。"""
+    """原子写入清单，先写中间文件再替换，避免中途失败留下半个文件。"""
     path = manifest_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     data["version"] = MANIFEST_VERSION
@@ -71,7 +67,7 @@ def save_manifest(data: dict[str, Any]) -> Path:
 
 
 def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    """计算文件 sha256（分块读取，避免大文件占内存）。"""
+    """计算文件校验和，分块读取以控制大文件的内存占用。"""
     digest = hashlib.sha256()
     with path.open("rb") as fh:
         while True:
@@ -84,25 +80,22 @@ def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 
 def sanitize_filename(name: str) -> str:
-    """净化上传文件名，防止路径穿越与非法字符：
-    ``../../etc/passwd`` -> ``passwd``；``a<b>c.pdf`` -> ``a_b_c.pdf``
-    """
-    # 只取最后一段，去掉目录成分（同时处理两种分隔符）
+    """净化上传文件名，去掉目录成分与非法字符，防止路径穿越。"""
+    # 只取最后一段，去掉目录成分，两种分隔符都处理
     base = Path(str(name).replace("\\", "/")).name
     base = _UNSAFE_NAME.sub("_", base).strip(" .")
     if not base:
         base = f"upload_{uuid.uuid4().hex[:8]}.pdf"
     if not base.lower().endswith(".pdf"):
         base += ".pdf"
-    return base[:180]  # 防止超长文件名
+    return base[:180]  # 限制文件名长度
 
 
 def save_upload(data: bytes, filename: str) -> tuple[Path, str]:
     """
     校验并保存上传的 PDF。
 
-    :returns: ``(保存路径, 冲突提示)``；提示非空表示未保存，需改名重传。
-    :raises ValueError: 内容不合法（空文件、非 PDF、超大）。
+    返回保存路径与冲突提示，提示非空表示文件未保存，需要改名后重传；内容不合法时抛出异常。
     """
     if not data:
         raise ValueError("上传内容为空")
@@ -119,7 +112,7 @@ def save_upload(data: bytes, filename: str) -> tuple[Path, str]:
 
     new_hash = hashlib.sha256(data).hexdigest()
 
-    # 同名文件：内容相同则视为重复上传（幂等），不同则拒绝覆盖
+    # 同名文件内容相同视为重复上传，直接复用；内容不同则拒绝覆盖
     if target.exists():
         existing_hash = file_sha256(target)
         if existing_hash == new_hash:
@@ -138,7 +131,7 @@ def save_upload(data: bytes, filename: str) -> tuple[Path, str]:
 
 
 def validate_existing_files() -> list[tuple[Path, str]]:
-    """检查 raw 目录里的文件是否为有效 PDF，返回可疑文件列表。"""
+    """检查原始目录中的文件是否为有效 PDF，返回可疑文件列表。"""
     bad: list[tuple[Path, str]] = []
     for path in sorted(settings.paths.raw_dir.rglob("*.pdf")):
         try:
@@ -156,7 +149,7 @@ class FilePlan:
     """单个文件的处理计划。"""
 
     path: Path
-    action: str  # added | updated | skipped
+    action: str  # 动作取值：新增、更新、跳过
     reason: str = ""
     sha256: str = ""
     old_chunks: int = 0
@@ -170,7 +163,8 @@ def plan_incremental(
 ) -> list[FilePlan]:
     """
     对比磁盘文件与清单，得出每个文件的处理动作。
-    :param force: True 时忽略指纹，全部按"更新"处理。
+
+    强制重新入库开关为真时忽略校验和，全部按更新处理。
     """
     known: dict[str, Any] = manifest.get("files", {}) or {}
     plans: list[FilePlan] = []
@@ -209,7 +203,7 @@ class IngestTask:
     """一次入库任务的状态。"""
 
     task_id: str
-    status: str = "pending"  # pending | running | done | failed
+    status: str = "pending"  # 状态取值：等待、运行、完成、失败
     stage: str = ""
     progress: float = 0.0
     files: list[dict[str, Any]] = field(default_factory=list)
@@ -236,7 +230,7 @@ class IngestTask:
 
 
 class IngestManager:
-    """入库任务管理器（进程内）。单进程单 worker 够用；水平扩展需换外部队列。"""
+    """入库任务管理器，状态保存在进程内，适合单进程部署。"""
 
     def __init__(self, *, keep_tasks: int = 20) -> None:
         self._tasks: dict[str, IngestTask] = {}
@@ -266,7 +260,7 @@ class IngestManager:
         """
         提交入库任务并在后台线程执行，立即返回任务对象。
 
-        :raises RuntimeError: 已有任务在跑（避免两个入库同时改索引导致不一致）
+        已有任务运行时拒绝提交，避免两个入库任务同时改写索引造成不一致。
         """
         with self._lock:
             if self._busy:
@@ -289,7 +283,7 @@ class IngestManager:
         return task
 
     def _trim(self) -> None:
-        """只保留最近 N 个任务，避免长时间运行后内存里堆积状态。"""
+        """只保留最近若干个任务，避免长时间运行后状态在内存中堆积。"""
         if len(self._tasks) <= self._keep:
             return
         for task in sorted(self._tasks.values(), key=lambda t: t._t0)[: len(self._tasks) - self._keep]:
@@ -308,8 +302,7 @@ class IngestManager:
             todo = [p for p in plans if p.action != "skipped"]
             skipped = [p for p in plans if p.action == "skipped"]
 
-            # 兜底自愈：清单记录的总块数应与分块文件一致。若不一致（例如上次入库
-            # 在写清单前中断），必须重新解析全部文件，否则索引缺块而清单却声称已入库。
+            # 分块文件与清单的块数应一致；不一致说明上次入库在写清单前中断，需重新解析全部文件，否则索引会缺块而清单仍声称已入库
             existing_chunks = 0
             cf = splitter.chunks_file(strategy)
             if cf.exists():
@@ -338,7 +331,7 @@ class IngestManager:
                     "reason": plan.reason, "seconds": 0.0,
                 })
 
-            # 只处理变化的文件，结果累积后一次性写入规范分块文件。
+            # 只处理变化的文件，结果累积后一次性写入规范分块文件
             new_manifest = {"version": MANIFEST_VERSION, "files": dict(manifest.get("files", {}))}
             parsed_chunks: list[Any] = []
             parsed_params: dict[str, Any] = {}
@@ -350,7 +343,7 @@ class IngestManager:
                 task.progress = 0.02 + 0.48 * (idx - 1) / total_todo
                 t_file = time.perf_counter()
                 try:
-                    # 只解析当前这一个文件；load_pdfs(目录) 会把全目录解析 N 遍
+                    # 只解析当前这一个文件，按目录批量加载会把整个目录重复解析多次
                     pages, _headers = loader.load_pdf(plan.path)
                     if not pages:
                         raise ValueError("清洗后没有可用文本（可能是扫描件，需 OCR）")
@@ -392,13 +385,12 @@ class IngestManager:
                         "seconds": round(time.perf_counter() - t_file, 2),
                     })
 
-            # 必须在这里写分块文件：build_index() 默认只读取 chunks_<strategy>.json 而不写入，
-            # 否则索引会基于旧文件重建，表现为"清单记录 295 块、索引只有 290 块"。
+            # 分块文件必须在这里写入，因为索引构建只读取该文件而不写入，否则索引会基于旧文件重建
             if parsed_chunks:
                 combined = splitter.ChunkResult(
                     chunks=parsed_chunks, strategy=parsed_strategy, params=parsed_params
                 )
-                # 分块文件的记录范围是所有已入库文件，因此用清单的键而非本次解析的文件名
+                # 分块文件覆盖所有已入库文件，因此来源列表取清单中的文件名而非当前解析的文件名
                 splitter.save_chunks(
                     combined, strategy=strategy,
                     source_files=sorted(new_manifest["files"].keys()),
@@ -426,8 +418,7 @@ class IngestManager:
             task.progress = 0.95
             task.stage = "校验索引与清单一致性"
 
-            # 一致性校验：清单块数之和必须等于索引实际条数，否则说明有文件未进索引，
-            # 必须显式报错而非静默通过（表现为"入库报告成功、但新文件检索不到"）。
+            # 一致性校验：清单块数之和必须等于索引实际条数，否则说明有文件未进索引，需显式报错而非静默通过
             expected = sum(int(rec.get("chunks", 0)) for rec in new_manifest["files"].values())
             actual = report.chunks
             if expected != actual:
