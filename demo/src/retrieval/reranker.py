@@ -1,17 +1,6 @@
-"""阶段 2 —— 交叉编码器精排（reranker.py）。
+"""交叉编码器精排。
 
-用 ``BAAI/bge-reranker-v2-m3`` 对混合检索的候选做精排，返回 Top-k。
-
-召回用的双编码器把 query 与文档分别编码，两者从未交互，只能判断"大致相关"；
-交叉编码器把 (query, doc) 拼接后整体送入模型做词级交互，准确得多但计算量巨大，
-无法对全库实时打分，因此必须"先召回（几十条）再精排"。
-
-分数是 logits，可为负、不是 0~1 概率，排序只看相对大小，故默认 ``normalize_score=False``；
-需要展示"相关度百分比"或用 ``score_threshold`` 卡阈值时打开它（sigmoid 映射到 0~1）。
-不同 query 之间的分数不可直接比较，评估时只能用于排序。
-
-``config.rerank.backend``：``cross_encoder``（默认，CrossEncoder，无需 FlagEmbedding 约 1.5 GB 依赖）、
-``flag_embedding``（FlagReranker，与官方示例逐一对应，保留供答辩时交叉验证）。
+对混合检索得到的候选重新打分并返回前若干条。双编码器分别编码查询与文档，只能判断大致相关；交叉编码器把查询与文档拼接后整体送入模型，准确度更高但计算量大，因此先召回再精排。分数为 logits，可为负，排序只看相对大小；需要展示百分比或按阈值过滤时再统一做 sigmoid 归一化。不同查询之间的分数不可直接比较。加载后端可选 cross_encoder 与 flag_embedding。
 """
 
 from __future__ import annotations
@@ -29,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def resolve_local_reranker(model_name: str) -> Path | None:
-    """在本地 HuggingFace 缓存中查找 reranker 模型（绝不触发网络请求）。"""
+    """在本地模型缓存中查找精排模型，不发起网络请求。"""
     path = Path(model_name)
     if path.exists():
         return path
@@ -50,14 +39,9 @@ def _sigmoid(x: float) -> float:
 
 
 class _TransformerCrossEncoder:
-    """用 transformers 直接对 (query, doc) 前向打分，替代 sentence-transformers 的 CrossEncoder。
+    """用 transformers 直接对查询与文档打分，替代句向量模型库的交叉编码器。
 
-    唯一目的是启动速度：``import sentence_transformers`` 会连带导入训练/评估等模块
-    （本机实测约 30 秒），而精排只需要一次前向推理。
-    bge-reranker-v2-m3 是 ``num_labels=1`` 的回归头。sentence-transformers 的 CrossEncoder
-    默认对它套 Sigmoid（返回 0~1 概率）；这里保留**原始 logits**：排序结果完全一致
-    （sigmoid 单调），但 ``score_threshold=0.0`` 能真正过滤无关候选（sigmoid 后恒 > 0，
-    阈值形同虚设）。需要 0~1 分数时由 ``normalize_score=True`` 统一做一次 sigmoid。
+    这样可避免导入句向量模型库时连带加载训练与评估模块，显著缩短启动时间。该模型是单标签回归头，该实现保留原始 logits，使分数阈值能真正过滤无关候选；需要 0 到 1 分数时由归一化开关统一做一次 sigmoid。
     """
 
     def __init__(self, model_ref: str, device: str, max_length: int) -> None:
@@ -78,7 +62,7 @@ class _TransformerCrossEncoder:
         show_progress_bar: bool = False,
         convert_to_numpy: bool = True,
     ):
-        """打分，签名与 ``CrossEncoder.predict`` 兼容，返回 (n,) 的分数数组。"""
+        """打分，签名与交叉编码器的预测接口兼容，返回一维分数数组。"""
         import numpy as np
         import torch
 
@@ -105,7 +89,7 @@ class _TransformerCrossEncoder:
                 )
                 features = {k: v.to(self._device) for k, v in features.items()}
                 logits = self._model(**features).logits
-                # 单标签回归头取唯一 logit；多标签时取最后一维（与 CrossEncoder 的取法一致）
+                # 单标签回归头取唯一 logit，多标签时取最后一维
                 scores.append(logits[:, -1].detach().cpu().numpy())
 
         values = np.concatenate(scores, axis=0)
@@ -114,7 +98,7 @@ class _TransformerCrossEncoder:
 
 class Reranker:
     """
-    交叉编码器精排器（惰性加载，可跨查询复用）。
+    交叉编码器精排器，模型按需加载并可跨查询复用。
     """
 
     name = "rerank"
@@ -146,10 +130,9 @@ class Reranker:
         return self._loaded
 
     def load(self) -> float:
-        """加载模型，返回耗时秒数（幂等）。
+        """加载模型并返回耗时秒数，重复调用直接返回零。
 
-        预热线程与首个查询可能同时触发加载，加锁保证只加载一次：否则 2.2 GB 的模型
-        会被并发读两遍，内存峰值和启动时间都会翻倍。
+        预热线程与首个查询可能同时触发加载，加锁保证只加载一次，避免并发读取同一份模型。
         """
         with self._load_lock:
             if self._loaded:
@@ -190,13 +173,13 @@ class Reranker:
 
     def _resolve_ref(self) -> str:
         """
-        解析模型引用：优先本地快照（离线可用），否则用仓库名。
+        解析模型引用，优先使用本地快照，否则使用仓库名。
 
-        模型未下全时给出明确提示，而不是让 CrossEncoder 抛出难以理解的 safetensors 解析错误。
+        模型文件不完整时给出明确提示，避免抛出难以理解的权重解析错误。
         """
         local = resolve_local_reranker(self.model_name)
         if local is not None:
-            # 下载中断会留下不完整的 .incomplete 文件，需确认权重确实存在
+            # 下载中断会留下不完整文件，需确认权重确实存在
             weights = list(local.glob("*.safetensors")) or list(local.glob("pytorch_model*.bin"))
             if not weights:
                 raise RuntimeError(
@@ -235,10 +218,9 @@ class Reranker:
         }
     def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """
-        对 (query, doc) 对打分，返回原始分数列表。
+        对查询与文档对打分，返回原始分数列表。
 
-        CrossEncoder 输出 logits（可为负），FlagReranker 默认输出 float；
-        两种后端返回格式不同（ndarray / list / 标量），这里统一成 float 列表。
+        两种后端返回格式不同，这里统一转换为浮点列表。
         """
         if not pairs:
             return []
@@ -257,7 +239,7 @@ class Reranker:
 
         if isinstance(raw, (int, float)):
             return [float(raw)]
-        # numpy 标量数组 / 嵌套数组统一展平为一维浮点列表
+        # 标量数组与嵌套数组统一展平为一维浮点列表
         out: list[float] = []
         for item in raw:
             if isinstance(item, (list, tuple)):
@@ -273,16 +255,9 @@ class Reranker:
         top_k: int | None = None,
     ) -> list[RetrievalResult]:
         """
-        精排：对候选重新打分并返回 Top-k。
+        精排，对候选重新打分并返回前若干条。
 
-        先对全部候选打分、再排序、最后截断到 k，排序与 k 无关，因此更小档位的结果是
-        更大档位结果的**前缀**（阶段 5 的 Top-k 消融据此只跑一遍最大档位再截断）。
-
-        :param query: 用户查询
-        :param candidates: 召回阶段的候选（通常来自 HybridRetriever）
-        :param top_k: 保留条数，默认 ``rerank.top_k``
-        :returns: 新的 RetrievalResult 列表，``rerank_score`` 为精排分数，
-                  ``rank`` 为精排后的名次，``fused_score`` 保留召回阶段分数以便对比
+        先对全部候选打分再排序，最后截断到指定条数，排序结果与条数无关，因此较小条数的结果总是较大条数结果的前缀。返回新的结果列表，其中精排分数单独保留，召回阶段的分数也一并保留以便对比。
         """
         cfg = settings.rerank
         k = top_k or cfg.top_k
@@ -304,7 +279,7 @@ class Reranker:
                 RetrievalResult(
                     chunk_id=item.chunk_id,
                     text=item.text,
-                    score=score,  # 精排后 score 即精排分数，保持语义直观
+                    score=score,  # 精排后分数即精排分数
                     metadata=dict(item.metadata),
                     retriever=f"{item.retriever}+{self.name}" if item.retriever else self.name,
                     rank=0,
@@ -334,7 +309,7 @@ class Reranker:
         top_k: int | None = None,
         show_progress: bool = False,
     ) -> list[list[RetrievalResult]]:
-        """批量精排（阶段 5 评估用）。"""
+        """批量精排，供评估使用。"""
         iterator: Sequence[Any] = list(zip(queries, candidates_list))
         if show_progress:
             from tqdm import tqdm
@@ -344,8 +319,7 @@ class Reranker:
 
     def score_of(self, query: str, texts: Sequence[str]) -> list[float]:
         """
-        仅对文本打分（不涉及 RetrievalResult），便于快速验证模型是否可用：
-        相关文档的分数应显著高于无关文档。
+        仅对文本打分，便于快速验证模型是否可用：相关文档的分数应显著高于无关文档。
         """
         return self.score_pairs([(query, t) for t in texts])
 
@@ -358,8 +332,7 @@ def get_reranker() -> Reranker:
     """
     获取全局精排器单例。
 
-    模型加载要 7~15 秒、占 2 GB 内存，不能在每次请求里重新构造：
-    FastAPI 启动时调一次 ``warmup_reranker()`` 预热，后续请求直接复用。
+    模型加载耗时较长且占用较多内存，不能每次请求重新构造，服务启动时预热一次，之后的请求复用。
     """
     global _RERANKER
     if _RERANKER is None:
