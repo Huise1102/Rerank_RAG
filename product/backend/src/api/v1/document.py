@@ -1,7 +1,6 @@
-"""文档管理路由（document.py）。
+"""文档管理路由。
 
-上传成功后触发 Celery 任务 ``parse_and_index_document.delay(doc_id)``；
-若 Redis（broker）不可用，则退化为在线程池内同步入库，保证无异步基础设施时仍可用。
+上传成功后投递 Celery 入库任务；Redis 不可用时退化为在线程池内同步入库。
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["文档"])
 
-#: 预览/下载时使用的 Content-Type（docx 浏览器不能内联渲染，交给本地软件打开）
+# 预览与下载时使用的 Content-Type，docx 浏览器不能内联渲染，交给本地软件打开
 _MEDIA_TYPES = {
     "pdf": "application/pdf",
     "txt": "text/plain; charset=utf-8",
@@ -32,15 +31,14 @@ _MEDIA_TYPES = {
 
 
 async def _trigger_ingest(doc_id: int) -> None:
-    """触发入库（作为响应之后的后台任务运行）；broker 不可用时在线程池内兜底。
+    """触发入库，在响应之后作为后台任务运行；broker 不可用时在线程池内同步执行。
 
-    无论走 Celery 还是线程池，都是把重活挪出请求路径，快速释放 HTTP 响应。
+    Celery 与线程池都把重活移出请求路径，让 HTTP 响应尽快返回。
     """
     from src.tasks.document_tasks import parse_and_index_document
     from src.utils.redis_client import ping
 
-    # Redis 探活是同步阻塞调用：Redis 不可达时单次可耗时数秒。必须放线程池，否则会占住
-    # 事件循环，连上传响应的最后一个数据包都发不出去（表现为"上传要等好几秒才返回"）。
+    # Redis 探活是同步阻塞调用，放线程池执行，避免占用事件循环
     redis_ok = await run_in_threadpool(ping)
     if redis_ok:
         try:
@@ -78,8 +76,8 @@ async def upload_document(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    # 文档行已落库（状态 pending），立即返回；解析入库在响应之后的后台任务里执行，
-    # 前端不必等待整条解析->分块->索引链路（否则上传大文件会长时间卡住且列表不刷新）。
+    # 文档行已落库并处于 pending 状态，立即返回；解析入库在响应之后的后台任务中执行，
+    # 前端不必等待整条解析、分块、索引链路完成。
     doc_id = doc.id
     background.add_task(_trigger_ingest, doc_id)
     return doc
@@ -135,7 +133,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
 
     # DB 记录已删除，立即返回；原始文件与索引分块拆除放到后台线程池执行，
-    # 避免长达数十秒的重建占死事件循环（此前会让 /health 挂起、前端显示"后端失联"）。
+    # 避免重建过程占用事件循环。
     background.add_task(
         document_service.cleanup_document_artifacts,
         info["kb_id"],
