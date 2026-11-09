@@ -1,8 +1,6 @@
-# =============================================================================
-# 产品级领域知识库系统 —— 后端镜像
-# 构建：docker build -t rag-backend .
-# 运行：见 docker-compose.yml
-# =============================================================================
+# 产品级领域知识库系统后端镜像
+# 构建命令：docker build -t rag-backend .
+# 运行方式见 docker-compose.yml
 
 FROM python:3.11-slim
 
@@ -13,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 编译 pdfplumber / torch 等所需的最小系统依赖
+# 编译 pdfplumber、torch 等依赖所需的最小系统工具
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential gcc g++ curl \
     && rm -rf /var/lib/apt/lists/*
@@ -22,7 +20,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 再拷贝项目代码（含 alembic.ini / alembic / scripts）
+# 再拷贝项目代码，包含 alembic.ini、alembic 与 scripts
 COPY . .
 
 EXPOSE 8000
