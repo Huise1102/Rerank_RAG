@@ -1,8 +1,6 @@
-"""Celery 实例（celery_app.py）。
+"""Celery 实例。
 
-broker 与结果后端都用 Redis（``RAG_REDIS__URL``）。启动 worker::
-
-    celery -A src.tasks.celery_app:celery_app worker --loglevel=info --pool=solo
+broker 与结果后端都使用 Redis，任务模块在实例创建时注册，worker 需要单独启动。
 """
 
 from __future__ import annotations
