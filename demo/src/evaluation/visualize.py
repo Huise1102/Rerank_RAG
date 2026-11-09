@@ -1,11 +1,8 @@
-"""结果可视化：matplotlib 画对比柱状图，输出到 ``data/eval/results/figures/``。
+"""结果可视化：用 matplotlib 画对比柱状图，输出到评估图表目录。
 
-matplotlib 默认字体不含中文字形，中文标签会变成方框并有警告；这里在 Windows 上按
-``Microsoft YaHei / SimHei / Noto Sans CJK / Source Han Sans / WenQuanYi`` 顺序探测
-可用字体并显式设置，探测失败时**自动切换为英文标签**（由 ``L()`` 决定），保证图仍可用。
+matplotlib 默认字体不含中文字形，中文标签会显示为方框并产生警告；这里按常见中文字体名依次探测并显式设置，探测失败时自动改用英文标签，保证图表仍可用。
 
-统一约定：无界面后端 ``Agg``（不弹窗，服务器上也能跑）、输出 PNG（``dpi=160``）、
-``bbox_inches="tight"``、数值同时标在柱子上。
+统一使用无界面后端，输出 PNG 图片，数值同时标在柱子上。
 """
 
 from __future__ import annotations
@@ -19,14 +16,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-#: 优先尝试的中文字体（Windows 优先，其次跨平台开源字体）
+# 优先尝试的中文字体，Windows 字体在前，跨平台开源字体在后
 _CJK_FONT_CANDIDATES = (
     "Microsoft YaHei", "SimHei", "Microsoft JhengHei",
     "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
     "WenQuanYi Zen Hei", "PingFang SC", "Heiti SC", "Arial Unicode MS",
 )
 
-#: 配色（与前端主题一致的蓝紫青体系）
+# 配色，与前端主题一致的蓝紫青体系
 _PALETTE = ("#2563eb", "#7c3aed", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444")
 
 _font_ready: bool | None = None
@@ -34,17 +31,16 @@ _font_ready: bool | None = None
 
 def _setup_matplotlib() -> bool:
     """
-    配置 matplotlib：缓存目录 + 无界面后端 + 中文字体。
+    配置 matplotlib 的缓存目录、无界面后端与中文字体。
 
-    :returns: 是否成功启用中文字体（False 时调用方应改用英文标签）
+    返回是否成功启用中文字体，返回否时调用方改用英文标签。
     """
     global _font_ready
     if _font_ready is not None:
         return _font_ready
 
-    # matplotlib 默认把字体缓存写到 ~/.matplotlib，受限环境下会被拒绝
-    # （"Could not save font_manager cache ... Permission denied"）；
-    # 改到工作区内的目录，既能写、又不污染用户主目录。
+    # matplotlib 默认把字体缓存写到用户主目录，受限环境下会被拒绝写入，
+    # 因此改到工作区内的目录，既不污染用户主目录也能正常写入。
     import os
 
     cache_dir = settings.paths.data_dir.parent / ".mplcache"
@@ -67,7 +63,7 @@ def _setup_matplotlib() -> bool:
         _font_ready = True
         logger.info("画图使用中文字体: %s", chosen)
     else:
-        # 找不到中文字体：不报错，改用英文标签（由调用方通过 L() 切换）
+        # 找不到中文字体时不报错，改用英文标签
         matplotlib.rcParams["font.sans-serif"] = ["DejaVu Sans"]
         _font_ready = False
         logger.warning(
@@ -75,7 +71,7 @@ def _setup_matplotlib() -> bool:
             ", ".join(_CJK_FONT_CANDIDATES),
         )
 
-    matplotlib.rcParams["axes.unicode_minus"] = False  # 负号显示为方块的问题
+    matplotlib.rcParams["axes.unicode_minus"] = False  # 避免负号显示成方块
     matplotlib.rcParams["figure.facecolor"] = "white"
     matplotlib.rcParams["savefig.facecolor"] = "white"
     return _font_ready
@@ -123,9 +119,9 @@ def plot_strategy_comparison(
     filename: str = "fig_strategy_comparison.png",
 ) -> Path | None:
     """
-    检索策略对比图：每个策略一组柱子（Recall@1/5/10 + MRR + nDCG）。
+    检索策略对比图：每个策略一组柱子，覆盖前 1、前 5、前 10 的召回率以及 MRR 与 nDCG。
 
-    :param result: ``RetrievalEvalResult``
+    参数为检索评估结果对象。
     """
     import matplotlib.pyplot as plt
     import numpy as np
@@ -182,8 +178,6 @@ def plot_category_breakdown(
 ) -> Path | None:
     """
     分维度对比图：横轴是类别，每组柱子是一个策略。
-
-    预期术语精确类 BM25 占优、语义泛化类向量占优、多跳类混合+精排占优。
     """
     import matplotlib.pyplot as plt
     import numpy as np
@@ -229,14 +223,9 @@ def plot_rerank_topk(
     filename: str = "fig_rerank_topk.png",
 ) -> Path | None:
     """
-    Rerank Top-k 消融图：左轴召回类指标、右轴 ``precision@k``。
+    Rerank 保留条数消融图：左轴画召回类指标，右轴画该保留条数下的精确率。
 
-    看点是"召回随 Top-k 上升、精确率同步下降"的权衡，用于支撑"为什么选 Top-5"。
-
-    .. note::
-       右轴不用"平均耗时"：本消融是单次精排 + 前缀截断（排序与 k 无关），三档耗时必然
-       相同，画成平线会误导成"加大 Top-k 免费"。真实代价是上下文变长，体现在
-       ``precision@k`` 下降上。
+    右轴不用平均耗时，因为本消融是单次精排加前缀截断，排序与保留条数无关，各档耗时必然相同，画成平线会误导成加大保留条数没有代价。真实代价是上下文变长，体现在精确率下降上。
     """
     import matplotlib.pyplot as plt
 
@@ -266,7 +255,7 @@ def plot_rerank_topk(
     ax.grid(alpha=0.25, linestyle="--")
     ax.set_axisbelow(True)
 
-    # 右轴：该档位自身 k 下的精确率 —— 上下文里有多少内容真相关
+    # 右轴画该档位自身保留条数下的精确率，即上下文里有多少内容真正相关
     if "precision@k" in df.columns and df["precision@k"].notna().any():
         ax2 = ax.twinx()
         prec = [float(v) if v is not None else 0.0 for v in df["precision@k"].tolist()]
@@ -293,7 +282,7 @@ def plot_generation_scores(
     out_dir: str | Path | None = None,
     filename: str = "fig_generation_scores.png",
 ) -> Path | None:
-    """生成质量对比图：各策略在 faithfulness / answer_relevancy 上的平均分。"""
+    """生成质量对比图：各策略在忠实度与答案相关性上的平均分。"""
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -348,7 +337,7 @@ def plot_chunk_ablation(
     out_dir: str | Path | None = None,
     filename: str = "fig_chunk_ablation.png",
 ) -> Path | None:
-    """分块策略消融图：固定长度 vs 递归语义。"""
+    """分块策略消融图，对比固定长度分块与递归语义分块。"""
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -370,8 +359,8 @@ def plot_chunk_ablation(
                          _PALETTE[i % len(_PALETTE)], metric.upper())
 
     ax.set_xticks(x)
-    # 结果键形如 "fixed+hybrid_rerank"：检索策略在消融时固定，图上只体现分块策略，
-    # 全写进标签只会挤在一起。
+    # 结果键由分块策略与检索策略拼接而成，检索策略在消融时固定，
+    # 图上只显示分块策略，全部写进标签会挤在一起。
     ax.set_xticklabels([
         s.split("+")[0].replace("fixed", L("固定长度分块", "fixed"))
         .replace("recursive", L("递归语义分块", "recursive"))
@@ -400,9 +389,9 @@ def render_all(
     out_dir: str | Path | None = None,
 ) -> dict[str, Path]:
     """
-    把所有可用结果一次画完。
+    一次生成所有有数据的图。
 
-    只画"有数据"的图，缺失的跳过并打印原因，不会中断其余图的生成。
+    缺失的结果直接跳过并记录原因，单张图失败不影响其余图。
     """
     directory = Path(out_dir) if out_dir else settings.evaluation.figure_dir
     written: dict[str, Path] = {}
