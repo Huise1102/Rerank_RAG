@@ -23,16 +23,16 @@ export function chat(payload) {
 }
 
 /**
- * 流式问答：POST /chat/stream 是 POST，EventSource 不支持 POST，
- * 因此用 fetch + ReadableStream 手动解析 SSE（按 data: 行增量渲染）。
+ * 流式问答：接口使用 POST，EventSource 只支持 GET，
+ * 因此用 fetch 读取响应流并逐条解析 SSE 数据行。
  *
  * @param {Object}   opts
  * @param {number}   opts.kbId
  * @param {number?}  opts.conversationId
  * @param {string}   opts.question
- * @param {string?}  [opts.image]    图片 data URL（data:image/png;base64,...）
- * @param {Function} [opts.onDelta]  收到增量文本时回调 (delta: string)
- * @param {Function} [opts.onMeta]   收到 meta 事件时回调 (meta: object)
+ * @param {string?}  [opts.image]    图片 data URL
+ * @param {Function} [opts.onDelta]  收到增量文本时回调，参数为增量字符串
+ * @param {Function} [opts.onMeta]   收到 meta 事件时回调，参数为事件对象
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<Object>} 结束时返回完整结果，用于引用解析与展示
  */
