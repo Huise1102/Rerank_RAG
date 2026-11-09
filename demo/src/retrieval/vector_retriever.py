@@ -1,13 +1,6 @@
-"""
-阶段 2 —— 稠密向量检索器（vector_retriever.py）
+"""稠密向量检索器。
 
-职责：用 bge-large-zh-v1.5 把 query 编码成向量，在 Chroma 中做余弦检索，返回 Top-k 文档块及得分。
-
-查询侧必须加 BGE 检索指令前缀、文档侧不加（阶段 1 入库时文档未加前缀）：两侧须保持这种
-不对称处理，查询被引导到"检索意图"子空间能提升召回，否则查询与文档表示会落在不同分布上。
-``hnsw:space="cosine"`` 下 Chroma 返回的是距离（``distance = 1 - similarity``），直接用 distance
-排序会得到相反顺序，故显式转成 ``similarity = 1 - distance``，让「分数越大越相关」在全系统一致
-（BM25 同理），融合层不必再操心方向。
+用本地向量模型把查询编码成向量，在 Chroma 中做余弦检索，返回前若干条文档块及得分。查询侧需要加检索指令前缀，文档侧不加，两侧保持不对称处理才能让查询落在检索意图子空间。Chroma 在余弦空间返回距离，这里显式换算成相似度，使分数越大越相关，与 BM25 方向一致。
 """
 
 from __future__ import annotations
@@ -22,7 +15,7 @@ logger = get_logger(__name__)
 
 class VectorRetriever(BaseRetriever):
     """
-    基于 Chroma + BGE 的稠密检索器。
+    基于 Chroma 与向量模型的稠密检索器。
     """
 
     name = "vector"
@@ -57,7 +50,7 @@ class VectorRetriever(BaseRetriever):
 
     @staticmethod
     def _load_embedder():
-        """复用阶段 1 的加载逻辑（含离线模式与预检），避免重复实现。"""
+        """复用入库模块的加载逻辑，统一离线模式与预检行为。"""
         from src.ingest.indexer import load_embedder
 
         return load_embedder()
@@ -74,7 +67,7 @@ class VectorRetriever(BaseRetriever):
     def default_top_k(self) -> int:
         return settings.retrieval.dense_top_k
     def encode_query(self, query: str) -> list[float]:
-        """把查询编码为归一化向量；按配置加上 BGE 检索指令前缀。"""
+        """把查询编码为归一化向量，按配置加上检索指令前缀。"""
         cfg = settings.embedding
         text = f"{cfg.query_instruction}{query}" if cfg.use_query_instruction else query
         vector = self._embedder.encode(
@@ -86,7 +79,7 @@ class VectorRetriever(BaseRetriever):
         return vector.tolist()
 
     def encode_queries(self, queries: Sequence[str]) -> list[list[float]]:
-        """批量编码（评估阶段一次编码多条问题，比逐条快得多）。"""
+        """批量编码，比逐条编码快得多。"""
         cfg = settings.embedding
         texts = [
             f"{cfg.query_instruction}{q}" if cfg.use_query_instruction else q
@@ -124,7 +117,7 @@ class VectorRetriever(BaseRetriever):
                 RetrievalResult(
                     chunk_id=str(cid),
                     text=str(docs[i]) if i < len(docs) else "",
-                    # 余弦距离 -> 相似度，保证"分数越大越相关"的全系统约定
+                    # 余弦距离换算为相似度，保证分数越大越相关
                     score=1.0 - distance,
                     metadata=dict(metas[i]) if i < len(metas) else {},
                 )
@@ -133,7 +126,7 @@ class VectorRetriever(BaseRetriever):
 
     def retrieve_batch(self, queries: Sequence[str], top_k: int | None = None,
                        show_progress: bool = False) -> list[list[RetrievalResult]]:
-        """批量检索：查询批量编码（真正用上 GPU/多核批推理），再逐条查库。"""
+        """批量检索，先批量编码查询，再逐条查库。"""
         if not self._loaded:
             self.warmup()
         k = top_k or self.default_top_k
