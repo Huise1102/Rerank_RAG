@@ -1,9 +1,6 @@
-"""阶段 1 —— 数据入库自测。
+"""数据入库自测。
 
-清洗逻辑对 data/test_corpus/ 自带示例 PDF（含已知页眉页脚与三种页码）断言确定性期望；
-工程链路对 data/raw 真实语料只断言结构性事实（数量一致、可还原、能检索到自己）。
-
-运行：.venv\\Scripts\\python.exe scripts\\test_ingest.py [--real-embedder]
+清洗逻辑针对自带示例 PDF 断言确定性期望，工程链路针对真实语料只断言结构性事实。
 """
 
 from __future__ import annotations
@@ -26,7 +23,7 @@ from src.ingest import indexer, loader, splitter  # noqa: E402
 PASSED: list[str] = []
 FAILED: list[tuple[str, str]] = []
 
-#: 自带示例 PDF 目录（含已知页眉页脚与页码）
+# 自带示例 PDF 目录，含已知页眉页脚与页码
 TEST_CORPUS = PROJECT_ROOT / "data" / "test_corpus"
 
 
@@ -41,11 +38,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 class FakeEmbedder:
     """
-    确定性假 embedder，接口与 SentenceTransformer.encode 兼容。
+    确定性假 embedder，接口与句向量模型兼容。
 
-    产生的是稀疏字符哈希 one-hot 向量，与真实 BGE 稠密向量完全不同，因此用它
-    构建的索引必须写到隔离目录（见 build_isolated_indexes()），绝不能落到
-    indexes/chroma 与 indexes/bm25，否则真实索引会被覆盖成垃圾。
+    产生的是稀疏字符哈希向量，与真实稠密向量完全不同，因此它构建的索引必须写到隔离目录，否则真实索引会被覆盖。
     """
 
     def __init__(self, dim: int = 1024) -> None:
@@ -66,12 +61,7 @@ class FakeEmbedder:
 
 @contextlib.contextmanager
 def build_isolated_indexes():
-    """
-    把索引路径临时重定向到独立目录，测试结束后恢复。
-
-    indexer 的路径全部来自 settings.paths，不改写的话假 embedder 建出的索引
-    会覆盖真实索引；改写的是 settings 实例属性，退出时原样恢复。
-    """
+    """把索引路径重定向到独立目录，测试结束后恢复，避免假 embedder 建出的索引覆盖真实索引。"""
     tmp = Path(tempfile.mkdtemp(prefix="rag_ingest_test_"))
     chroma_dir = tmp / "chroma"
     bm25_dir = tmp / "bm25"
@@ -262,7 +252,7 @@ def test_indexer(embedder) -> None:
     check("集合名合法", 3 <= len(n1) <= 63 and all(ch.isalnum() or ch in "_-" for ch in n1), n1)
 
     for strategy in ["fixed", "recursive"]:
-        # skip_health_check=True：假 embedder 必被体检拦下，这里只验证 Chroma/BM25 读写链路
+        # 跳过健康校验，因为假 embedder 必被拦下，这里只验证 Chroma 与 BM25 的读写链路
         report = indexer.build_index(strategy, embedder=embedder, show_progress=False,
                                      skip_health_check=True)
         check(f"[{strategy}] 向量索引条数正确",
@@ -280,7 +270,7 @@ def test_indexer(embedder) -> None:
         check(f"[{strategy}] BM25 保存了原文可还原",
               all(d.get("text") and d.get("metadata", {}).get("chunk_id") for d in idx.documents))
 
-        # 从语料自身取查询词（不假设语料内容），验证「命中 -> 下标还原原文」链路
+        # 从语料自身取查询词（不假设语料内容），验证命中后按下标还原原文的链路
         if idx.documents:
             tokens = indexer.tokenize(idx.documents[0]["text"])
             # 取最高频的 5 个 token（去单字噪声），保证查询词确实在语料中出现过
