@@ -1,6 +1,6 @@
-"""会话管理路由（chat.py）：会话列表、消息读取、删除会话。
+"""会话管理路由，含会话列表、消息读取、删除会话与清空会话。
 
-问答统一走 ``/agent/chat``（见 agent.py），固定管道版 ``/chat``、``/chat/stream`` 已下线。
+问答走 Agent 问答路由，固定管道版的问答与流式问答路由已不再提供。
 """
 
 from __future__ import annotations
