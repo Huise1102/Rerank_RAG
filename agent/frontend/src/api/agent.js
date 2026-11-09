@@ -13,7 +13,7 @@ export function agentChat(payload) {
  * @param {string}  opts.question
  * @param {string?} opts.image  图片 data URL（可只发图不发文）
  * @param {(step: object) => void}  opts.onStep  agent_step 事件（每轮决策/工具结果）
- * @param {(meta: object) => void}  opts.onMeta  meta 事件（conversation_id 等）
+ * @param {(meta: object) => void}  opts.onMeta  meta 事件（会话 ID 等）
  * @param {(delta: string) => void} opts.onDelta delta 事件（最终答案正文）
  * @param {AbortSignal?} opts.signal
  */
@@ -36,7 +36,7 @@ export async function agentChatStream({ kbId, conversationId, question, image, o
       const data = await response.json()
       if (data?.detail) detail = typeof data.detail === 'string' ? data.detail : detail
     } catch (e) {
-      /* ignore */
+      /* 忽略响应体解析失败 */
     }
     throw new Error(detail)
   }
