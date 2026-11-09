@@ -1,4 +1,4 @@
-"""pytest 全局配置：把后端根加入 sys.path，保证 `import src...` / `import scripts...` 可用。"""
+"""pytest 全局配置，把后端根加入模块搜索路径，保证导入 src 与 scripts 下的包可用。"""
 
 from __future__ import annotations
 
