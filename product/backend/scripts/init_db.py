@@ -1,15 +1,7 @@
-"""初始化数据库（scripts/init_db.py）。
+"""初始化数据库。
 
-职责：
-1. 按 ``RAG_DATABASE__URL`` 解析出的库名，用 ``CREATE DATABASE IF NOT EXISTS``
-   建库（utf8mb4 / utf8mb4_unicode_ci，否则中文与 emoji 会报错）。
-2. 建表：优先执行 Alembic 迁移（``alembic upgrade head``）；若缺少 alembic.ini，
-   退化为用 ORM 元数据 ``Base.metadata.create_all`` 直接建表。
-
-用法::
-
-    python scripts/init_db.py            # 建库 + 迁移建表
-    python scripts/init_db.py --mode create   # 建库 + create_all（跳过 Alembic）
+按连接串中的库名建库，字符集为 utf8mb4；随后执行 Alembic 迁移建表，
+缺少 alembic.ini 时改用 ORM 元数据直接建表。
 """
 
 from __future__ import annotations
@@ -19,7 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-#: 后端项目根：scripts/init_db.py -> scripts -> backend
+# 后端项目根目录，向上两级
 BACKEND_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
