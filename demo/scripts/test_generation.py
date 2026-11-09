@@ -1,9 +1,6 @@
-"""阶段 3 —— 生成模块自测（注入 mock OpenAI 客户端，无需真实 API Key）。
+"""生成模块自测，注入模拟的 OpenAI 客户端，无需真实 API Key。
 
-覆盖 PromptBuilder（上下文格式、预算裁剪、多轮历史）、citation（引用解析、编号
-映射、越界与拒答识别）、LLMClient（请求参数、重试与超时预算、兜底、降级、流式）。
-
-运行：.venv\\Scripts\\python.exe scripts\\test_generation.py
+覆盖指令模板的上下文格式、预算裁剪与多轮历史，引用解析与编号映射、越界与拒答识别，以及大模型客户端的请求参数、重试与超时预算、兜底、降级与流式输出。
 """
 
 from __future__ import annotations
@@ -42,7 +39,7 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 class MockCompletions:
-    """模拟 chat.completions，记录收到的请求参数。"""
+    """模拟对话补全接口，记录收到的请求参数。"""
 
     def __init__(self, owner: "MockClient") -> None:
         self.owner = owner
@@ -93,7 +90,7 @@ class MockClient:
         self.reply = reply
         self.fail_times = fail_times
         self.fail_error = fail_error or RuntimeError("boom")
-        #: 这些模型名一调用就抛错（用于测试降级）
+        # 这些模型名一调用就抛错，用于测试降级
         self.fail_models: set[str] = fail_models or set()
         self.calls: list[dict] = []
         self.chat = MockChat(self)
@@ -176,8 +173,8 @@ def test_prompt() -> None:
     check("历史轮数受配置限制", len(capped.messages) <= max_msgs,
           f"{len(capped.messages)} 条消息（上限 {max_msgs}）")
 
-    # citation_style=none 只应返回基础提示词；不能断言"不含 [编号]"，
-    # 因为基础提示词本身就要求用 [编号] 标注来源。
+    # 关闭引用风格时只返回基础模板；不能断言结果不含编号标记，
+    # 因为基础模板本身就要求用编号标注来源。
     base_prompt = settings.generation.system_prompt
     none_prompt = PromptBuilder(citation_style="none").build("q", contexts).messages[0]["content"]
     bracket_prompt = PromptBuilder(citation_style="bracket").build("q", contexts).messages[0]["content"]
@@ -218,7 +215,7 @@ def test_citation() -> None:
         got, _ = cit.parse_markers(text, whitelist={1, 2, 3})
         check(f"解析：{desc}", got == expect, f"{text!r} -> {got}")
 
-    # 映射回 source/page
+    # 映射回来源与页码
     report = cit.extract_citations("结论如下[1]，另有补充[3]。", contexts)
     check("引用映射到正确上下文", [c.index for c in report.citations] == [1, 3],
           str([c.label() for c in report.citations]))
@@ -253,7 +250,7 @@ def test_citation() -> None:
           refusal_report.is_refusal and not refusal_report.citations,
           refusal_report.summary())
 
-    # strip / renumber
+    # 去除标记与重新编号
     check("strip_markers 去标记", cit.strip_markers("结论[1]与[2]。") == "结论与。",
           cit.strip_markers("结论[1]与[2]。"))
     check("renumber 重编号", cit.renumber("见[1]和[2]。", {1: 10, 2: 20}) == "见[10]和[20]。",
