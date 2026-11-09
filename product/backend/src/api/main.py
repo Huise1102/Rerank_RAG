@@ -1,9 +1,9 @@
-"""FastAPI 主入口（main.py）。
+"""FastAPI 主入口。
 
-- 无认证：不注册 /auth，不加鉴权中间件。
-- 启动即可响应：Embedding / Rerank 预热放在**后台线程**，/health 用 ``warmed_up`` 反映进度，
-  预热期间也能正常请求（只是首个真实请求会自行加载模型）。
-- 请求日志中间件用**纯 ASGI 中间件**实现，避免 BaseHTTPMiddleware 缓冲流式响应（会破坏 SSE）。
+不注册认证路由，也不加鉴权中间件。
+Embedding 与 Rerank 的预热放在后台线程，健康检查通过 warmed_up 反映进度，
+预热期间服务仍可正常响应。
+请求日志中间件为纯 ASGI 实现，不缓冲响应体，流式输出不受影响。
 """
 
 from __future__ import annotations
@@ -138,8 +138,7 @@ async def root() -> dict:
 async def health() -> dict:
     from src.utils.redis_client import ping as redis_ping
 
-    # 探活是同步阻塞调用（Redis 不可达时可耗时数秒），放线程池里执行，
-    # 避免每次健康检查都把事件循环占住、拖慢同时段的其他请求。
+    # 探活是同步阻塞调用，放线程池执行，避免占用事件循环
     redis_ok = await run_in_threadpool(redis_ping)
     return {
         "status": "ok",
@@ -151,8 +150,7 @@ async def health() -> dict:
     }
 
 
-# 前端以 /api/v1 为 baseURL，健康检查调用 /api/v1/health；
-# 这里复用同一处理函数，避免前端判定「后端未连接」。
+# 带接口前缀的健康检查路由，与根路径共用同一处理函数
 app.add_api_route(
     f"{settings.api.api_prefix}/health",
     health,
