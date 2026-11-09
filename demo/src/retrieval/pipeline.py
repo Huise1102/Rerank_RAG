@@ -1,12 +1,6 @@
-"""阶段 2 —— 检索统一入口（pipeline.py）。
+"""检索统一入口。
 
-对上层（阶段 3 生成、阶段 4 API、阶段 5 评估）只暴露 ``retrieve()``：``vector`` 纯向量、
-``bm25`` 纯词匹配、``hybrid`` 双路 RRF 融合、``hybrid_rerank`` 混合后再交叉编码器精排
-（默认，完整链路），对应消融实验的四个档位。
-
-检索器实例按 (策略, 分块策略) 缓存：向量模型加载成本高（约 2.3 GB / 7~15 秒），必须跨请求复用。
-各步耗时写入 ``RetrievalResponse.timing``，可选追加到 ``data/eval/retrieval_log.jsonl`` 供阶段 5
-做延迟对比。精排模型不可用时降级为混合检索结果并告警，而不是让整条问答链路 500。
+对上层只暴露一个检索函数，策略可选纯向量、纯 BM25、混合检索与混合后精排，对应消融实验的四个档位。检索器实例按分块策略缓存，向量模型加载成本高，必须跨请求复用。各步耗时写入响应对象，也可追加到检索日志。精排模型不可用时退回混合检索结果并记录告警，不影响整条问答链路。
 """
 
 from __future__ import annotations
@@ -28,7 +22,7 @@ from src.retrieval.vector_retriever import VectorRetriever
 
 logger = get_logger(__name__)
 
-#: 支持的检索策略
+# 支持的检索策略
 RetrievalStrategy = Literal["vector", "bm25", "hybrid", "hybrid_rerank"]
 
 VALID_STRATEGIES: tuple[str, ...] = ("vector", "bm25", "hybrid", "hybrid_rerank")
@@ -40,7 +34,7 @@ class RetrievalResponse:
     """
     一次检索的完整结果。
 
-    除最终文档块列表外还带上耗时、召回统计与所用参数，供阶段 5 评估与阶段 4 调试面板使用。
+    除文档块列表外还带上耗时、召回统计与所用参数，供评估与调试面板使用。
     """
 
     query: str
@@ -74,7 +68,7 @@ class RetrievalResponse:
         return self.results[0] if self.results else None
 
     def as_context(self) -> list[dict[str, Any]]:
-        """转为阶段 3 组装 Prompt 所需的上下文结构。"""
+        """转为组装指令模板所需的上下文结构。"""
         return [
             {
                 "index": i,
@@ -124,8 +118,7 @@ def log_retrieval(response: RetrievalResponse, path: Path | None = None) -> Path
     """
     把一次检索记录追加到 JSONL 文件。
 
-    阶段 5 需要「每次检索各步耗时」，在真实使用中顺手记录即可，无需在评估脚本里重跑；
-    JSONL 逐行追加，单条格式错误不会损坏整个文件。
+    逐行追加，单条格式错误不会损坏整个文件，可在真实使用中记录各步耗时。
     """
     target = path or (settings.evaluation.result_dir / "retrieval_log.jsonl")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -148,11 +141,9 @@ def log_retrieval(response: RetrievalResponse, path: Path | None = None) -> Path
 
 
 def _preload_store_stack() -> None:
-    """在旁路线程里预热"索引侧"依赖（chromadb / jieba），与模型侧导入重叠。
+    """在旁路线程中预热索引侧依赖，与模型侧导入并行。
 
-    ``import torch`` + ``import transformers`` 要 20 秒左右，而 ``import chromadb``
-    还要 1.5~3 秒，两者之间没有依赖关系，串行做纯属浪费。失败不影响主流程：
-    真正用到时会再导入一次并抛出原始错误。
+    chromadb 与 jieba 的导入和模型导入互不依赖，并行可缩短启动时间。预热失败不影主流程，真正用到时会重新导入并抛出原始错误。
     """
     for module in ("chromadb", "jieba"):
         try:
@@ -164,9 +155,9 @@ def _preload_store_stack() -> None:
 
 class RetrievalPipeline:
     """
-    检索管线：持有各检索器的单例，按策略组装链路。
+    检索管线，持有各检索器单例并按策略组装链路。
 
-    不要频繁构造本类 —— 用模块级 ``get_pipeline()`` 拿全局实例。
+    通过模块级的全局获取函数取用，不要频繁构造本类。
     """
 
     def __init__(self, chunk_strategy: str | None = None) -> None:
@@ -194,10 +185,9 @@ class RetrievalPipeline:
         sparse_weight: float | None = None,
     ) -> HybridRetriever:
         """
-        按 (融合方式, 权重) 缓存混合检索器。
+        按融合方式与权重缓存混合检索器。
 
-        权重是缓存键的一部分：阶段 5 加权融合调参会用不同权重反复检索，
-        只缓存一个实例会让上一次的参数污染本次实验。
+        权重是缓存键的一部分，不同权重各自对应一个实例，避免参数相互污染。
         """
         cfg = settings.retrieval
         key = (
@@ -225,11 +215,7 @@ class RetrievalPipeline:
         """
         预热所有检索器与精排模型，返回各自耗时。
 
-        FastAPI 启动时调用，避免第一个真实请求承担约 20 秒的加载延迟。
-
-        启动耗时几乎全是 ``import torch`` / ``import transformers``（实测 20 秒上下），
-        模型权重本身只占 1 秒左右。chromadb 与 jieba 的导入和它们互不依赖，
-        因此放在旁路线程里同时导入（详见 ``_preload_store_stack``），可省下数秒。
+        服务启动时调用，避免第一个真实请求承担模型加载延迟。模型导入与索引侧依赖并行执行以缩短启动时间。
         """
         used: dict[str, float] = {}
         t0 = time.perf_counter()
@@ -265,22 +251,7 @@ class RetrievalPipeline:
         """
         执行检索。
 
-        :param query: 查询文本
-        :param strategy: vector | bm25 | hybrid | hybrid_rerank
-        :param top_k: 最终返回条数；对 ``hybrid_rerank`` 即**精排保留条数**（等价 ``rerank_top_k``），
-            四个策略下语义统一，消融实验才不会空跑
-        :param candidate_k: 每路召回条数（默认 50）
-        :param rerank_top_k: 精排后保留条数，优先级高于 ``top_k``，默认取 ``rerank.top_k``
-        :param fusion: 覆盖融合策略（dense/sparse/rrf/weighted），供消融实验使用
-        :param dense_weight: 覆盖向量权重
-        :param sparse_weight: 覆盖 BM25 权重
-        :param write_log: 是否写检索日志，默认取 ``evaluation.save_raw_records``
-        :returns: RetrievalResponse
-
-        ``top_k`` 是返回/精排条数，与「融合候选池大小」是两件事：``hybrid_rerank`` 的候选池固定为
-        ``retrieval.top_k``（默认 20），精排从中挑 ``rerank_top_k`` 条进上下文。早期实现里 ``top_k``
-        只作用于召回又被精排覆盖，导致 Rerank Top-k 消融传 ``top_k=3/5/8`` 全部返回 5 条、三档指标
-        完全相同 —— 这种静默失效比报错更危险，故显式区分两个参数。
+        查询文本为空时返回带告警的空结果。返回条数与融合候选池大小是两个独立参数：混合后精排策略的候选池固定取检索配置的条数，再从中挑出精排保留条数进入上下文；其余策略的返回条数即最终条数。日志写入开关默认取评估配置。
         """
         name = (strategy or "hybrid_rerank").strip().lower()
         if name not in VALID_STRATEGIES:
@@ -296,13 +267,12 @@ class RetrievalPipeline:
         cfg = settings.retrieval
         cand = candidate_k or cfg.dense_top_k
 
-        # hybrid_rerank：top_k 表示"精排保留条数"，候选池仍为 retrieval.top_k；
-        # 其余策略：top_k 就是最终返回条数。
+        # 混合后精排时，返回条数表示精排保留条数，候选池仍取检索配置的条数；其余策略返回条数即最终条数
         rerank_k: int | None = None
         pool_k = top_k
         if name == "hybrid_rerank":
             rerank_k = rerank_top_k if rerank_top_k is not None else (top_k or settings.rerank.top_k)
-            pool_k = cfg.top_k  # 候选池固定为 retrieval.top_k（默认 20），供精排挑选
+            pool_k = cfg.top_k  # 候选池取检索配置的条数，供精排挑选
 
         warnings: list[str] = []
         timing = TimingRecorder()
@@ -326,7 +296,7 @@ class RetrievalPipeline:
                 try:
                     hits = self.reranker.rerank(query, hits, rerank_k)
                     stats["reranked"] = len(hits)
-                except Exception as exc:  # noqa: BLE001 - 精排失败不应让整条链路失败
+                except Exception as exc:  # noqa: BLE001 - 精排失败时保留混合检索结果
                     msg = f"精排模型不可用，已退回混合检索结果: {type(exc).__name__}: {exc}"
                     logger.warning(msg)
                     warnings.append(msg)
@@ -360,7 +330,7 @@ class RetrievalPipeline:
         if should_log:
             try:
                 log_retrieval(response)
-            except Exception as exc:  # noqa: BLE001 - 日志失败不影响检索
+            except Exception as exc:  # noqa: BLE001 - 写日志失败不影响检索
                 logger.debug("写检索日志失败: %s", exc)
 
         return response
@@ -375,10 +345,9 @@ class RetrievalPipeline:
         **kwargs: Any,
     ) -> list[RetrievalResponse]:
         """
-        批量检索（阶段 5 评估的核心循环）。
+        批量检索，评估时的核心循环。
 
-        刻意逐条调用而不是先批量向量化再批量检索：评估关心的是每条问题的真实延迟，
-        批处理会把延迟摊薄，测出来的数字没有意义。
+        逐条调用而非批量处理，以便测出每条问题的真实延迟。
         """
         iterator: Any = queries
         if show_progress:
@@ -390,7 +359,7 @@ class RetrievalPipeline:
         ]
 
     def info(self) -> dict[str, Any]:
-        """管线状态，供 API 的 /health 与前端调试面板使用。"""
+        """管线状态，供健康检查与前端调试面板使用。"""
         return {
             "chunk_strategy": self.chunk_strategy,
             "vector": self.vector.info() if self._vector is not None else {"loaded": False},
@@ -409,7 +378,7 @@ _PIPELINES: dict[str, RetrievalPipeline] = {}
 
 
 def get_pipeline(chunk_strategy: str | None = None) -> RetrievalPipeline:
-    """获取（并按分块策略缓存的）全局检索管线。"""
+    """获取按分块策略缓存的全局检索管线。"""
     key = (chunk_strategy or settings.chunk.default_strategy).strip().lower()
     if key not in _PIPELINES:
         _PIPELINES[key] = RetrievalPipeline(key)
@@ -423,17 +392,9 @@ def retrieve(
     **kwargs: Any,
 ) -> RetrievalResponse:
     """
-    **阶段 2 的统一对外入口。**
+    检索的统一对外入口。
 
-    :param query: 查询文本
-    :param strategy: vector | bm25 | hybrid | hybrid_rerank
-    :param chunk_strategy: 分块策略（fixed | recursive），默认取配置
-    :returns: RetrievalResponse，``.results`` 为带 metadata 与得分的文档块列表
-
-    示例::
-
-        resp = retrieve("校级奖励的评选流程", strategy="hybrid_rerank")
-        print(resp.summary())
+    返回检索响应对象，其结果列表中的每个文档块都带元数据与得分。策略与分块策略均可指定，未指定时取配置值。
     """
     return get_pipeline(chunk_strategy).retrieve(query, strategy, **kwargs)
 
