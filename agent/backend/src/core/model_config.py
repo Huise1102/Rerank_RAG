@@ -1,6 +1,6 @@
-"""运行时模型配置（model_config.py）：在线 API 与本地 Ollama 可热切换。
+"""运行时模型配置，在线 API 与本地 Ollama 可热切换。
 
-配置持久化到 ``data/model_config.json``，保存后立即写回 ``settings.llm``，
+配置持久化到数据目录下的配置文件，保存后立即写回全局设置，
 调度层下一次决策即使用新模型，无需重启服务。
 """
 
@@ -119,7 +119,7 @@ def _apply(cfg: ModelConfig) -> None:
 
 
 def active_model(image: bool = False) -> str:
-    """当前生效的模型名；``image=True`` 时返回多模态模型（未单独配置则回退主模型）。"""
+    """当前生效的模型名；请求多模态模型时返回视觉模型，未单独配置则回退主模型。"""
     cfg = get_config()
     if cfg.provider == "ollama":
         return (cfg.ollama_vision_model or cfg.ollama_model) if image else cfg.ollama_model
@@ -127,7 +127,7 @@ def active_model(image: bool = False) -> str:
 
 
 def build_config(payload: dict[str, Any]) -> ModelConfig:
-    """按前端提交的值构造配置；``api_key`` 传空或传掩码视为“保持原值”。"""
+    """按前端提交的值构造配置；密钥为空或等于掩码时保持原值。"""
     old = get_config()
     key = str(payload.get("api_key") or "").strip()
     if not key or key == mask_key(old.api_key):
