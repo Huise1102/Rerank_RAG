@@ -1,10 +1,8 @@
-"""LLM 调用（llm.py）：用 OpenAI SDK 调 DeepSeek 兼容接口。
+"""LLM 调用，用 OpenAI SDK 调用 DeepSeek 兼容接口。
 
-``base_url`` 存根地址（``https://api.deepseek.com``）；带 ``/chat/completions`` 的完整
-路径会被 SDK 再拼一次而 404。重试分两层：SDK 管连接错误/429/5xx 且不重试超时，本模块
-只重试超时并在重试前检查剩余总预算。显式指定 model 时不降级；API Key 只读环境变量/.env。
-
-（从 demo/src/generation/llm.py 逐字复制，仅把 config 导入改为 src.core.config。）
+base_url 只保留主机地址，带完整路径会被 SDK 重复拼接而返回 404。
+SDK 负责连接错误与状态码重试，本模块只额外重试超时，并在重试前检查剩余总预算。
+显式指定模型时不降级；API Key 只读取环境变量与环境文件。
 """
 
 from __future__ import annotations
@@ -24,7 +22,7 @@ from src.generation.prompt import (
     contexts_from_results,
 )
 
-#: 可重试异常的类型名（按名字匹配，避免硬依赖 openai 异常类导致导入失败）
+# 可重试异常的类型名，按名字匹配以避免依赖具体异常类
 _RETRYABLE = {
     "APITimeoutError",
     "APIConnectionError",
@@ -97,7 +95,7 @@ class LLMResponse:
 
 
 class LLMClient:
-    """DeepSeek 客户端封装。用法：``LLMClient().generate(query, contexts)``。"""
+    """DeepSeek 客户端封装，负责组装消息并调用接口。"""
 
     name = "deepseek"
 
@@ -127,7 +125,7 @@ class LLMClient:
         if self._client is None:
             from openai import OpenAI
 
-            # require_api_key 未配置时抛带操作指引的异常，而不是等到 401
+            # 未配置密钥时抛出带操作指引的异常，而不是等到接口返回 401
             key = self.api_key or settings.llm.require_api_key()
             self._client = OpenAI(
                 api_key=key,
@@ -161,9 +159,7 @@ class LLMClient:
         return type(exc).__name__ in _RETRYABLE
 
     def _call_with_retry(self, params: dict[str, Any], *, deadline: float) -> Any:
-        """带总预算约束的调用：SDK 已重试连接错误/429/5xx，这里只额外重试超时，
-        每次重试前检查剩余时间，不够就放弃。
-        """
+        """带总预算约束的调用，只额外重试超时，每次重试前检查剩余时间。"""
         cfg = settings.llm
         last_exc: Exception | None = None
 
@@ -204,10 +200,9 @@ class LLMClient:
     ) -> LLMResponse:
         """生成答案。
 
-        :param contexts: 上下文（PromptContext、RetrievalResult 或字典均可）
-        :param image: 图片 data URL；传入后自动改用多模态模型，图片作为资料的一部分
-        :param model: 显式指定模型；指定后不再降级（``use_fallback_models`` 随之失效）
-        :returns: LLMResponse（``answer`` + ``contexts`` + 用量 + 引用报告）
+        contexts 可为上下文对象、检索结果或字典；image 为图片 data URL，
+        传入后改用多模态模型；显式指定 model 时不再降级。
+        返回完整结果，包含答案、上下文、用量与引用报告。
         """
         items = self._normalize_contexts(contexts)
         built = self.builder.build(query, items, history=history, image=image)
@@ -300,7 +295,7 @@ class LLMClient:
         max_tokens: int | None = None,
         on_delta: Callable[[str], None] | None = None,
     ) -> Iterator[str]:
-        """流式生成，逐段 yield 文本增量。需要完整结果与引用时用 :meth:`stream_response`。"""
+        """流式生成，逐段产出文本增量。"""
         items = self._normalize_contexts(contexts)
         built = self.builder.build(query, items, history=history, image=image)
 
@@ -328,7 +323,7 @@ class LLMClient:
         contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Iterator[str], dict[str, Any]]:
-        """返回 (增量迭代器, 结果容器)；迭代结束后 ``box["response"]`` 是完整 LLMResponse。"""
+        """返回增量迭代器与结果容器，迭代结束后容器中的 response 为完整结果。"""
         items = self._normalize_contexts(contexts)
         history = kwargs.pop("history", None)
         image = kwargs.pop("image", None)
@@ -415,10 +410,9 @@ def generate(
     contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
     **kwargs: Any,
 ) -> LLMResponse:
-    """生成模块的统一入口：检索结果 -> 答案。
+    """生成模块的统一入口，把检索结果转换为答案。
 
-    :param contexts: 可直接传检索的 ``resp.results``
-    :returns: LLMResponse，``.answer`` 为答案文本，``.contexts`` 为实际使用的上下文
+    contexts 可直接传检索结果列表，返回完整生成结果。
     """
     return get_llm_client().generate(query, contexts, **kwargs)
 
@@ -430,12 +424,12 @@ def generate_with_retrieval(
     chunk_strategy: str | None = None,
     **kwargs: Any,
 ) -> LLMResponse:
-    """端到端：检索 + 生成。单一入口，避免 API 层与评估层各写一遍而产生行为差异。"""
+    """端到端流程，先检索再生成。"""
     from src.retrieval.pipeline import retrieve
 
     retrieval = retrieve(query, strategy=retrieval_strategy, chunk_strategy=chunk_strategy)
     response = generate(query, retrieval.results, **kwargs)
-    # 检索耗时并入总耗时，评估延迟时才是真实的端到端数字
+    # 检索耗时并入后端到端耗时
     response.usage.setdefault("retrieval_timing", retrieval.timing)
     response.warnings.extend(retrieval.warnings)
     return response
