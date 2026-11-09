@@ -1,8 +1,7 @@
-"""Redis 客户端（redis_client.py）。
+"""Redis 客户端。
 
-Redis 在本项目中承担：Celery 的 broker / 结果后端（见 ``src/tasks/celery_app.py``）、
-以及轻量的运行时探活（/health 中的 redis 连通性）。这里提供同步客户端单例与
-JSON 缓存读写小工具。
+Redis 承担异步任务队列的 broker 与结果后端，以及健康检查中的连通性探测。
+这里提供同步客户端单例与 JSON 缓存读写工具。
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 
 @lru_cache(maxsize=1)
 def get_redis() -> Any:
-    """同步 Redis 客户端单例（decode_responses=True）。"""
+    """同步 Redis 客户端单例，响应按字符串解码。"""
     import redis
 
     client = redis.Redis.from_url(settings.redis.url, decode_responses=True)
