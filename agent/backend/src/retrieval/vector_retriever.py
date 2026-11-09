@@ -1,14 +1,12 @@
-"""稠密向量检索器（vector_retriever.py）。
+"""稠密向量检索器。
 
-职责：用 bge-large-zh-v1.5 把 query 编码成向量，在 Chroma 中做余弦检索，返回 Top-k 文档块及得分。
+用 bge-large-zh-v1.5 把查询编码成向量，在 Chroma 中做余弦检索，返回前若干条文档块及得分。
 
-查询侧必须加 BGE 检索指令前缀、文档侧不加（入库时文档未加前缀）：两侧须保持这种
-不对称处理，查询被引导到"检索意图"子空间能提升召回，否则查询与文档表示会落在不同分布上。
-``hnsw:space="cosine"`` 下 Chroma 返回的是距离（``distance = 1 - similarity``），直接用 distance
-排序会得到相反顺序，故显式转成 ``similarity = 1 - distance``，让「分数越大越相关」在全系统一致
-（BM25 同理），融合层不必再操心方向。
+查询侧加 BGE 检索指令前缀，文档侧不加，两侧保持这种不对称处理以提升召回。
+Chroma 的余弦空间返回距离，直接按距离排序会得到相反顺序，
+因此显式转成相似度，使分数越大越相关的约定在全系统一致，融合层无需再关心方向。
 
-适配多知识库：从 ``kb_{kb_id}_{strategy}`` 集合加载（见 ``collection_name_for_kb``）。
+按知识库 ID 与分块策略加载对应集合。
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ logger = get_logger(__name__)
 
 class VectorRetriever(BaseRetriever):
     """
-    基于 Chroma + BGE 的稠密检索器（按知识库隔离）。
+    基于 Chroma 与 BGE 的稠密检索器，按知识库隔离。
     """
 
     name = "vector"
@@ -125,7 +123,7 @@ class VectorRetriever(BaseRetriever):
                 RetrievalResult(
                     chunk_id=str(cid),
                     text=str(docs[i]) if i < len(docs) else "",
-                    # 余弦距离 -> 相似度，保证"分数越大越相关"的全系统约定
+                    # 余弦距离转相似度，保证分数越大越相关的约定
                     score=1.0 - distance,
                     metadata=dict(metas[i]) if i < len(metas) else {},
                 )
