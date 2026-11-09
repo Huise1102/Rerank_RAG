@@ -5,7 +5,7 @@ import App from './App'
 import './assets/theme.css'
 import './styles/app.css'
 
-// 深色模式：按 localStorage 预置 <html class="dark">，MainLayout 负责切换并持久化
+// 深色模式：初值取自 localStorage，存在时给根元素加上 dark 类
 if (localStorage.getItem('app-theme') === 'dark') {
   document.documentElement.classList.add('dark')
 }
