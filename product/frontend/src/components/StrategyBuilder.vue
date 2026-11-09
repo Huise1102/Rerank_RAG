@@ -1,6 +1,6 @@
 <template>
   <div class="strategy-builder">
-    <!-- 只读展示（问答页顶部 / 策略页摘要） -->
+    <!-- 只读展示 -->
     <div v-if="readonly" class="sb-readonly">
       <span class="sb-tag" :class="{ 'is-off': !model.vector }">向量</span>
       <span class="sb-tag" :class="{ 'is-off': !model.bm25 }">BM25</span>
@@ -74,7 +74,7 @@ function toggle(key, value) {
   emit('update:modelValue', next)
 }
 
-// 构建块组合 → 人类可读的策略名
+// 根据构建块组合生成策略名称
 function describeStrategies(s) {
   const vector = !!s.vector
   const bm25 = !!s.bm25
