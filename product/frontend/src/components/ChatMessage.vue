@@ -48,7 +48,7 @@ const renderedHtml = computed(() => {
   return html
 })
 
-// 把 [1][2,3][1-3][1、2] 这类引用编号转成可点击的 span
+// 把方括号内的引用编号转成可点击的 span 元素
 function decorateCitations(html) {
   const re = /\[(\d+(?:\s*[-–,，、]\s*\d+)*)\](?!\()/g
   return html.replace(re, (full, group) => {
