@@ -1,9 +1,5 @@
-"""初始建表（与迁移规格文档第 3 章 DDL 一致）。
+"""初始建表。迁移版本 0001，无前置版本，创建日期 2026 年 10 月 14 日。"""
 
-Revision ID: 0001
-Revises:
-Create Date: 2026-10-14
-"""
 
 from __future__ import annotations
 
