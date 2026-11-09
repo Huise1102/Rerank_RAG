@@ -1,17 +1,9 @@
-"""初始化数据库（scripts/init_db.py）。
+"""初始化数据库。
 
-职责：
-1. 按 ``RAG_DATABASE__URL`` 解析出的库名，用 ``CREATE DATABASE IF NOT EXISTS``
-   建库（utf8mb4 / utf8mb4_unicode_ci，否则中文与 emoji 会报错）。
-2. 建表：优先执行 Alembic 迁移（``alembic upgrade head``）；若缺少 alembic.ini，
-   退化为用 ORM 元数据 ``Base.metadata.create_all`` 直接建表。
-
-用法::
-
-    python scripts/init_db.py            # 建库 + 迁移建表
-    python scripts/init_db.py --mode create   # 建库 + create_all（跳过 Alembic）
+按配置的连接串解析库名并建库，字符集为 utf8mb4，排序规则为 utf8mb4_unicode_ci。
+建表优先执行 Alembic 迁移，缺少配置文件时退化为用 ORM 元数据直接建表。
+运行时用 python scripts/init_db.py 建库并执行迁移，加 mode 参数为 create 时直接建表。
 """
-
 from __future__ import annotations
 
 import argparse
@@ -19,7 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-#: 后端项目根：scripts/init_db.py -> scripts -> backend
+# 后端项目根目录
 BACKEND_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -91,8 +83,8 @@ def run_alembic_upgrade() -> bool:
 
 
 def _main(mode: str) -> None:
-    # 注意：Alembic 的 env.py 内部会调用 asyncio.run()，必须在一个没有
-    # 运行中的事件循环的同步上下文里执行，因此这里把异步步骤各自单独 run。
+    # Alembic 的 env.py 内部调用 asyncio.run，各异步步骤需要在没有运行中
+    # 事件循环的同步上下文里分别执行。
     setup_logging()
     settings.ensure_dirs()
     asyncio.run(ensure_database())
