@@ -58,10 +58,10 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const activeMenu = computed(() => route.path)
 
-//: 左侧菜单栏是否显示，默认显示
+// 左侧菜单栏是否显示，默认显示
 const menuVisible = ref(true)
 
-//: 深色模式状态，初值取自 <html> 是否已有 .dark（main.js 已按 localStorage 预置）
+// 深色模式状态，初值取自根元素是否已带 dark 类
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
 function applyTheme(dark) {
