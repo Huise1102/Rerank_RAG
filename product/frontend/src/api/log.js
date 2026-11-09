@@ -1,11 +1,11 @@
 import request from './request'
 
-// 检索日志（分页 + 按 kb 过滤）
+// 检索日志，支持分页与知识库过滤
 export function getRetrievalLogs(params) {
   return request.get('/logs/retrieval', { params })
 }
 
-// 系统日志（条数 + 级别 / 关键字过滤）
+// 系统日志，支持条数、级别与关键字过滤
 export function getSystemLogs(params) {
   return request.get('/logs/system', { params })
 }
