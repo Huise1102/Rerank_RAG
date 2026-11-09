@@ -63,7 +63,7 @@ export const useChatStore = create((set, get) => ({
           latency: m.latency || {},
           strategy: m.strategy || '',
           stats: m.stats || null,
-          // Agent 版：决策轨迹 / 轮数 / 澄清标记随 latency 落库，历史回看从这里拆出
+          // 决策轨迹、轮数与澄清标记存放在 latency 字段中
           agent_trace: m.latency?.agent_trace || [],
           rounds: m.latency?.rounds || 0,
           is_clarification: m.latency?.is_clarification || false,
