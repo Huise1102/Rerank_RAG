@@ -19,9 +19,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
-#: 文档处理状态
+# 文档处理状态
 DOC_STATUSES = ("pending", "parsing", "indexing", "completed", "failed")
-#: 允许上传的文件类型
+# 允许上传的文件类型
 FILE_TYPES = ("pdf", "docx", "txt", "md")
 
 
