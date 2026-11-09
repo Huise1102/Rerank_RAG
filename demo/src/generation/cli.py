@@ -1,19 +1,6 @@
-"""
-阶段 3 —— 生成模块命令行入口。
+"""生成模块命令行入口。
 
-用法::
-
-    # 端到端问答（检索 + 生成）
-    python -m src.generation.cli ask "学校规章制度的适用范围是怎么规定的？"
-
-    # 只组装 prompt 不调用 LLM（无需 API Key，用于检查上下文与引用编号）
-    python -m src.generation.cli prompt "学校规章制度的适用范围是怎么规定的？"
-
-    # 流式输出（逐字打印）
-    python -m src.generation.cli ask "学生违纪的处理流程" --stream
-
-    # 检查 LLM 配置状态
-    python -m src.generation.cli status
+提供端到端问答、仅组装指令模板、查看配置状态与离线检查引用解析四个子命令。仅组装指令模板的子命令不需要密钥，便于检查上下文与引用编号。
 """
 
 from __future__ import annotations
@@ -121,7 +108,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_citations(args: argparse.Namespace) -> int:
-    """离线检查引用解析：对任意文本解析 [n] 标记（不需要检索与 LLM）。"""
+    """离线检查引用解析，对任意文本解析编号标记，不需要检索与大模型。"""
     _header("阶段 3 · 引用解析检查")
     text = args.text or sys.stdin.read()
     markers, invalid = cit.parse_markers(text)
