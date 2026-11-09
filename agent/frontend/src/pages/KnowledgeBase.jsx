@@ -7,7 +7,7 @@ import { message } from '../utils/toast'
 
 const ALLOWED_EXT = ['.pdf', '.docx', '.txt', '.md']
 
-// 与后端 documents.status 枚举保持一致
+// 文档状态对应的中文文案与标签样式
 const STATUS_META = {
   pending: { text: '待处理', cls: 'tag--muted' },
   parsing: { text: '解析中', cls: 'tag--accent' },
@@ -84,7 +84,7 @@ export default function KnowledgeBase() {
     return stopPolling
   }, [])
 
-  /* ---------------- 知识库列表 ---------------- */
+  /* 知识库列表 */
 
   function openCreate() {
     setCreateForm({ name: '', description: '', chunk_strategy: 'recursive' })
@@ -171,7 +171,7 @@ export default function KnowledgeBase() {
     }
   }
 
-  /* ---------------- 文档详情 ---------------- */
+  /* 文档详情 */
 
   async function openDetail(row) {
     setDetailKb(row)
@@ -271,7 +271,7 @@ export default function KnowledgeBase() {
     }
   }
 
-  /* ---------------- 文档预览 ---------------- */
+  /* 文档预览 */
 
   function previewUrl(doc, download = false) {
     return doc ? documentFileUrl(doc.id, download) : ''
@@ -318,7 +318,7 @@ export default function KnowledgeBase() {
     : ''
   const hasFailed = documents.some((d) => d.status === 'failed')
 
-  /* ---------------- 渲染 ---------------- */
+  /* 渲染 */
 
   return (
     <div className="page">
