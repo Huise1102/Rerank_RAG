@@ -16,7 +16,7 @@ export function updateKb(kbId, data) {
   return request.put(`/kb/${kbId}`, data)
 }
 
-// 单独更新构建块开关（vector / bm25 / fusion / rerank）
+// 只更新构建块开关
 export function updateStrategies(kbId, strategies) {
   return request.patch(`/kb/${kbId}/strategies`, strategies)
 }
