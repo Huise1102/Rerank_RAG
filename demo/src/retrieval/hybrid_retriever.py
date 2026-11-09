@@ -1,17 +1,6 @@
-"""阶段 2 —— 混合检索与融合（hybrid_retriever.py）。
+"""混合检索与融合。
 
-向量与 BM25 各取 Top-K 后融合成一个排序。``retrieval.fusion`` 四选一：
-``dense`` / ``sparse``（消融基线）、``rrf``（默认，``score = Σ w_i / (k + rank_i)``，k 默认 60）、
-``weighted``（两路分数各自 min-max 归一化后加权求和）。
-
-RRF 只按名次、不用原始分数：向量余弦约 0.3~0.9、BM25 可达 0~20+，量纲差异巨大，直接加权
-会被 BM25 单方面决定；RRF 分数绝对值很小（两路命中约 0.032）是正常的，仅用于排序，
-不要与余弦相似度或 BM25 分数比大小。``weighted`` 必须先 min-max 归一化，否则同样由 BM25 决定。
-
-权重在融合层生效：设为 0 等价于禁用该路。权重不改变单路内部名次，但会改变两路之间的交叉
-关系（例如 0.5/0.5 时 D 可排在 C 前，1.0/0.0 时相反），这是消融实验的预期行为，不是 bug。
-
-两路互相独立（Chroma + 内存 BM25），用线程池并行发起；单路失败自动降级为另一路结果。
+向量与 BM25 各取若干条后融合成一个排序，融合方式可选仅向量、仅 BM25、倒数排名融合与加权分数融合。倒数排名融合只看名次，不用原始分数，因此分数绝对值很小，仅用于排序。加权融合先把两路分数归一化到同一量纲再求和。权重为 0 表示禁用该路。两路互相独立，用线程池并行发起，单路失败时降级为另一路结果。
 """
 
 from __future__ import annotations
@@ -35,9 +24,9 @@ logger = get_logger(__name__)
 
 class HybridRetriever(BaseRetriever):
     """
-    混合检索器：向量 + BM25 并行召回，再融合排序。
+    混合检索器，向量与 BM25 并行召回后融合排序。
 
-    ``retrieve()`` 返回融合结果，``retrieve_detailed()`` 额外带上两路原始结果。
+    普通检索返回融合结果，详细检索额外返回两路原始结果。
     """
 
     name = "hybrid"
@@ -66,7 +55,7 @@ class HybridRetriever(BaseRetriever):
         self.sparse_weight = cfg.sparse_weight if sparse_weight is None else sparse_weight
         self.rrf_k = cfg.rrf_k
     def _load(self) -> None:
-        # 按融合策略只加载需要的那一路，避免无谓读索引/加载模型
+        # 按融合策略只加载需要的一路，避免无用加载
         if self.needs_dense:
             self.vector.warmup()
         if self.needs_sparse:
@@ -77,7 +66,7 @@ class HybridRetriever(BaseRetriever):
         )
 
     def warmup(self) -> float:
-        # 覆盖基类实现，以便把两路加载耗时都算进去
+        # 覆盖基类实现，把两路加载耗时都计入
         import time
 
         t0 = time.perf_counter()
@@ -97,7 +86,7 @@ class HybridRetriever(BaseRetriever):
 
     @property
     def size(self) -> int:
-        """可用文档块总数：两路都加载时取一致值，否则取已加载那一路。"""
+        """可用文档块总数，两路都加载时取一致值，否则取已加载的一路。"""
         if self.vector._loaded:
             return self.vector.size
         if self.bm25._loaded:
@@ -118,10 +107,9 @@ class HybridRetriever(BaseRetriever):
         candidate_k: int | None = None,
     ) -> "FusionOutcome":
         """
-        检索并返回完整过程数据（两路原始结果 + 融合结果 + 耗时）。
+        检索并返回完整过程数据，包括两路原始结果、融合结果与耗时。
 
-        调试面板与阶段 5 的消融/错误分析要看「正确文档有没有被召回、排第几」，
-        只看融合结果不够；正常问答路径用 ``retrieve()`` 即可。
+        调试与评估需要查看正确文档是否被召回以及排在第几，只看融合结果不够。
         """
         if not query or not query.strip():
             return FusionOutcome(merged=[], dense=[], sparse=[], timing=TimingRecorder())
@@ -133,10 +121,10 @@ class HybridRetriever(BaseRetriever):
         self.last_seconds = __import__("time").perf_counter() - t0
         return outcome
     def _recall(self, query: str, candidate_k: int, timing: TimingRecorder) -> tuple[list, list]:
-        """并行发起两路召回，返回 (向量结果, BM25 结果)。"""
+        """并行发起两路召回，返回向量结果与 BM25 结果。"""
         want_dense, want_sparse = self.needs_dense, self.needs_sparse
 
-        # dense/sparse 单路模式：不必起线程
+        # 单路模式下无需启用线程池
         if want_dense and not want_sparse:
             with timing.measure("dense"):
                 return self.vector.retrieve(query, candidate_k), []
@@ -194,9 +182,9 @@ class HybridRetriever(BaseRetriever):
         sparse: Sequence[RetrievalResult],
     ) -> dict[str, tuple[float, list[str]]]:
         """
-        倒数排名融合：``score(chunk) = Σ w_i / (k + rank_i)``
+        倒数排名融合，按名次倒数加权累加。
 
-        分数绝对值极小是正常的 —— RRF 只用于排序，不要与余弦相似度或 BM25 分数比大小。
+        分数绝对值很小属于正常现象，仅用于排序，不能与余弦相似度或 BM25 分数比较。
         """
         acc: dict[str, tuple[float, list[str]]] = {}
         for weight, hits in ((self.dense_weight, dense), (self.sparse_weight, sparse)):
@@ -216,10 +204,9 @@ class HybridRetriever(BaseRetriever):
         sparse: Sequence[RetrievalResult],
     ) -> dict[str, tuple[float, list[str]]]:
         """
-        加权分数融合：先把每路分数 min-max 归一化，再按权重求和。
+        加权分数融合，先把每路分数归一化，再按权重求和。
 
-        归一化是必需的：BM25 分数可达 20+，余弦相似度只有 0~1，
-        不归一化直接加权等于把融合结果交给 BM25 单方面决定。
+        归一化不可省略，否则数量级更大的 BM25 分数会主导融合结果。
         """
         acc: dict[str, tuple[float, list[str]]] = {}
         for weight, hits in ((self.dense_weight, dense), (self.sparse_weight, sparse)):
@@ -238,10 +225,9 @@ class HybridRetriever(BaseRetriever):
         top_k: int,
     ) -> list[RetrievalResult]:
         """
-        融合两路检索结果，返回 Top-k。
+        融合两路检索结果，返回前若干条。
 
-        融合只依据 ``chunk_id``（两个索引的 chunk_id 一致），无需按文本相似度去重；
-        两路同时召回的块把两路贡献相加，并记录 ``matched_by`` 以便解释排序。
+        融合只依据分块 ID，两路同时召回的块把贡献相加，并记录召回来源以便解释排序。
         """
         if not dense and not sparse:
             return []
@@ -252,12 +238,12 @@ class HybridRetriever(BaseRetriever):
             scored = {h.chunk_id: (h.score, [h.retriever]) for h in sparse}
         elif self.fusion == "rrf":
             scored = self._score_rrf(dense, sparse)
-        else:  # weighted
+        else:  # 加权融合
             scored = self._score_weighted(dense, sparse)
 
-        # 用 chunk_id 建索引，融合后从任一路取原文与元数据
+        # 按分块 ID 建索引，融合后从任一路取原文与元数据
         pool: dict[str, RetrievalResult] = {}
-        for item in list(sparse) + list(dense):  # dense 后写入，优先保留向量结果作为载体
+        for item in list(sparse) + list(dense):  # 向量结果后写入，优先作为载体
             pool.setdefault(item.chunk_id, item)
 
         merged: list[RetrievalResult] = []
@@ -272,13 +258,13 @@ class HybridRetriever(BaseRetriever):
                     score=score,
                     metadata=dict(base.metadata),
                     retriever=self.name,
-                    rank=0,  # 稍后按融合排序统一赋值
+                    rank=0,  # 融合排序后统一赋值
                     fused_score=score,
                     matched_by=sorted(set(matched)),
                 )
             )
 
-        # 分数降序；同分时优先"两路都召回"的块，再按原 rank 稳定排序
+        # 按分数降序排列，同分时优先两路都召回的块
         merged.sort(key=lambda r: (-r.final_score, -len(r.matched_by)))
         merged = merged[:top_k]
         for i, item in enumerate(merged, 1):
@@ -316,7 +302,7 @@ class FusionOutcome:
         self.timing = timing
 
     def stats(self) -> dict[str, Any]:
-        """两路召回的重叠情况 —— 混合检索有效性的直接证据。"""
+        """两路召回的重叠情况，用于衡量混合检索的互补性。"""
         d_ids = {h.chunk_id for h in self.dense}
         s_ids = {h.chunk_id for h in self.sparse}
         return {
