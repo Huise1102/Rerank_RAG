@@ -1,10 +1,8 @@
-"""LLM 调用（llm.py）：用 OpenAI SDK 调 DeepSeek 兼容接口。
+"""LLM 调用，用 OpenAI SDK 调用 DeepSeek 兼容接口。
 
-``base_url`` 存根地址（``https://api.deepseek.com``）；带 ``/chat/completions`` 的完整
-路径会被 SDK 再拼一次而 404。重试分两层：SDK 管连接错误/429/5xx 且不重试超时，本模块
-只重试超时并在重试前检查剩余总预算。显式指定 model 时不降级；API Key 只读环境变量/.env。
-
-（从 demo/src/generation/llm.py 逐字复制，仅把 config 导入改为 src.core.config。）
+base_url 只填根地址，带完整路径会被 SDK 再拼接一次而返回 404。
+重试分两层：SDK 负责连接错误、429 与 5xx，不重试超时；本模块只额外重试超时，
+并在每次重试前检查剩余总预算。显式指定模型时不降级；密钥只从环境变量读取。
 """
 
 from __future__ import annotations
@@ -24,7 +22,7 @@ from src.generation.prompt import (
     contexts_from_results,
 )
 
-#: 可重试异常的类型名（按名字匹配，避免硬依赖 openai 异常类导致导入失败）
+# 可重试异常的类型名，按名字匹配，避免硬依赖 openai 异常类导致导入失败
 _RETRYABLE = {
     "APITimeoutError",
     "APIConnectionError",
@@ -51,7 +49,7 @@ class LLMResponse:
 
     @property
     def citations(self) -> CitationReport:
-        """按需解析引用（惰性，避免每次生成都解析）。"""
+        """按需解析引用，惰性执行，避免每次生成都解析。"""
         cached = getattr(self, "_citations", None)
         if cached is None:
             cached = extract_citations(self.answer, self.contexts)
@@ -98,9 +96,9 @@ class LLMResponse:
 
 @dataclass
 class ChatMessage:
-    """一次 Function Calling 决策调用的原始消息结果（agent 调度层使用）。
+    """一次 Function Calling 决策调用的原始消息结果，供调度层使用。
 
-    不经过 PromptBuilder；``tool_calls`` 为空时 ``content`` 即最终答案。
+    不经过提示构建器；没有工具调用时内容即最终答案。
     """
 
     content: str = ""
@@ -111,7 +109,7 @@ class ChatMessage:
 
 
 class LLMClient:
-    """DeepSeek 客户端封装。用法：``LLMClient().generate(query, contexts)``。"""
+    """DeepSeek 客户端封装。"""
 
     name = "deepseek"
 
@@ -133,7 +131,7 @@ class LLMClient:
         self.timeout = timeout or cfg.timeout
         self.max_retries = cfg.max_retries if max_retries is None else max_retries
         self.builder = prompt_builder or PromptBuilder()
-        self._client = client  # 允许注入（测试用 mock，无需真实 Key）
+        self._client = client  # 允许注入客户端，便于测试
         self.last_seconds: float = 0.0
     @property
     def client(self) -> Any:
@@ -141,7 +139,7 @@ class LLMClient:
         if self._client is None:
             from openai import OpenAI
 
-            # require_api_key 未配置时抛带操作指引的异常，而不是等到 401
+            # 未配置密钥时抛出带操作指引的异常，而不是等到鉴权失败
             key = self.api_key or settings.llm.require_api_key()
             self._client = OpenAI(
                 api_key=key,
@@ -152,7 +150,7 @@ class LLMClient:
         return self._client
 
     def is_ready(self) -> tuple[bool, str]:
-        """检查是否具备调用条件（供 API 的 /health 使用）。"""
+        """检查是否具备调用条件。"""
         if self._client is not None:
             return True, "已注入客户端"
         if self.api_key or settings.llm.is_configured:
@@ -179,7 +177,9 @@ class LLMClient:
         return type(exc).__name__ in _RETRYABLE
 
     def _call_with_retry(self, params: dict[str, Any], *, deadline: float) -> Any:
-        """带总预算约束的调用：SDK 已重试连接错误/429/5xx，这里只额外重试超时，
+        """带总预算约束的调用。
+
+        SDK 已重试连接错误、429 与 5xx，这里只额外重试超时，
         每次重试前检查剩余时间，不够就放弃。
         """
         cfg = settings.llm
@@ -218,10 +218,10 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> ChatMessage:
-        """单次 Function Calling 调用，返回原始消息（content + tool_calls + 用量）。
+        """单次 Function Calling 调用，返回原始消息，含内容、工具调用与用量。
 
-        供 agent 调度层逐轮决策使用。传入 ``tools`` 后模型可选择调工具或直接输出内容；
-        不调工具时 ``content`` 即最终答案。不经过 PromptBuilder，消息由调用方组装。
+        供调度层逐轮决策使用。传入工具定义后模型可选择调用工具或直接输出内容；
+        不调工具时内容即最终答案。不经过提示构建器，消息由调用方组装。
         """
         params = self._params(
             messages, stream=False, model=model, temperature=temperature,
@@ -270,8 +270,8 @@ class LLMClient:
     ) -> Iterator[tuple[str, Any]]:
         """流式 Function Calling 调用。
 
-        yield ``("delta", 文本增量)``；结束时 yield ``("done", ChatMessage)``，其中已聚合
-        content 与 tool_calls（按 index 拼接 id/name/arguments）。供 agent 边决策边输出正文。
+        先逐段产出文本增量，结束时产出一条完成事件，其中已聚合内容与工具调用参数。
+        供调度层边决策边输出正文。
         """
         params = self._params(
             messages, stream=True, model=model, temperature=temperature,
@@ -342,30 +342,30 @@ class LLMClient:
     ) -> LLMResponse:
         """生成答案。
 
-        :param contexts: 上下文（PromptContext、RetrievalResult 或字典均可）
-        :param image: 图片 data URL；传入后自动改用多模态模型，图片作为资料的一部分
-        :param model: 显式指定模型；指定后不再降级（``use_fallback_models`` 随之失效）
-        :returns: LLMResponse（``answer`` + ``contexts`` + 用量 + 引用报告）
+        :param contexts: 上下文，可传提示上下文、检索结果或字典
+        :param image: 图片数据链接；传入后自动改用多模态模型，图片作为资料的一部分
+        :param model: 显式指定模型；指定后不再降级
+        :returns: 生成结果，含答案、上下文、用量与引用报告
         """
         items = self._normalize_contexts(contexts)
         built = self.builder.build(query, items, history=history, image=image)
         default_model = settings.llm.vision_model if image else self.model
         warnings: list[str] = []
 
-        # 无上下文不烧 token：没有资料时模型的回答就是幻觉的温床，故直接返回配置话术
-        # （附图时例外：图片本身就是资料）
+        # 无上下文时不消耗额度：没有资料时模型容易编造，因此直接返回配置话术
+        # 附图时例外，图片本身就是资料
         if not built.contexts and not built.has_image:
             warnings.append("无检索上下文，返回兜底话术（未调用 LLM）")
             resp = LLMResponse(
                 answer=self.builder.no_context_reply, contexts=[], model=model or default_model,
                 usage={}, elapsed=0.0, attempts=0, built_prompt=built, warnings=warnings,
             )
-            # 兜底话术本身也是拒答，让引用解析能看到这一点
+            # 兜底话术同样是拒答，引用解析需要识别这一点
             object.__setattr__(resp, "_citations", extract_citations(resp.answer, []))
             return resp
 
         models = [model or default_model]
-        # 图片只能走多模态模型：文本备用模型收到 image_url 块会直接 400
+        # 图片只能走多模态模型，文本模型收到图片内容块会直接报错
         if use_fallback_models and not model and not image:
             models += [m for m in settings.llm.fallback_models if m not in models]
 
@@ -438,7 +438,7 @@ class LLMClient:
         max_tokens: int | None = None,
         on_delta: Callable[[str], None] | None = None,
     ) -> Iterator[str]:
-        """流式生成，逐段 yield 文本增量。需要完整结果与引用时用 :meth:`stream_response`。"""
+        """流式生成，逐段产出文本增量。需要完整结果与引用时用 stream_response。"""
         items = self._normalize_contexts(contexts)
         built = self.builder.build(query, items, history=history, image=image)
 
@@ -466,7 +466,7 @@ class LLMClient:
         contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Iterator[str], dict[str, Any]]:
-        """返回 (增量迭代器, 结果容器)；迭代结束后 ``box["response"]`` 是完整 LLMResponse。"""
+        """返回增量迭代器与结果容器，迭代结束后结果容器中是完整生成结果。"""
         items = self._normalize_contexts(contexts)
         history = kwargs.pop("history", None)
         image = kwargs.pop("image", None)
@@ -553,10 +553,10 @@ def generate(
     contexts: Sequence[PromptContext] | Sequence[Any] | None = None,
     **kwargs: Any,
 ) -> LLMResponse:
-    """生成模块的统一入口：检索结果 -> 答案。
+    """生成模块的统一入口，从检索结果生成答案。
 
-    :param contexts: 可直接传检索的 ``resp.results``
-    :returns: LLMResponse，``.answer`` 为答案文本，``.contexts`` 为实际使用的上下文
+    :param contexts: 可直接传检索响应中的结果列表
+    :returns: 生成结果，答案为答案文本，上下文为实际使用的上下文
     """
     return get_llm_client().generate(query, contexts, **kwargs)
 
@@ -568,12 +568,12 @@ def generate_with_retrieval(
     chunk_strategy: str | None = None,
     **kwargs: Any,
 ) -> LLMResponse:
-    """端到端：检索 + 生成。单一入口，避免 API 层与评估层各写一遍而产生行为差异。"""
+    """端到端流程，先检索再生成，统一入口。"""
     from src.retrieval.pipeline import retrieve
 
     retrieval = retrieve(query, strategy=retrieval_strategy, chunk_strategy=chunk_strategy)
     response = generate(query, retrieval.results, **kwargs)
-    # 检索耗时并入总耗时，评估延迟时才是真实的端到端数字
+    # 检索耗时并入总耗时，使端到端延迟完整
     response.usage.setdefault("retrieval_timing", retrieval.timing)
     response.warnings.extend(retrieval.warnings)
     return response
