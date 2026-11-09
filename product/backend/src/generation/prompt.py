@@ -1,11 +1,7 @@
-"""提示词组装（prompt.py）：把检索到的文档块拼成 LLM 的 prompt。
+"""上下文组装，把检索到的文档块拼成发给模型的对话消息。
 
-系统提示词要写三条约束：仅依据上下文回答（否则模型用参数里的常识作答）、标注来源编号
-[1][2]（有引用标注时幻觉率显著下降）、上下文不足时明确说明。引用格式要求只在动态追加
-片段里写一遍，config 的 system_prompt 里不重复。上下文按分数降序填到字符预算，每条前带
-``[1] 来源：测试.pdf 页码：18`` —— 编号是 [1] 能解析回文档块的前提。
-
-（从 demo/src/generation/prompt.py 逐字复制，仅把 config 导入改为 src.core.config。）
+系统消息包含三条约束：只依据上下文回答、标注来源编号、上下文不足时明确说明。
+上下文按分数降序填入字符预算，每条前带编号、来源与页码，编号用于把引用映射回文档块。
 """
 
 from __future__ import annotations
@@ -15,7 +11,7 @@ from typing import Any, Iterable, Sequence
 
 from src.core.config import settings
 
-#: 引用标注风格 -> 给模型的排版要求
+# 引用标注风格对应的排版要求
 _CITATION_INSTRUCTIONS: dict[str, str] = {
     "bracket": "回答时用 [编号] 标注每条结论的依据来源，例如：应在规定期限内提出申请[1]。",
     "inline": "回答时在句末用（来源：文件名 第N页）的形式标注依据。",
@@ -25,9 +21,7 @@ _CITATION_INSTRUCTIONS: dict[str, str] = {
 
 @dataclass
 class PromptContext:
-    """送入 prompt 的单条上下文。``index`` 是模型看到的编号（从 1 开始），citation.py
-    依赖它把 [n] 映射回文档块。
-    """
+    """送入模型的单条上下文，编号从 1 开始，用于把引用映射回文档块。"""
 
     index: int
     text: str
@@ -37,7 +31,7 @@ class PromptContext:
     chunk_id: str = ""
 
     def header(self, *, include_source: bool = True, include_scores: bool = False) -> str:
-        """生成 ``[1] 来源：xxx 页码：xxx`` 这一行。"""
+        """生成编号、来源与页码组成的标题行。"""
         if not include_source:
             return f"[{self.index}]"
         parts = [f"[{self.index}]"]
@@ -82,7 +76,7 @@ class BuiltPrompt:
 
 
 def contexts_from_results(results: Iterable[Any], *, start_index: int = 1) -> list[PromptContext]:
-    """把检索结果（``RetrievalResult`` 或字典）转成 ``PromptContext``，两种输入都兼容。"""
+    """把检索结果或字典转换为上下文对象。"""
     contexts: list[PromptContext] = []
     for offset, item in enumerate(results):
         if isinstance(item, dict):
@@ -119,12 +113,10 @@ def select_within_budget(
     contexts: Sequence[PromptContext],
     max_chars: int | None = None,
 ) -> tuple[list[PromptContext], int]:
-    """按字符预算裁剪上下文（保持原顺序，即分数从高到低）。
+    """按字符预算裁剪上下文，保持原有顺序。
 
-    按顺序累加、超预算即停，而不是跳过超长的那条继续塞后面的：结果已按相关性降序，
-    为塞一条低相关短文本而丢掉高相关长文本得不偿失。单条若超过预算一半，截断而不是
-    整条丢弃（长文档块的开头通常就是最关键的定义或条款）。
-    :returns: (保留的上下文, 被丢弃的条数)
+    按顺序累加，超出预算即停止；单条超过剩余预算一半时截断保留，否则丢弃。
+    返回保留的上下文与被丢弃的条数。
     """
     budget = max_chars if max_chars is not None else settings.generation.context_max_chars
     kept: list[PromptContext] = []
@@ -155,7 +147,7 @@ def select_within_budget(
 
 
 class PromptBuilder:
-    """把系统提示词 + 上下文 + 问题组装成 OpenAI 格式的消息列表。"""
+    """把系统消息、上下文与问题组装成 OpenAI 格式的消息列表。"""
 
     def __init__(
         self,
@@ -178,16 +170,16 @@ class PromptBuilder:
         self.include_source = cfg.include_source if include_source is None else include_source
         self.include_scores = cfg.include_scores if include_scores is None else include_scores
         self.context_max_chars = context_max_chars or cfg.context_max_chars
-        #: 没有可用上下文时的固定回复（不调用 LLM，直接返回）
+        # 没有可用上下文时的固定回复，不调用模型直接返回
         self.no_context_reply = cfg.no_context_reply
     def build_system_prompt(self) -> str:
-        """在配置的系统提示词后追加引用格式要求（排版约定与安全底线分开，便于按场景切换）。"""
+        """在系统消息后追加引用格式要求。"""
         extra = _CITATION_INSTRUCTIONS.get(self.citation_style, "")
         if self.citation_style == "none":
             return self.system_prompt
         return f"{self.system_prompt.rstrip()}\n{extra}"
     def render_context(self, contexts: Sequence[PromptContext]) -> str:
-        """渲染上下文块，每条前带 ``[编号] 来源：xxx 页码：xxx``。"""
+        """渲染上下文块，每条前带编号、来源与页码。"""
         return "\n\n".join(
             ctx.render(include_source=self.include_source, include_scores=self.include_scores)
             for ctx in contexts
@@ -200,13 +192,10 @@ class PromptBuilder:
         history: Sequence[tuple[str, str]] | None = None,
         image: str | None = None,
     ) -> BuiltPrompt:
-        """组装完整 prompt。
+        """组装完整的对话消息。
 
-        :param contexts: ``PromptContext`` 或检索结果列表/字典均可（本方法自行归一化）
-        :param history: 多轮对话历史 ``[(role, content), ...]``，只保留最近若干轮
-        :param image: 图片 data URL（``data:image/png;base64,...``）；传入后最后一条
-            user 消息改为内容块数组，图片以 ``image_url`` 块承载
-        :returns: BuiltPrompt，``messages`` 可直接喂给 OpenAI SDK
+        contexts 可为上下文对象或检索结果；history 为多轮对话历史，只保留最近若干轮；
+        image 为图片 data URL，传入后最后一条用户消息转换为内容块数组。
         """
         # 允许直接传检索结果，否则调用方会拿到 AttributeError: no attribute 'header'
         items = list(contexts or [])
