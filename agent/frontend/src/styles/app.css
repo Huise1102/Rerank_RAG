@@ -1,4 +1,4 @@
-/* ---------- 模型配置页 ---------- */
+/* 模型配置页 */
 .model-current {
   display: flex;
   align-items: center;
@@ -189,12 +189,7 @@
     grid-template-columns: 1fr;
   }
 }
-/* ============================================================
-   React 应用组件样式（app.css）
-   配合 assets/theme.css 使用；无框架依赖，纯手写组件样式。
-   ============================================================ */
-
-/* ---------- 轻量提示 toast ---------- */
+/* 轻量提示 toast */
 .app-toast {
   position: fixed;
   top: 24px;
@@ -231,7 +226,7 @@
   background-color: var(--app-warning);
 }
 
-/* ---------- 布局（aside / header / main）---------- */
+/* 布局：侧栏、顶栏与主区 */
 .app-shell {
   display: flex;
   flex-direction: row;
@@ -293,7 +288,7 @@
   color: var(--app-text-muted);
 }
 
-/* 折叠按钮 / 主题切换：无色幽灵按钮 */
+/* 折叠与主题切换按钮 */
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -315,7 +310,7 @@
   color: var(--app-accent-dark);
 }
 
-/* ---------- 侧边菜单 ---------- */
+/* 侧边菜单 */
 .app-menu {
   flex: 1;
   padding: 10px;
@@ -372,7 +367,7 @@ html.dark .app-menu-item.is-active {
   box-shadow: inset 3px 0 0 var(--app-accent), 0 0 12px rgba(0, 212, 170, 0.16);
 }
 
-/* ---------- 通用按钮 / 输入 ---------- */
+/* 通用按钮与输入框 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -485,7 +480,7 @@ select.field {
   margin-top: 4px;
 }
 
-/* ---------- 聊天页（三栏）---------- */
+/* 聊天页三栏布局 */
 .chat-page {
   display: flex;
   flex-direction: column;
@@ -791,7 +786,7 @@ select.field {
   color: var(--app-danger);
 }
 
-/* 右：详情/轨迹面板 */
+/* 右侧详情与轨迹面板 */
 .detail-panel {
   border-left: 1px solid var(--app-border);
   background-color: var(--app-surface-soft);
@@ -841,7 +836,7 @@ select.field {
   line-height: 1.8;
 }
 
-/* ---------- 引用卡片 ---------- */
+/* 引用卡片 */
 .citation-card {
   border: 1px solid var(--app-border);
   border-radius: 6px;
@@ -896,7 +891,7 @@ select.field {
   color: var(--app-text-regular);
 }
 
-/* ---------- 检索详情（RetrievalDetail）---------- */
+/* 检索详情 */
 .rd-docs {
   display: flex;
   flex-direction: column;
@@ -989,7 +984,7 @@ select.field {
   line-height: 1.8;
 }
 
-/* ---------- 策略组合（StrategyBuilder）---------- */
+/* 策略组合 */
 .sb-readonly {
   display: inline-flex;
   align-items: center;
@@ -1052,7 +1047,7 @@ select.field {
   color: var(--app-text-muted);
 }
 
-/* ---------- 检索策略页 ---------- */
+/* 检索策略页 */
 .kb-picker {
   display: flex;
   align-items: center;
@@ -1132,7 +1127,7 @@ select.field {
   font-weight: 600;
 }
 
-/* ---------- 决策轨迹（DecisionTrace）---------- */
+/* 决策轨迹 */
 .decision-trace {
   display: flex;
   flex-direction: column;
@@ -1246,7 +1241,7 @@ select.field {
   color: var(--app-success);
 }
 
-/* ---------- 表格 / 列表页通用 ---------- */
+/* 表格与列表页通用样式 */
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1404,7 +1399,7 @@ select.field {
   cursor: not-allowed;
 }
 
-/* ---------- 弹窗 ---------- */
+/* 弹窗 */
 .modal-mask {
   position: fixed;
   inset: 0;
@@ -1447,7 +1442,7 @@ select.field {
   max-width: 94vw;
 }
 
-/* ---------- 知识库详情 / 上传 ---------- */
+/* 知识库详情与上传 */
 .detail-crumb {
   margin-bottom: 4px;
 }
@@ -1510,7 +1505,7 @@ select.field {
   text-decoration: underline;
 }
 
-/* ---------- 文档预览 ---------- */
+/* 文档预览 */
 .preview-meta {
   display: flex;
   align-items: center;
@@ -1578,7 +1573,7 @@ select.field {
   color: var(--app-danger);
 }
 
-/* ---------- 正文引用标记 ---------- */
+/* 正文引用标记 */
 .cite-ref {
   color: var(--app-accent-dark);
   font-weight: 600;
