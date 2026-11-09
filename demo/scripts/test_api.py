@@ -1,10 +1,6 @@
-"""阶段 4 —— 后端 API 自测（用 TestClient，不启动真实服务器，不消耗 LLM token）。
+"""后端接口自测，使用测试客户端，不启动真实服务器，也不消耗大模型调用额度。
 
-覆盖应用装配（路由/CORS/OpenAPI/版本前缀）、/health 组件状态与索引一致性、
-/strategies 与 /config 脱敏、/query 传递 mock LLM 走通全链路、/retrieve 召回统计、
-/ingest 文件校验与幂等、并发保护（入库中再次提交返回 409）。
-
-运行：.venv\\Scripts\\python.exe scripts\\test_api.py
+覆盖应用装配与跨域配置、健康检查与索引一致性、策略与配置脱敏、查询全链路、仅检索的召回统计、文件入库校验与幂等、并发保护以及增量计划。
 """
 
 from __future__ import annotations
@@ -48,13 +44,7 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 def all_paths(app) -> set[str]:
-    """
-    获取应用注册的全部路径。
-
-    不能遍历 app.routes：FastAPI/Starlette 1.7.0 起 include_router 返回
-    _IncludedRouter 包装对象，业务路由既不暴露 path 也不暴露 routes；
-    改用 FastAPI 自己生成的 OpenAPI schema。
-    """
+    """获取应用注册的全部路径，通过应用生成的 OpenAPI 文档读取，因为路由对象不直接暴露路径与子路由。"""
     spec = app.openapi()
     return set(spec.get("paths", {}).keys())
 
@@ -122,7 +112,7 @@ def test_app_wiring() -> TestClient:
     check("OpenAPI 含 query 接口", "/query" in r.json().get("paths", {}))
     check("/docs 可访问", client.get("/docs").status_code == 200)
 
-    # CORS
+    # 跨域配置
     r = client.options("/query", headers={
         "Origin": "http://localhost:5171",
         "Access-Control-Request-Method": "POST",
@@ -131,7 +121,7 @@ def test_app_wiring() -> TestClient:
           r.headers.get("access-control-allow-origin") in ("http://localhost:5171", "*"),
           str(r.headers.get("access-control-allow-origin")))
 
-    # 根路径（include_in_schema=False，因此不在 OpenAPI 里，需直接请求验证）
+    # 根路径未纳入接口文档，因此不在 OpenAPI 里，需直接请求验证
     r = client.get("/")
     check("根路径返回服务信息", r.status_code == 200 and "endpoints" in r.json(),
           f"HTTP {r.status_code}")
@@ -225,7 +215,7 @@ def test_query(client: TestClient) -> None:
               f"{len(data['retrieved_docs'])} 条")
         check("决策依据：strategy 回显", data["strategy"] == "bm25", data["strategy"])
 
-        # latency 结构
+        # 耗时结构
         lat = data["latency"]
         check("latency 含分步耗时",
               all(k in lat for k in ("retrieve_ms", "generate_ms", "total_ms")),
@@ -250,7 +240,7 @@ def test_query(client: TestClient) -> None:
               all(k in doc for k in ("rank", "chunk_id", "text", "score")),
               f"rank={doc['rank']} score={doc['score']:.3f}")
 
-        # include_contexts=false 应减小体积
+        # 关闭上下文回传时应减小体积
         r2 = client.post("/query", json={"question": "学校规章制度的适用范围",
                                          "strategy": "bm25", "include_contexts": False})
         if r2.status_code == 200:
@@ -297,12 +287,7 @@ def _fake_pdf(size: int = 2048) -> bytes:
 
 @contextlib.contextmanager
 def isolated_corpus():
-    """
-    把 raw 目录与清单重定向到临时目录，并把索引重建替换为空操作。
-
-    上传测试会真的落盘到 data/raw，并触发后台真实向量化（CPU 上数分钟）与
-    索引重建，因此必须隔离；_run 换成只写清单的替身以验证任务状态流转。
-    """
+    """把语料目录与清单重定向到独立目录，并把索引重建替换为空操作，避免测试落盘污染真实语料。"""
     tmp = Path(tempfile.mkdtemp(prefix="rag_api_test_"))
     raw = tmp / "raw"
     processed = tmp / "processed"
@@ -344,7 +329,7 @@ def isolated_corpus():
         ing.IngestManager._run = original_run
         object.__setattr__(paths, "raw_dir", saved[0])
         object.__setattr__(paths, "processed_dir", saved[1])
-        # 等后台线程收尾，避免残留 busy=True 影响后续用例
+        # 等待后台线程收尾，避免残留忙碌状态影响其它用例
         manager = ing.get_ingest_manager()
         for _ in range(50):
             if not manager.busy:
@@ -410,7 +395,7 @@ def test_ingest_validation(client: TestClient) -> None:
           r2.status_code == 200 and not r2.json()["task_id"],
           f"HTTP {r2.status_code} {r2.json().get('message', '')[:40]}")
 
-    # 同名不同内容 -> 拒绝覆盖
+    # 同名不同内容时拒绝覆盖
     r3 = client.post("/ingest", files={
         "file": ("doc_a.pdf", _fake_pdf(9999), "application/pdf")})
     check("同名不同内容被拒绝（防混淆）", r3.status_code == 422,
@@ -436,24 +421,24 @@ def test_incremental_plan() -> None:
     files = sorted(settings.paths.raw_dir.rglob("*.pdf"))
     check("语料目录有 PDF", len(files) > 0, f"{len(files)} 个")
 
-    # 空清单 -> 全部 added
+    # 空清单时均为新增
     plans = ing.plan_incremental(files[:3], {"version": 1, "files": {}}, force=False)
     check("空清单时均为新增", all(p.action == "added" for p in plans),
           str([(p.path.name, p.action) for p in plans]))
 
-    # 指纹一致 -> skipped
+    # 指纹一致时跳过
     if files:
         h = ing.file_sha256(files[0])
         manifest = {"version": 1, "files": {files[0].name: {"sha256": h, "chunks": 290}}}
         plans = ing.plan_incremental(files[:1], manifest, force=False)
         check("指纹一致时跳过", plans[0].action == "skipped", plans[0].reason)
 
-        # 指纹变化 -> updated
+        # 指纹变化时重新灌入
         manifest["files"][files[0].name]["sha256"] = "deadbeef"
         plans = ing.plan_incremental(files[:1], manifest, force=False)
         check("指纹变化时重灌", plans[0].action == "updated", plans[0].reason)
 
-        # force -> updated
+        # 强制模式下重新灌入
         manifest["files"][files[0].name]["sha256"] = h
         plans = ing.plan_incremental(files[:1], manifest, force=True)
         check("force 时强制重灌", plans[0].action == "updated", plans[0].reason)
