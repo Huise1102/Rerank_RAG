@@ -1,7 +1,7 @@
-"""txt / md 解析器：直接读取，整体作为一「文档」的一页。
+"""TXT 与 MD 解析器，直接读取文件，整体作为一页。
 
-md 保留原文标记（``#``、``-``、``**`` 等）不剥离——这些都携带结构信息，剥离反而损失语义；
-txt 与 md 走同一条路径，page = 1，total_pages = 1。
+MD 保留原文标记不剥离，这些标记携带结构信息，剥离反而损失语义；
+TXT 与 MD 走同一条路径，页码与总页数均为 1。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.ingest.loader import LoadedPage
 
-#: 按序尝试的编码（中文文本常见 GBK/GB18030，最后兜底 replace）
+# 按序尝试的编码，中文文本常见 GBK 与 GB18030，最后兜底替换非法字符
 _ENCODINGS: tuple[str, ...] = ("utf-8-sig", "utf-8", "gb18030", "latin-1")
 
 
@@ -25,7 +25,7 @@ def _read_text(path: Path) -> str:
 
 
 def parse_text(path: str | Path) -> list[LoadedPage]:
-    """读取 txt / md，返回单页 ``LoadedPage``。"""
+    """读取 TXT 或 MD，返回单页结果。"""
     p = Path(path).resolve()
     if not p.exists():
         raise FileNotFoundError(f"文件不存在: {p}")
