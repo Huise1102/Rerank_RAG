@@ -1,17 +1,8 @@
-"""初始化种子数据（scripts/seed_data.py）：预置「法律领域」知识库。
+"""预置「法律领域」知识库的种子数据。
 
-行为：
-1. 预置 1 个知识库「法律领域」，``enabled_strategies`` 默认全开。
-2. 扫描 ``product/resource/法律领域/`` 下的 pdf / docx / txt / md 四种格式文件
-   （**只读引用**，不复制、不改写），复用 ``ingest_service.ingest_paths`` 一次性
-   解析 -> 分块 -> 建索引（向量 + BM25），并在 ``documents`` 表登记 completed 记录。
-3. 幂等：已存在同名知识库直接复用；同名文档（同文件名）已登记则跳过，不重复入库。
-
-用法::
-
-    python scripts/seed_data.py                       # 预置「法律领域」（默认 recursive）
-    python scripts/seed_data.py --strategy fixed      # 指定分块策略
-    python scripts/seed_data.py --kb-name 法律领域 --resource-dir D:\\resource
+创建一个知识库，扫描资源目录下的 pdf、docx、txt、md 文件，只读引用并
+一次性完成解析、分块与索引构建，再在文档表登记完成状态。
+同名知识库直接复用，同名文档已登记时跳过。
 """
 
 from __future__ import annotations
@@ -21,7 +12,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-#: 后端项目根：scripts/seed_data.py -> scripts -> backend
+# 后端项目根目录，向上两级
 BACKEND_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -40,7 +31,7 @@ logger = get_logger("scripts.seed_data")
 
 PRESET_KB_NAME = "法律领域"
 
-#: 同一部法律多格式副本时的保留优先级（pdf > docx > md > txt）
+# 同一部法律存在多格式副本时的保留优先级，依次为 pdf、docx、md、txt
 _EXT_ORDER: dict[str, int] = {ext: i for i, ext in enumerate(supported_extensions())}
 
 
@@ -63,7 +54,7 @@ def discover_files(root: Path) -> list[Path]:
 
 
 def _resolve_resource_dir(kb_name: str, override: str | None) -> Path:
-    """确定语料目录：优先命令行 > resource/<kb_name> > resource/。"""
+    """确定语料目录，依次优先取命令行参数、resource 下的知识库名目录、resource 根目录。"""
     if override:
         return Path(override).expanduser().resolve()
     base = settings.resource_dir
