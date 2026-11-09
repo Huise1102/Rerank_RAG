@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-// 支持数值安全格式化 + 空值返回 null
+// 数值有效时返回数字，否则返回 null
 export function num(v) {
   return typeof v === 'number' && !Number.isNaN(v) ? v : null
 }
@@ -20,8 +20,7 @@ function matchedText(doc) {
   return Array.isArray(m) && m.length ? m.join('+') : ''
 }
 
-// 单个文档块（供 RetrievalDetail 与 DecisionTrace 复用）。
-// 正文默认折叠，只保留「序号 / 来源 / 页码 / 分数 / 命中」摘要，点击展开原文。
+// 单个文档块：摘要行常显，正文默认折叠，点击后展开原文。
 export function DocLine({ doc, index }) {
   const [expanded, setExpanded] = useState(false)
   const text = String(doc?.text || '')
