@@ -1,7 +1,6 @@
-"""``main.py`` 的别名模块，使 ``uvicorn src.api.main:app`` 与 ``uvicorn src.api.app:app``
-两种启动方式都可用。
+"""转发 main.py 的别名模块，使按 main 或 app 两种模块路径都能启动服务。
 
-应用实现全在 ``main.py``，这里不重复定义，避免出现"两个 app 对象、状态各一份"。
+应用实现集中在 main.py，这里只做导入，避免产生两个应用对象。
 """
 
 from __future__ import annotations
