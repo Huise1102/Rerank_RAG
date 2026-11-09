@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Vite 配置：React 单页应用 + 本地开发代理（/api -> FastAPI 后端）
+// Vite 配置：React 单页应用，并把 /api 请求代理到本地 FastAPI 服务
 export default defineConfig({
   plugins: [react()],
   resolve: {
