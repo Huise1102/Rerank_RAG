@@ -1,8 +1,6 @@
-"""API 请求/响应模型（只定义对外契约，不含业务逻辑）。
+"""接口请求与响应模型，只定义对外契约，不含业务逻辑。
 
-字段名遵循阶段 4 规格：``/query`` 返回 ``{answer, citations, retrieved_docs, latency}``。
-所有响应模型都带 ``example``，FastAPI 生成的 ``/docs`` 可直接当接口文档；
-时间统一用**毫秒**（前端直接显示，无需换算）。
+问答接口返回答案、引用、检索到的文档与耗时。响应模型附带示例，便于生成接口文档；时间统一用毫秒。
 """
 
 from __future__ import annotations
@@ -11,9 +9,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-#: 检索策略（与 src.retrieval.pipeline.VALID_STRATEGIES 保持一致）
+# 检索策略，取值范围与检索管线支持的策略名相同
 StrategyName = Literal["vector", "bm25", "hybrid", "hybrid_rerank"]
-#: 分块策略
+# 分块策略
 ChunkStrategyName = Literal["fixed", "recursive"]
 
 DEFAULT_STRATEGY: StrategyName = "hybrid_rerank"
@@ -21,7 +19,7 @@ DEFAULT_STRATEGY: StrategyName = "hybrid_rerank"
 
 
 class QueryRequest(BaseModel):
-    """POST /query 的请求体。"""
+    """问答接口的请求体。"""
 
     question: str = Field(
         ..., min_length=1, max_length=2000,
@@ -123,7 +121,7 @@ class LatencyBreakdown(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    """POST /query 的响应体。"""
+    """问答接口的响应体。"""
 
     answer: str = Field(description="生成的答案")
     citations: CitationReport = Field(description="引用来源与溯源信息")
@@ -156,7 +154,7 @@ class QueryResponse(BaseModel):
 
 
 class RetrieveRequest(BaseModel):
-    """POST /retrieve 的请求体（只检索不生成，供前端调试面板使用）。"""
+    """检索接口的请求体，只检索不生成，供前端调试面板使用。"""
 
     question: str = Field(..., min_length=1, max_length=2000)
     strategy: StrategyName = Field(default=DEFAULT_STRATEGY)
@@ -165,7 +163,7 @@ class RetrieveRequest(BaseModel):
 
 
 class RetrieveResponse(BaseModel):
-    """POST /retrieve 的响应体，带两路召回的明细。"""
+    """检索接口的响应体，带两路召回的明细。"""
 
     question: str
     strategy: StrategyName
@@ -181,7 +179,7 @@ class RetrieveResponse(BaseModel):
 
 
 class IngestedFile(BaseModel):
-    """本次会话处理（或跳过）的单个文件。"""
+    """当前会话处理或跳过的单个文件。"""
 
     file_name: str
     action: Literal["added", "updated", "skipped", "failed"] = Field(
@@ -195,7 +193,7 @@ class IngestedFile(BaseModel):
 
 
 class IngestRequest(BaseModel):
-    """POST /ingest 的表单参数说明（实际通过 multipart 上传）。"""
+    """入库接口的表单参数说明，文件通过 multipart 上传。"""
 
     strategy: ChunkStrategyName | None = Field(
         default=None, description="分块策略，默认取服务端配置"
@@ -207,9 +205,9 @@ class IngestRequest(BaseModel):
 
 
 class IngestResponse(BaseModel):
-    """POST /ingest 的响应体。
+    """入库接口的响应体。
 
-    入库可能耗时数分钟，故立即返回 task_id，由前端轮询进度接口。
+    入库可能耗时数分钟，因此立即返回任务编号，由前端轮询进度。
     """
 
     task_id: str = Field(description="任务标识，用于轮询进度")
@@ -220,7 +218,7 @@ class IngestResponse(BaseModel):
 
 
 class IngestStatus(BaseModel):
-    """GET /ingest/status/{task_id} 的响应体。"""
+    """入库进度接口的响应体。"""
 
     task_id: str
     status: Literal["pending", "running", "done", "failed"]
@@ -235,7 +233,7 @@ class IngestStatus(BaseModel):
 
 
 class IndexStatus(BaseModel):
-    """索引现状摘要（供 /health 与前端展示）。"""
+    """索引现状摘要，供健康检查与前端展示。"""
 
     chunk_strategy: str
     chunks_in_file: int = Field(default=0, description="分块文件中记录条数")
@@ -257,7 +255,7 @@ class ComponentStatus(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """GET /health 的响应体。"""
+    """健康检查接口的响应体。"""
 
     status: Literal["ok", "degraded", "error"] = Field(
         description="ok=全部就绪；degraded=部分组件不可用但服务仍可响应；error=不可用"
@@ -270,7 +268,7 @@ class HealthResponse(BaseModel):
 
 
 class StrategyOption(BaseModel):
-    """可选策略及其说明（前端下拉框直接用）。"""
+    """可选策略及其说明，前端下拉框直接使用。"""
 
     value: str
     label: str
@@ -278,7 +276,7 @@ class StrategyOption(BaseModel):
 
 
 class StrategiesResponse(BaseModel):
-    """GET /strategies 的响应体。"""
+    """策略列表接口的响应体。"""
 
     retrieval: list[StrategyOption] = Field(default_factory=list)
     chunk: list[StrategyOption] = Field(default_factory=list)
