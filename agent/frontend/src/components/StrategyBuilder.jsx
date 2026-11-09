@@ -25,7 +25,7 @@ const BLOCKS = [
   },
 ]
 
-// 构建块组合 → 人类可读的策略名
+// 根据构建块组合生成可读的策略名
 function describeStrategies(s) {
   const vector = !!s.vector
   const bm25 = !!s.bm25
