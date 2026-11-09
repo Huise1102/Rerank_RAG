@@ -1,12 +1,10 @@
-"""检索器共用基础设施（base.py）。
+"""检索器共用基础设施。
 
-``RetrievalResult`` 把 Chroma 与 pickle 两路结果归一到同一 dataclass，``chunk_id`` 为跨索引主键
-（两个索引的 chunk_id 已校验一致），融合层只需关心「文档块 + 分数 + 来源」。
+检索结果把 Chroma 与 pickle 两路结果归一到同一数据类，分块 ID 作为跨索引主键，
+融合层只需关心文档块、分数与来源。
 
-``BaseRetriever`` 统一 ``retrieve`` / ``retrieve_batch`` / ``name`` 接口（子类只实现 ``_do_retrieve``），
-加载惰性化（首次 ``retrieve`` 才读磁盘，``warmup()`` 可提前预热），各步耗时记录供调试面板使用。
-
-（从 demo/src/retrieval/base.py 复制，仅把 config 导入改为 src.core.config。）
+检索器基类统一单条检索、批量检索与名称接口，子类只实现实际检索方法；
+索引与模型按需加载，也可提前预热，各步耗时记录供调试面板使用。
 """
 
 from __future__ import annotations
@@ -26,7 +24,7 @@ class RetrievalResult:
     """
     单条检索结果。
 
-    ``retriever`` 与 ``rank`` 用于追踪「某条结果来自哪一路、原本排第几」。
+    retriever 与 rank 用于追踪某条结果来自哪一路、原本排第几。
     """
 
     chunk_id: str
@@ -34,9 +32,9 @@ class RetrievalResult:
     score: float
     metadata: dict[str, Any] = field(default_factory=dict)
     retriever: str = ""
-    rank: int = 0  # **本路**名次，从 1 开始
+    rank: int = 0  # 本路名次，从 1 开始
 
-    # —— 融合/精排过程的可解释字段 ——
+    # 融合与精排过程的可解释字段
     fused_score: float | None = None
     rerank_score: float | None = None
     matched_by: list[str] = field(default_factory=list)  # 召回该块的检索器
@@ -51,7 +49,7 @@ class RetrievalResult:
 
     @property
     def final_score(self) -> float:
-        """对外展示的最终分数：精排 > 融合 > 单路。"""
+        """对外展示的最终分数，优先级依次为精排、融合、单路。"""
         if self.rerank_score is not None:
             return self.rerank_score
         if self.fused_score is not None:
@@ -59,12 +57,12 @@ class RetrievalResult:
         return self.score
 
     def citation(self) -> str:
-        """生成引用标注，如 ``[1] 测试.pdf 第 12 页``。"""
+        """生成引用标注，形如文件名加页码。"""
         page = self.metadata.get("page")
         return f"{self.source} 第 {page} 页" if page else self.source
 
     def to_dict(self) -> dict[str, Any]:
-        """转为普通字典（JSON 响应与调试面板）。"""
+        """转为普通字典，用于 JSON 响应与调试面板。"""
         return {
             "chunk_id": self.chunk_id,
             "text": self.text,
@@ -88,10 +86,10 @@ class BaseRetriever(ABC):
     """
     检索器接口。
 
-    子类实现 ``_do_retrieve`` 并返回 ``RetrievalResult``（``rank`` 由基类统一补为 1 起）。
+    子类实现实际检索方法并返回检索结果，名次由基类统一补为从 1 起。
     """
 
-    #: 检索器名称，会写入 RetrievalResult.retriever
+    # 检索器名称，会写入结果的来源字段
     name: str = "base"
 
     def __init__(self, strategy: str | None = None) -> None:
@@ -101,10 +99,9 @@ class BaseRetriever(ABC):
         self._load_seconds: float = 0.0
         self.last_seconds: float = 0.0  # 最近一次检索耗时
     def warmup(self) -> float:
-        """显式预热（加载索引/模型），返回耗时秒数。
+        """显式预热，加载索引或模型，返回耗时秒数。
 
-        预热线程与首个查询可能同时进入这里：加锁并二次检查，保证只真正加载一次，
-        后来者等待同一次加载完成。否则同一个大模型会被并发加载两遍，启动时间直接翻倍。
+        加锁并二次检查，保证只真正加载一次，其余调用等待同一次加载完成。
         """
         t0 = time.perf_counter()
         with self._load_lock:
@@ -127,12 +124,7 @@ class BaseRetriever(ABC):
         """执行检索，返回已带 rank 的结果列表。"""
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievalResult]:
-        """
-        检索单条查询。
-
-        :param query: 查询文本
-        :param top_k: 返回条数，默认取该检索器的配置值
-        """
+        """检索单条查询。"""
         if not query or not query.strip():
             return []
         if not self._loaded:
@@ -186,7 +178,7 @@ class BaseRetriever(ABC):
 @dataclass
 class TimingRecorder:
     """
-    分步耗时记录器：要对比各策略延迟，因此每步都记，而不是只统计总耗时。
+    分步耗时记录器，逐步记录各阶段耗时。
     """
 
     steps: list[tuple[str, float]] = field(default_factory=list)
@@ -196,7 +188,7 @@ class TimingRecorder:
         self.steps.append((label, round(seconds, 4)))
 
     def measure(self, label: str):
-        """上下文管理器：``with timing.measure("vector"): ...``"""
+        """返回上下文管理器，进入时开始计时，退出时记录耗时。"""
         return _Timer(self, label)
 
     @property
@@ -229,10 +221,10 @@ class _Timer:
 
 def minmax_normalize(scores: Sequence[float]) -> list[float]:
     """
-    把分数线性归一化到 [0, 1]。
+    把分数线性归一化到 0 到 1。
 
-    用于 ``fusion="weighted"``：向量相似度约 0.3~0.9、BM25 可达 20+，量纲不同，
-    不归一化直接加权会让 BM25 单方面决定结果。全部相等时返回 1.0（权重平均分配）。
+    用于加权融合：向量相似度与 BM25 分量纲不同，
+    不归一化直接加权会让 BM25 单方面决定结果。全部相等时返回 1.0。
     """
     if not scores:
         return []
