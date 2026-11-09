@@ -1,6 +1,6 @@
-"""检索调试路由（retrieval.py）：只检索不生成，返回结果与耗时。
+"""检索调试路由，只检索不生成，返回结果与耗时。
 
-检索是阻塞的 CPU 操作，在 ``run_in_threadpool`` 中执行，避免阻塞事件循环。
+检索是阻塞的 CPU 操作，放在线程池中执行，避免阻塞事件循环。
 """
 
 from __future__ import annotations
