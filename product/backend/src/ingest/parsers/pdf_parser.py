@@ -1,14 +1,11 @@
-"""PDF 解析器：pdfplumber 逐页抽取 + 页眉页脚/断行清洗，产出统一的 ``LoadedPage``。
+"""PDF 解析器，用 pdfplumber 逐页抽取并清洗页眉页脚与断行，产出统一的加载页结构。
 
-页眉页脚按**词级坐标**判定，不按文本顺序：pdfplumber 的行序不可靠，页眉会被排到正文之后，
-按「第 1 行/最后 1 行」判断会漏删页眉、误删正文。正文用带坐标的行按 top 排序重建阅读顺序，
+页眉页脚按词级坐标判定，不按文本顺序：pdfplumber 的行序不可靠，页眉会被排到正文之后，
+按首尾行判断会漏删页眉、误删正文。正文用带坐标的行按顶边排序重建阅读顺序，
 避免乱序输出把句子肢解，进而影响分块与检索。
 
-清洗顺序（会影响结果）：统一换行并去行尾空白 → 删页眉页脚与页码行 → 删重复符号噪音行
-→ 删中文之间多余空格 → 压缩连续空行 → 拆开粘连的章节/条款行。
-
-从 demo/src/ingest/loader.py 迁入（pdfplumber 链路与清洗函数逐字保留，去掉与 title 相关的
-抽取函数——本产品 ``LoadedPage`` 不含 title 字段）。
+清洗顺序会影响结果：统一换行并去行尾空白，删页眉页脚与页码行，删重复符号噪音行，
+删中文之间多余空格，压缩连续空行，拆开粘连的章节行与条款行。
 """
 
 from __future__ import annotations
@@ -22,7 +19,7 @@ from typing import Any, Callable, Iterable, Sequence
 from src.core.config import settings
 from src.ingest.loader import LoadedPage
 
-#: 独立成行的页码："- 12 -" / "12" / "第 3 页" / "第3页/共20页" / "Page 3 of 20" / "12 / 20"
+# 独立成行的页码，例如横线包围的数字、第 3 页、Page 3 of 20、12 与 20 并列
 _PAGE_NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*[-–—~=·.\s]*\d{1,4}\s*[-–—~=·.\s]*$"),
     re.compile(r"^\s*第\s*[0-9０-９]{1,4}\s*页\s*(?:[/／]\s*(?:共)?\s*[0-9０-９]{1,4}\s*页?)?\s*$"),
@@ -30,13 +27,13 @@ _PAGE_NUMBER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*\d{1,4}\s*[/／]\s*\d{1,4}\s*$"),
 )
 
-#: 中文（含中文标点）字符
+# 中文与中文标点字符
 _CJK = r"\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f"
 
-#: PDF 提取时插在中文之间的单个空格，需删除
+# PDF 提取时插在中文之间的单个空格，需要删除
 _CJK_SPACE_RE = re.compile(rf"(?<=[{_CJK}])\s(?=[{_CJK}])")
 
-#: 一个字符重复 4 次以上（表格边框线被误识别为文字，如 "——————"）
+# 同一字符重复 4 次以上，多为表格边框线被误识别为文字
 _REPEAT_NOISE_RE = re.compile(r"^\s*(.)\1{3,}\s*$")
 
 
@@ -63,7 +60,7 @@ class PageExtract:
     page: int  # 从 1 开始
     height: float  # 页面高度（磅），用于计算版面比例
     raw_text: str  # 原始文本（按行拼接，供清洗统计）
-    lines: list[TextLine] = field(default_factory=list)  # 带坐标的行；可能为空
+    lines: list[TextLine] = field(default_factory=list)  # 带坐标的行，可能为空
 
 
 @dataclass
@@ -73,7 +70,7 @@ class HeaderFooter:
     line: str
     count: int
     ratio: float
-    position: str  # "header" | "footer"
+    position: str  # 位置，header 表示页眉，footer 表示页脚
 
     def __str__(self) -> str:  # pragma: no cover
         return f"[{self.position}] ×{self.count}页({self.ratio:.0%}) {self.line[:48]}"
@@ -107,11 +104,11 @@ def clean_page_text(
     strip_cjk_spaces: bool = True,
     strip_whitespace: bool = True,
 ) -> tuple[str, list[str]]:
-    """单页文本清洗，处理顺序（顺序会影响结果）：
-    统一换行并去行尾空白 -> 删页眉页脚与页码行 -> 删重复符号噪音行
-    -> 删中文之间的多余空格（PDF 提取常见） -> 压缩连续空行。
+    """单页文本清洗，处理顺序会影响结果。
 
-    :returns: (清洗后文本, 被删除的行列表)
+    依次统一换行并去行尾空白、删页眉页脚与页码行、删重复符号噪音行、
+    删中文之间的多余空格、压缩连续空行。
+    返回清洗后的文本与被删除的行列表。
     """
     drop = {ln.strip() for ln in drop_lines if ln and ln.strip()}
     kept: list[str] = []
@@ -138,7 +135,7 @@ def clean_page_text(
     out = "\n".join(kept)
     if strip_cjk_spaces:
         out = _CJK_SPACE_RE.sub("", out)
-    # 三个以上连续换行压缩为两个（保留段落结构，供递归切分的 "\n\n" 使用）
+    # 三个以上连续换行压缩为两个，保留段落结构
     out = re.sub(r"\n{3,}", "\n\n", out)
     if strip_whitespace:
         out = "\n".join(ln.strip() for ln in out.split("\n"))
@@ -166,17 +163,13 @@ def detect_headers_footers(
     max_line_length: int = 60,
     extra_patterns: Iterable[str] = (),
 ) -> list[HeaderFooter]:
-    """基于**版面垂直位置 + 跨页重复性**识别页眉页脚：行位于顶部或底部区域内、
-    跨页出现比例 >= ``min_ratio``、长度 <= ``max_line_length``。
+    """基于版面垂直位置与跨页重复性识别页眉页脚。
 
-    页眉区取 8% 而非 15%：A4 页眉 top≈33pt（约占页高 4%），正文首个章节标题从 top≈70pt（8%）
-    就开始，放宽到 15% 会把章节标题、首段正文纳入判定区，跨页重复时（模板化文档常见）会被误删；
-    页脚区留 12% 是因为页码与脚注常有多行。
-
-    :param min_ratio: 跨页重复比例阈值；:param header_zone_ratio: 页眉区占页高比例（自顶部）
-    :param footer_zone_ratio: 页脚区占页高比例（自底部）；:param margin: 无坐标退化模式下取的首尾行数
-    :param max_line_length: 候选行最大长度；:param extra_patterns: 命中即判定的额外正则
-    :returns: 判定结果列表
+    行需位于顶部或底部区域内、跨页出现比例不低于阈值、长度不超过上限。
+    页眉区取 8% 而非 15%：A4 页眉距顶约 33 磅，正文首个章节标题从约 70 磅
+    就开始，放宽到 15% 会把章节标题与首段正文纳入判定区，跨页重复时会被误删；
+    页脚区留 12%，因为页码与脚注常有多行。
+    返回判定结果列表。
     """
     n = len(extracts)
     found: list[HeaderFooter] = []
@@ -240,7 +233,7 @@ def detect_headers_footers(
 
 
 
-#: 句末标点：句子结束时不应与下一行合并
+# 句末标点，句子结束时不应与下一行合并
 _SENTENCE_END = "。！？；：!?;:.…"
 
 
@@ -254,13 +247,10 @@ def _lines_to_text(
 ) -> str:
     """按阅读顺序把行拼回整页文本，并把硬折行的视觉行合并成逻辑段落。
 
-    PDF 每行都是按纸张宽度硬折的视觉行，直接用 ``\\n`` 连接会每 20~40 字换行，
-    递归分块的分隔符 ``\\n\\n`` / ``\\n`` 失去作用，句子被腰斩。四个条件全部满足才合并：
-    ① 上一行未以句末标点结束；② 行间距 < 行高 × ``gap_ratio``（非段落间距）；
-    ③ 下一行没有明显更缩进（``x0`` ≤ 上一行 ``x0`` × ``indent_ratio`` + ``tolerance``）；
-    ④ 下一行不是「新单元」标记（上一行已结束句子时该标记才算数）。
-
-    :param lines: 按 top 升序排列的行；:param join_wrapped: False 则每行独立不合并
+    PDF 每行都按纸张宽度硬折，直接用换行连接会每 20 到 40 字换行，
+    递归分块的分隔符失去作用，句子被腰斩。四个条件全部满足才合并：
+    上一行未以句末标点结束；行间距小于行高的指定倍数；下一行没有明显更缩进；
+    下一行不是新单元标记。
     """
     usable = [ln for ln in lines if ln.text.strip()]
     if not usable:
@@ -280,8 +270,7 @@ def _lines_to_text(
         prev_text = prev.text.strip()
         prev_ends_sentence = prev_text.endswith(tuple(_SENTENCE_END))
 
-        # 「新单元」标记仅在上一行已结束句子时才代表新单元；上一行明显未完时
-        # （如「第一条 为规范…维护普通高」）下一行无论以什么开头都是它的续行
+        # 新单元标记仅在上一行已结束句子时生效；上一行未完时，下一行无论以什么开头都是续行
         starts_new_unit = prev_ends_sentence and bool(_CLAUSE_START_RE.match(text))
 
         if (
@@ -406,36 +395,35 @@ def _extract_pages(path: Path, cfg: Any, join_kwargs: dict[str, float] | None = 
 
 
 
-#: 官文常把章节标题排成「第 一 章 总 则」，字符间被插入空格，匹配标题前先去空白
+# 官文常把章节标题排成间距拉开的形式，字符间被插入空格，匹配标题前先去空白
 _WS_RE = re.compile(r"\s+")
 
 
 def _compact(line: str) -> str:
-    """去掉所有空白，用于标题模式的鲁棒匹配（保留原行不做修改）。"""
+    """去掉所有空白，用于标题模式的稳健匹配，保留原行不做修改。"""
     return _WS_RE.sub("", line)
 
 
-#: 用于「标题+正文粘连」拆分：只含**编号型/章节型**标题，刻意**不含**「第X条」——
-#: 条款正文常到几十字后才出现第一个标点，按逗号切会把一条完整法规腰斩；
-#: 条款边界交给 split_inline_clauses()（只在句末标点后切分）
+# 用于拆分标题与正文粘连的行，只匹配编号型与章节型标题，不含条款标记；
+# 条款正文常到几十字后才出现第一个标点，按逗号切会把一条完整法规腰斩，
+# 条款边界由条款切分函数处理，只在句末标点后切分
 _MERGE_SPLIT_HEADING_RE = re.compile(
     r"^(?:\d+(?:\.\d+)*[.、]|第[一二三四五六七八九十百千零\d]+[章节部分篇]|[一二三四五六七八九十]+[、.])"
 )
 
-#: 法规/制度类文档的单元起始标记：行首的「第十三条」「（一）」「1.」「一、」等，
-#: 这些行即使不以标点结尾也不是上一行的续行
+# 法规与制度类文档的单元起始标记，如行首的「第十三条」「（一）」「1.」「一、」等，
+# 这些行即使不以标点结尾也不是上一行的续行
 _CLAUSE_START_RE = re.compile(
     r"^\s*(?:"
-    r"第\s*[一二三四五六七八九十百千零\d]+\s*[条条款项章节编]"   # 第十三条 / 第 3 条
-    r"|[（(]\s*[一二三四五六七八九十\d]+\s*[）)]"                # （一） / (1)
-    r"|\d+(?:\.\d+)*\s*[.、)]"                                  # 1. / 1.1 / 1)
-    r"|[一二三四五六七八九十]+\s*[、.]"                          # 一、
+    r"第\s*[一二三四五六七八九十百千零\d]+\s*[条条款项章节编]"   # 第十三条或第 3 条
+    r"|[（(]\s*[一二三四五六七八九十\d]+\s*[）)]"                # 括号编号
+    r"|\d+(?:\.\d+)*\s*[.、)]"                                  # 数字编号
+    r"|[一二三四五六七八九十]+\s*[、.]"                          # 中文序号
     r")"
 )
 
-#: 出现在**行中间**的条款起始标记：条款密排的文档（一条紧接一条、无空行）提取后常变成
-#: 「…制定本规定。第二条本规定适用于…」，需把「第二条」切到新行，
-#: 否则一个块里塞进多条法规，既污染语义也让引用定位失准
+# 出现在行中间的条款起始标记。条款密排的文档提取后常变成「…制定本规定。第二条本规定适用于…」，
+# 需把「第二条」切到新行，否则一个块里塞进多条法规，既污染语义也让引用定位失准
 _CLAUSE_INLINE_RE = re.compile(
     r"(?<=[。；;])"
     r"(第\s*[一二三四五六七八九十百千零\d]+\s*[条条款项])"
@@ -445,22 +433,18 @@ _CLAUSE_INLINE_RE = re.compile(
 
 
 def split_inline_clauses(text: str) -> str:
-    """把行中间出现的条款标记切到行首：
-    ``"…制定本规定。第二条本规定适用于…"`` -> ``"…制定本规定。\\n第二条本规定适用于…"``
+    """把行中间出现的条款标记切到行首。
 
-    只在句末标点之后、且标记后紧接非空白字符时切分，避免误伤「本规定第二条的内容」这类引用。
+    只在句末标点之后、且标记后紧接非空白字符时切分，避免误伤条款引用。
     """
     return _CLAUSE_INLINE_RE.sub(r"\n\1", text)
 
 
 def split_merged_headings(text: str, max_heading_length: int = 30) -> str:
-    """把「标题与正文粘在同一行」的行拆成两行。
+    """把标题与正文粘在同一行的内容拆成两行。
 
-    PDF 中常见编号型章节标题与紧随的正文被提取器并成一行（``"2. 稠密检索与稀疏检索稠密检索…"``），
-    不拆分既污染标题抽取，也让分块失去一个天然语义断点。
-
-    仅当行首匹配**编号型/章节型**标题、标题部分长度合理时拆分；条款标记（``第X条``）
-    已刻意排除，见 ``_MERGE_SPLIT_HEADING_RE``。
+    PDF 中常见编号型章节标题与紧随的正文被提取器并成一行，不拆分既污染标题抽取，
+    也让分块失去一个天然语义断点。仅在行首匹配编号型或章节型标题、标题长度合理时拆分。
     """
     out: list[str] = []
     for line in text.split("\n"):
@@ -470,7 +454,7 @@ def split_merged_headings(text: str, max_heading_length: int = 30) -> str:
         if not _MERGE_SPLIT_HEADING_RE.match(_compact(line)):
             out.append(line)
             continue
-        # 标题部分 = 到第一个句末标点或合理长度为止
+        # 标题部分到第一个标点或合理长度为止
         head_end = -1
         for punct in ("。", "，", "、", "：", "；", "？", "！", ".", ",", ";"):
             pos = line.find(punct)
@@ -494,9 +478,9 @@ def parse_pdf(
     *,
     progress: Callable[[str], None] | None = None,
 ) -> list[LoadedPage]:
-    """加载单个 PDF，返回清洗后的逐页 ``LoadedPage``（page 从 1 起，与阅读器一致）。
+    """加载单个 PDF，返回清洗后的逐页加载结果，页码从 1 起，与阅读器一致。
 
-    :param progress: 进度回调，接收一行描述文本
+    progress 为进度回调，接收一行描述文本。
     """
     chunk_cfg = settings.chunk
     pcfg = settings.pdf
