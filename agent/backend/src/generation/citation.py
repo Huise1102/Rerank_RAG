@@ -1,11 +1,8 @@
-"""引用解析与溯源（citation.py）。
+"""引用解析与溯源。
 
-解析答案里的引用标记（``[1]``、``[1][2]``、``[1,2]``、``[1、2]``、``[1-3]``、``【1】``、
-``（1）``），映射回文档块（source / page / chunk_id）：解析宽松，映射回编号严格。
-``unused_contexts`` 是召回但未被引用的（可分析检索精度），``invalid_indices`` 是引用了
-上下文中不存在的编号（越界引用往往是幻觉信号），两者必须分开统计。
-
-（从 demo/src/generation/citation.py 逐字复制，import 无改动。）
+解析答案中的引用标记并映射回文档块，解析宽松，映射回编号严格，
+支持方括号、六角括号、圆括号等多种写法与区间写法。
+未引用的上下文可衡量检索精度，越界引用往往是幻觉信号，两者分开统计。
 """
 
 from __future__ import annotations
@@ -16,17 +13,17 @@ from typing import Any, Iterable, Sequence
 
 from src.generation.prompt import PromptContext
 
-#: 引用编号的匹配模式（宽松，容忍多种写法）
+# 引用编号的匹配模式，宽松匹配多种写法
 _BRACKET_RE = re.compile(
     r"[\[【〔（(]\s*(\d+(?:\s*[-~～—至到]\s*\d+)?(?:\s*[,，、;；/]\s*\d+)*)\s*[\]】〕）)]"
 )
 
 _SPLIT_RE = re.compile(r"[,，、;；/]")
 
-#: 区间写法：1-3 / 1~3 / 1至3
+# 区间写法
 _RANGE_RE = re.compile(r"(\d+)\s*[-~～—至到]\s*(\d+)")
 
-#: 模型声称"资料不足"的常见表述（识别拒答，评估时区分"拒答"与"答错"）
+# 模型声称资料不足的常见表述，用于识别拒答
 _REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(p)
     for p in (
@@ -44,7 +41,7 @@ _REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 
 @dataclass
 class Citation:
-    index: int  # 模型写的编号
+    index: int  # 模型输出的编号
     chunk_id: str = ""
     source: str = ""
     page: int | str = ""
@@ -53,7 +50,7 @@ class Citation:
     count: int = 1  # 在答案中被引用的次数
 
     def label(self) -> str:
-        """人类可读的引用标签，如 ``[1] 测试.pdf 第 18 页``。"""
+        """可读的引用标签，形如编号、文件名与页码。"""
         if self.page not in ("", None):
             return f"[{self.index}] {self.source} 第 {self.page} 页"
         return f"[{self.index}] {self.source}"
@@ -76,9 +73,9 @@ class CitationReport:
     """一次答案的引用分析结果。"""
 
     citations: list[Citation] = field(default_factory=list)
-    #: 送进 prompt 但未被引用的上下文
+    # 已送入上下文但未被引用的条目
     unused_contexts: list[PromptContext] = field(default_factory=list)
-    #: 引用了但上下文中不存在的编号（越界引用，往往伴随幻觉）
+    # 引用了但上下文中不存在的编号，越界引用往往伴随幻觉
     invalid_indices: list[int] = field(default_factory=list)
     is_refusal: bool = False
     raw_markers: list[int] = field(default_factory=list)
@@ -93,7 +90,7 @@ class CitationReport:
 
     @property
     def coverage(self) -> float:
-        """被引用的上下文占送入上下文的比例（0~1）。可反映检索精度。"""
+        """被引用的上下文占送入上下文的比例，取值 0 到 1，可反映检索精度。"""
         total = len(self.citations) + len(self.unused_contexts)
         return len(self.citations) / total if total else 0.0
 
@@ -101,7 +98,7 @@ class CitationReport:
         return [c.label() for c in self.citations]
 
     def sources(self) -> list[dict[str, Any]]:
-        """去重后的来源列表，便于前端做"参考资料"区块。"""
+        """去重后的来源列表。"""
         seen: dict[str, dict[str, Any]] = {}
         for c in self.citations:
             key = f"{c.source}#{c.page}"
@@ -136,7 +133,7 @@ class CitationReport:
 
 
 def _expand_group(group: str) -> list[int]:
-    """把一个编号组展开成编号列表：``"1,2"`` -> [1,2]；``"1-3"`` -> [1,2,3]。"""
+    """把一个编号组展开成编号列表，支持逗号分隔与区间写法。"""
     out: list[int] = []
     for part in _SPLIT_RE.split(group):
         part = part.strip()
@@ -147,7 +144,7 @@ def _expand_group(group: str) -> list[int]:
             lo, hi = int(m.group(1)), int(m.group(2))
             if lo > hi:
                 lo, hi = hi, lo
-            # 上限保护：防止模型写出 [1-9999] 把内存吃光
+            # 上限保护，防止模型写出超大区间耗尽内存
             if hi - lo <= 50:
                 out.extend(range(lo, hi + 1))
             else:
@@ -163,9 +160,9 @@ def scan_markers(
     *,
     whitelist: Iterable[int] | None = None,
 ) -> tuple[list[int], list[int], dict[int, int]]:
-    """一次扫描得到：按首次出现顺序去重的编号、越界编号、编号->出现次数。
+    """一次扫描得到按首次出现顺序去重的编号、越界编号与各编号出现次数。
 
-    计数必须基于"所有出现"；若改用 ``parse_markers`` 的去重结果，次数会恒等于 1。
+    计数必须基于所有出现，若改用去重后的结果，次数会恒等于 1。
     """
     allowed = set(whitelist) if whitelist is not None else None
     ordered: list[int] = []
@@ -194,7 +191,7 @@ def parse_markers(text: str, *, whitelist: Iterable[int] | None = None) -> tuple
 
 
 def is_refusal(answer: str) -> bool:
-    """判断答案是否属于"资料不足，无法回答"这类拒答。"""
+    """判断答案是否属于资料不足、无法回答这类拒答。"""
     if not answer:
         return False
     return any(p.search(answer) for p in _REFUSAL_PATTERNS)
@@ -208,11 +205,10 @@ def extract_citations(
 ) -> CitationReport:
     """解析答案中的引用并映射回上下文。
 
-    :param contexts: 送进 prompt 的上下文（编号必须与 prompt 中一致）
-    :param keep_text: 是否保留文档块原文（评估可关掉省内存）
+    上下文编号必须与生成时送入的编号一致；评估时可关闭原文保留以节省内存。
     """
     by_index = {ctx.index: ctx for ctx in contexts}
-    # 计数必须用"所有出现"，parse_markers 的去重结果会恒为 1
+    # 计数必须基于所有出现，去重后的结果会使次数恒为 1
     markers, invalid, counts = scan_markers(answer, whitelist=by_index.keys())
 
     citations: list[Citation] = []
@@ -230,7 +226,7 @@ def extract_citations(
             )
         )
 
-    # 引用按答案中出现的先后排列（论证顺序），而非编号大小
+    # 引用按答案中出现的先后排列，即论证顺序，而非编号大小
     used = set(markers)
     unused = [ctx for ctx in contexts if ctx.index not in used]
 
@@ -244,12 +240,12 @@ def extract_citations(
 
 
 def strip_markers(answer: str, *, replacement: str = "") -> str:
-    """去掉答案中的引用标记，得到纯正文（导出 Word、展示摘要用）。"""
+    """去掉答案中的引用标记，得到纯正文。"""
     return _BRACKET_RE.sub(replacement, answer)
 
 
 def renumber(answer: str, mapping: dict[int, int]) -> str:
-    """按映射重编号引用标记（多轮对话中新旧上下文编号会冲突）。"""
+    """按映射重编号引用标记，用于多轮对话中新旧上下文编号冲突的场景。"""
     def _sub(m: re.Match[str]) -> str:
         nums = _expand_group(m.group(1))
         if not nums:
