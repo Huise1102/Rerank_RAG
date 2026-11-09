@@ -1,30 +1,10 @@
-"""
-阶段 6 —— 一键实验脚本（run_all_experiments.py）
+"""一键实验脚本，一条命令跑完全部实验并生成报告。
 
-一条命令跑完全部实验并生成答辩用报告：
+依次执行测试集校验、四种检索策略对比、分块策略消融、Rerank 保留条数消融、可选的生成质量评估，最后出图并汇总报告。
 
-    ① 校验测试集
-    ② 四种检索策略对比（Recall@5 / MRR / nDCG …）        —— 不消耗 token
-    ③ 分块策略消融（固定长度 vs 递归语义）                —— 不消耗 token
-    ④ Rerank Top-k 消融（3 / 5 / 8）                      —— 不消耗 token
-    ⑤ 生成质量评估（LLM 裁判）                            —— **消耗 token，默认跳过**
-    ⑥ 出图 + 汇总报告（含"相比 baseline 提升多少"的分析）
+检索类实验不消耗大模型额度，只有生成质量评估消耗。可用参数限定样本数、只重跑报告或分步执行。
 
-用法::
-
-    python scripts/run_all_experiments.py --limit 3                 # 先小样本验证脚本本身
-    python scripts/run_all_experiments.py                           # 正式跑全量
-    python scripts/run_all_experiments.py --with-generation --generation-limit 10
-    python scripts/run_all_experiments.py --report-only             # 只重跑报告（复用 CSV）
-    python scripts/run_all_experiments.py --steps retrieval         # 分步执行，便于复核
-
-耗时与成本：``bm25`` 毫秒级、``vector``/``hybrid`` 每题 2~3 秒、``hybrid_rerank``
-每题 18~21 秒（CPU）；20 题 × 4 策略 ≈ 8~10 分钟，Top-k 消融 3 档 × 20 题 ≈ 18 分钟。
-检索与消融全程 0 token，只有生成质量评估消耗 token（约 5500 tokens/题/策略）。
-
-产出 ``data/eval/results/``：策略对比、分维度（术语精确/语义泛化/多跳推理）、逐题明细、
-两次消融与生成质量（若启用）的 CSV/MD，汇总报告 ``EXPERIMENT_REPORT.md``；
-``figures/`` 下 5 张对比图（PNG，可直接进 PPT）。
+产出包括策略对比、分维度结果、逐题明细、两次消融与生成质量表格，以及汇总报告和对比图。
 """
 
 from __future__ import annotations
@@ -47,8 +27,7 @@ REPORT_PATH = RESULTS_DIR / "EXPERIMENT_REPORT.md"
 
 ALL_STEPS = ("check", "retrieval", "ablation", "generation", "report")
 
-#: 测试集构建方法学（写死在报告里）：评估结论的可信度取决于测试集质量，而"问题怎么问"
-#: 最容易被评委追问，必须落在报告里，而不是只存在于聊天记录。
+# 测试集构建方法，写入汇总报告，说明评估结论对测试集质量的依赖
 TESTSET_METHODOLOGY = """### 测试集构建原则（决定实验能否说明问题）
 
 评估结论的可信度**完全取决于测试集质量**。四条最关键的经验：
@@ -303,17 +282,17 @@ def _fmt(v, digits: int = 4, dash: str = "—") -> str:
         f = float(v)
     except (TypeError, ValueError):
         return dash
-    if f != f:  # NaN
+    if f != f:  # 空值
         return dash
     return f"{f:.{digits}f}"
 
 
-#: 这些列是计数，渲染成整数（否则表格里会出现 "100.0000" 这种噪声）
+# 这些列是计数，渲染成整数，否则表格里会出现多余的小数位
 _INT_COLS = {"n", "n_scored", "top_k", "first_hit_rank", "n_relevant", "n_retrieved",
              "gen_tokens", "total_tokens", "prompt_tokens", "completion_tokens"}
-#: 这些列是秒数，2 位小数即可（4 位小数在报告里是纯噪声）
+# 这些列是秒数，保留 2 位小数
 _SEC_COLS = {"avg_seconds", "seconds", "elapsed", "p50_seconds", "p95_seconds"}
-#: 这些列是 1~5 分的裁判评分，2 位小数即可
+# 这些列是 1 到 5 分的裁判评分，保留 2 位小数
 _SCORE_COLS = {"faithfulness", "answer_relevancy", "context_precision", "context_recall",
                "answer_correctness", "score", "avg_score"}
 
@@ -323,7 +302,7 @@ def _cell(v, col: str) -> str:
     if isinstance(v, bool):
         return str(v)
     if isinstance(v, (int, float)):
-        if v != v:  # NaN
+        if v != v:  # 空值
             return "—"
         if col in _INT_COLS:
             return str(int(v))
@@ -377,14 +356,7 @@ def build_report(
     elapsed: float,
     generation_per_q=None,
 ) -> Path:
-    """生成汇总报告 ``EXPERIMENT_REPORT.md``。
-
-    报告结构：实验设置 / 测试集构建方法学 / 主结果（四策略对比）/ 提升分析 /
-    分维度分析 / 两次消融（分块策略、Rerank Top-k）/ 生成质量 / 对比图 / 结论与原因分析。
-
-    第 2 章内容来自模块级常量 ``TESTSET_METHODOLOGY``（写死在脚本里），
-    保证每次生成的报告都包含这段方法学说明。
-    """
+    """生成汇总报告，包含实验设置、测试集构建方法、主结果对比、提升分析、分维度分析、两次消融、生成质量、对比图与结论。"""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     metrics = list(settings.evaluation.judge_metrics)
@@ -574,7 +546,7 @@ def build_report(
             "已改为页级判定后修正。同一页的多个块在评测中会保序去重为一个位置。\n"
         )
         if {"recall@5"} <= set(chunk_df.columns) and len(chunk_df) >= 2:
-            # 按 Recall@5 → Recall@3 → nDCG 依次比较，避免"打平却宣布胜者"
+            # 按前 5 位召回、前 3 位召回、nDCG 的顺序依次比较，避免打平却宣布胜者
             order_cols = [c for c in ("recall@5", "recall@3", "ndcg", "mrr")
                           if c in chunk_df.columns]
             ranked = chunk_df.sort_values(order_cols, ascending=False)
@@ -671,7 +643,7 @@ def build_report(
                 "且「迷失在中间」风险上升（关键条款被夹在长上下文里）。"
                 "应选「召回接近饱和、而上下文仍干净」的拐点。\n"
             )
-            # 明确给出"为什么选 Top-X"的答案：取 Recall@5 已接近饱和的最小档位
+            # 明确给出选择保留条数的依据：取前 5 位召回已接近饱和的最小档位
             if {"recall@5", "precision@k"} <= set(rerank_df.columns):
                 r_sorted = rerank_df.dropna(subset=["precision@k"]).sort_values("top_k")
                 if len(r_sorted) >= 2:
