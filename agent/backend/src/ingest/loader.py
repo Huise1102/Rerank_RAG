@@ -1,15 +1,9 @@
-"""文档加载器（loader.py）：**按扩展名分派**到 ``src/ingest/parsers/``，统一产出 ``LoadedPage``。
+"""文档加载器，按扩展名分派到各格式解析器，统一产出页面结构。
 
-四种格式（pdf / docx / txt / md）收敛到同一结构，后续切分 / 索引 / 引用溯源对格式无感知：
-
-- pdf : pdfplumber 逐页抽取（页眉页脚/断行清洗）→ page = 页码（从 1）
-- docx: python-docx 逐段落抽文本 → page = 段落序号（从 1），total_pages = 段落数
-- txt : 直接读取 → 整体作为一页，page = 1，total_pages = 1
-- md  : 与 txt 相同，保留原文标记不剥离
-
-主流程::
-
-    pages = load_document("product/resource/法律领域/xxx.pdf")   # -> list[LoadedPage]
+四种格式收敛到同一结构，切分、索引与引用溯源对格式无感知。
+PDF 用 pdfplumber 逐页抽取，并清洗页眉页脚与断行，页码从 1 开始。
+DOCX 用 python-docx 逐段落抽取文本，段落序号作为页码，总页数为段落数。
+TXT 与 MD 整体作为一页，页码与总页数均为 1，MD 保留原文标记。
 """
 
 from __future__ import annotations
@@ -20,11 +14,11 @@ from pathlib import Path
 
 @dataclass
 class LoadedPage:
-    """统一的一「页/段」结构：所有解析器共用。"""
+    """统一的页面结构，所有解析器共用。"""
 
-    source: str  # 文件名，如 "transformer.pdf"
+    source: str  # 文件名
     file_path: str  # 绝对路径
-    page: int | str  # pdf=页码（从 1）/ docx=段落序号（从 1）/ txt,md=1
+    page: int | str  # PDF 为页码从 1 开始，DOCX 为段落序号从 1 开始，TXT 与 MD 为 1
     total_pages: int
     text: str
 
@@ -34,15 +28,14 @@ class LoadedPage:
 
 
 def supported_extensions() -> tuple[str, ...]:
-    """支持的文件类型（小写、不含点）。"""
+    """支持的文件类型，小写且不含点。"""
     return ("pdf", "docx", "txt", "md")
 
 
 def load_document(path: str | Path) -> list[LoadedPage]:
-    """按扩展名分派加载单个文档，返回统一的 ``LoadedPage`` 列表。
+    """按扩展名分派加载单个文档，返回统一的页面列表。
 
-    不支持的类型抛 ``ValueError``。解析器在函数内惰性导入，避免导入 loader 时即拉起
-    pdfplumber / python-docx 等重依赖。
+    不支持的类型抛 ValueError。解析器在函数内惰性导入，避免导入加载器时即拉起重依赖。
     """
     p = Path(path)
     ext = p.suffix.lower().lstrip(".")
