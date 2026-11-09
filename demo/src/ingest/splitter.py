@@ -1,18 +1,6 @@
-"""阶段 1 —— 文本分块（splitter.py）：两种可对比的分块策略。
+"""文本分块，提供两种可对比的策略。
 
-    fixed      固定长度：按字符窗口滑动（chunk_size=500 / overlap=50），
-               切分时尽量在句末标点或换行处断开，避免把词切成两半
-    recursive  递归语义：LangChain RecursiveCharacterTextSplitter，
-               分隔符 ["\\n\\n", "\\n", "。", " ", ""]，按 段落->行->句子->词->字符 递归下钻
-
-两者都保留 loader 的元数据（source / page / ...）并补充 chunk_id、chunk_index、total_chunks、
-strategy；产物 data/processed/chunks_<strategy>.json 以策略名结尾，两种策略互不覆盖。
-
-主流程::
-
-    docs = loader.to_documents(pages)
-    result = split_documents(docs, strategy="recursive")
-    save_chunks(result, strategy="recursive")
+fixed 固定长度，按字符窗口滑动切分，切分时尽量落在句末标点或换行处，避免把词切开。recursive 递归语义，基于 RecursiveCharacterTextSplitter，按段落、行、句子、词、字符的优先级逐层下钻。两种策略都保留加载阶段的元数据，并补充分块编号、序号、总块数与策略名，产物按策略名分别落盘，互不覆盖。
 """
 
 from __future__ import annotations
@@ -26,7 +14,7 @@ from typing import Any, Iterable, Sequence
 
 from config import StrategySpec, settings
 
-#: 分块产物 JSON 的结构版本号（结构变更时递增，便于兼容旧文件）
+# 分块产物 JSON 的结构版本号，结构变更时递增
 CHUNK_FORMAT_VERSION = 1
 
 
@@ -93,41 +81,38 @@ class ChunkResult:
 
 
 def make_chunk_id(source: str, page: int | str, index: int, text: str, strategy: str) -> str:
-    """生成稳定且不重复的 chunk_id：``策略:文件名:p页码:c序号:正文md5前8位``。
+    """生成稳定且不重复的分块编号，由策略、文件名、页码、序号与正文哈希组成。
 
-    同一份分块结果重复写入得到同样的 id；但 id 含页码/序号/正文哈希，重新分块
-    （改参数或改清洗）后重建索引，id 会整体变化 —— 不要当长期稳定的外部主键用。
+    同一份分块结果重复写入得到相同编号；编号包含页码、序号与正文哈希，重新分块或改变清洗规则后编号会整体变化，不能当作长期稳定的外部主键。
     """
     digest = hashlib.md5(text.encode("utf-8")).hexdigest()[:8]
     return f"{strategy}:{source}:p{page}:c{index}:{digest}"
 
 
 def _best_break(text: str, ideal: int, min_pos: int) -> int:
-    """在 ideal 位置附近向前找最佳断点：段落换行 > 句末标点 > 行尾 > 空格；
-    找不到合适断点时返回 ideal（硬切）。
+    """在理想位置附近向前寻找最佳断点。
 
-    :param ideal: 理想切分位置（chunk_size）
-    :param min_pos: 允许向前搜索的最远位置，避免块过短
+    优先级依次为段落换行、句末标点、行尾、空格；找不到合适断点时返回理想位置直接切分。向前搜索范围由最远位置限制，避免块过短。
     """
     if ideal >= len(text):
         return len(text)
 
     window = text[min_pos:ideal]
 
-    # 1) 段落边界
+    # 1 段落边界
     pos = window.rfind("\n\n")
     if pos != -1:
         return min_pos + pos + 2
-    # 2) 句末标点（中文标点优先，避免句子被拆开）
+    # 2 句末标点，优先中文标点，避免句子被拆开
     for punct in ("。", "！", "？", "；", ".", "!", "?", ";"):
         pos = window.rfind(punct)
         if pos != -1:
             return min_pos + pos + 1
-    # 3) 换行
+    # 3 换行
     pos = window.rfind("\n")
     if pos != -1:
         return min_pos + pos + 1
-    # 4) 空格
+    # 4 空格
     pos = window.rfind(" ")
     if pos != -1:
         return min_pos + pos + 1
@@ -135,10 +120,9 @@ def _best_break(text: str, ideal: int, min_pos: int) -> int:
 
 
 def _merge_short_chunks(chunks: list[str], min_size: int) -> list[str]:
-    """把过短的碎块并入相邻块，避免产生大量无信息量的碎片。
+    """把过短的碎块并入相邻块，避免产生无信息量的碎片。
 
-    非首块过短并入**前**一块；首块没有前块可并，必须并入后一块，
-    否则文档开头的孤立小标题会变成一个 8 字符的碎片块混进索引。
+    非首块过短时并入前一块；首块没有前块，必须并入后一块，否则文档开头的孤立小标题会变成很小的碎片混进索引。
     """
     if min_size <= 0 or not chunks:
         return chunks
@@ -150,11 +134,11 @@ def _merge_short_chunks(chunks: list[str], min_size: int) -> list[str]:
         else:
             merged.append(piece)
 
-    # 首块过短：并入后一块
+    # 首块过短时并入后一块
     if len(merged) > 1 and len(merged[0]) < min_size:
         head = merged.pop(0)
         merged[0] = f"{head}\n{merged[0]}".strip()
-    # 末块过短：并入前一块
+    # 末块过短时并入前一块
     if len(merged) > 1 and len(merged[-1]) < min_size:
         tail = merged.pop()
         merged[-1] = f"{merged[-1]}\n{tail}".strip()
@@ -164,11 +148,7 @@ def _merge_short_chunks(chunks: list[str], min_size: int) -> list[str]:
 def _absorb_orphans(pieces: list[str], min_size: int) -> list[str]:
     """把过短的碎片并回相邻块。
 
-    与 ``_merge_short_chunks`` 的区别：那个处理「切分阶段」的碎片，本函数处理
-    「超长块二次切分」后新产生的碎片 —— 那一步在合并之后，必须再收一次尾，
-    否则跨页断句留下的「定。」这类碎片会进入索引。
-
-    优先并回**前**一块以保持原文顺序，首块则并给后一块；整页只有一个极短片段时保留原样。
+    用于超长块二次切分后新产生的碎片，该步骤在合并之后，必须再处理一次，否则跨页断句留下的极短片段会进入索引。优先并回前一块以保持原文顺序，首块则并给后一块；整页只有一个极短片段时保留原样。
     """
     if min_size <= 0 or not pieces:
         return pieces
@@ -197,13 +177,9 @@ def split_fixed(
     chunk_overlap: int = 50,
     min_chunk_size: int = 80,
 ) -> list[str]:
-    """固定长度分块（滑动窗口 + 边界对齐）。
+    """固定长度分块，滑动窗口加边界对齐。
 
-    与朴素 ``range(0, len, size)`` 切法的区别：会在窗口内向前找最近的段落/句子边界
-    作为断点，同时仍靠 overlap 保证跨块语义连续。
-
-    :param chunk_size: 目标块长度（字符）；:param chunk_overlap: 相邻块重叠字符数
-    :param min_chunk_size: 小于该长度的碎块并入前一块
+    与按固定步长直接切分的区别在于，切分前会在窗口内向前寻找最近的段落或句子边界作为断点，同时依靠重叠保证跨块语义连续。小于最小块长的碎片并入前一块。
     """
     text = text.strip()
     if not text:
@@ -223,14 +199,14 @@ def split_fixed(
         if ideal >= n:
             end = n
         else:
-            # 允许向前最多回退 25%，保证块不会过短
+            # 允许向前最多回退四分之一窗口，保证块不会过短
             end = _best_break(text, ideal, max(start + 1, int(start + chunk_size * 0.75)))
         piece = text[start:end].strip()
         if piece:
             chunks.append(piece)
         if end >= n:
             break
-        # 下一块起点回退 overlap，但不倒退回起点之前
+        # 下一块起点回退重叠长度，但不越过本块起点
         start = max(end - chunk_overlap, start + 1)
 
     return _merge_short_chunks(chunks, min_chunk_size)
@@ -245,10 +221,9 @@ def split_recursive_semantic(
     separators: Sequence[str] | None = None,
     min_chunk_size: int = 80,
 ) -> list[str]:
-    """递归语义分块，基于 LangChain RecursiveCharacterTextSplitter。
+    """递归语义分块，基于 LangChain 的递归字符切分器。
 
-    分隔符默认 ["\\n\\n", "\\n", "。", " ", ""]，按段落 -> 行 -> 句子 -> 词 -> 字符
-    递归下探，最大限度保持语义单元完整。
+    分隔符默认按段落、行、句子、空格、字符的顺序逐层下探，尽量保持语义单元完整。
     """
     text = text.strip()
     if not text:
@@ -277,12 +252,9 @@ def split_documents(
     *,
     show_progress: bool = False,
 ) -> ChunkResult:
-    """对 LangChain Document 列表执行指定策略的分块。
+    """对文档列表按指定策略分块。
 
-    :param documents: ``loader.to_documents()`` 的产物
-    :param strategy: "fixed" | "recursive"，默认取 config.chunk.default_strategy
-    :param spec: 显式指定策略参数（不传则从 config 读取）
-    :param show_progress: 是否显示 tqdm 进度条；:returns: ChunkResult
+    策略名取固定长度或递归语义，未指定时用配置默认值；策略参数可显式传入，不传则从配置读取。进度开关控制是否显示进度条。返回分块结果对象。
     """
     name = (strategy or settings.chunk.default_strategy).strip().lower()
     if name not in ("fixed", "recursive"):
@@ -326,7 +298,7 @@ def split_documents(
                 min_chunk_size=sp.min_chunk_size,
             )
 
-        # max_chunk_size 是硬上限：超长块按固定窗口再切一次
+        # 最大块长是硬性上限，超长块按固定窗口再切一次
         if sp.max_chunk_size:
             refined: list[str] = []
             for piece in pieces:
@@ -343,8 +315,7 @@ def split_documents(
                     refined.append(piece)
             pieces = refined
 
-        # 兜底：合并后依旧过短的碎块并回**同一文档**的相邻块。碎片多来自跨页断句的残留
-        # （如某页只剩一行「定。」），丢弃会丢信息、留在索引里会稀释检索质量，故并回邻块
+        # 二次切分后依旧过短的碎片并回同一文档的相邻块。碎片多来自跨页断句的残留，丢弃会丢信息，留在索引中会稀释检索质量
         pieces = _absorb_orphans(pieces, sp.min_chunk_size)
 
         total = len(pieces)
@@ -368,7 +339,7 @@ def split_documents(
 
 
 def chunks_file(strategy: str, out_dir: str | Path | None = None) -> Path:
-    """分块产物路径：data/processed/chunks_<strategy>.json"""
+    """返回分块产物路径，文件名以策略名结尾。"""
     directory = Path(out_dir) if out_dir else settings.paths.processed_dir
     return directory / f"chunks_{strategy}.json"
 
@@ -380,7 +351,7 @@ def save_chunks(
     *,
     source_files: Sequence[str] | None = None,
 ) -> Path:
-    """把分块结果写入 JSON（UTF-8，不转义中文），返回文件路径。"""
+    """把分块结果写入 JSON 文件，返回文件路径，中文不转义。"""
     name = strategy or result.strategy
     path = chunks_file(name, out_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -394,7 +365,7 @@ def save_chunks(
         "source_files": list(source_files or sorted({c.source for c in result.chunks})),
         "chunks": [{"text": c.text, "metadata": c.metadata} for c in result.chunks],
     }
-    # 先写临时文件再替换，避免中途失败留下半个文件
+    # 先写中间文件再替换，避免中途失败留下半个文件
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
@@ -405,7 +376,7 @@ def load_chunks(
     strategy: str,
     out_dir: str | Path | None = None,
 ) -> ChunkResult:
-    """读取分块产物；文件不存在时抛出带下一步命令提示的 FileNotFoundError。"""
+    """读取分块产物，文件不存在时抛出异常并提示下一步命令。"""
     path = chunks_file(strategy, out_dir)
     if not path.exists():
         raise FileNotFoundError(
@@ -426,7 +397,7 @@ def load_chunks(
 
 
 def to_documents(chunks: Sequence[Chunk]):
-    """Chunk 列表 -> LangChain Document 列表（供 indexer 写入 Chroma）。"""
+    """把分块列表转为文档对象列表，供索引入库使用。"""
     from langchain_core.documents import Document
 
     return [Document(page_content=c.text, metadata=dict(c.metadata)) for c in chunks]
