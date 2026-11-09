@@ -1,13 +1,10 @@
-"""LLM 裁判（judge.py）：用 DeepSeek 对答案打分，替代 RAGAS（后者依赖重且有 pydantic 兼容风险）。
+"""大模型裁判，用 DeepSeek 对答案打分。
 
-自建的好处是可控可核查：维度、提示词、量程由本项目决定，裁判原文与理由一并存档，答辩时
-能当场解释"为什么给 3 分"。
+自建裁判的好处是维度、指令与量程都可控，裁判原文与理由一并存档，便于复核评分依据。
 
-两个维度：``faithfulness``（1~5，论断能否在参考资料中找到依据，重点抓编造）、
-``answer_relevancy``（1~5，是否切题；与忠实度独立）。
+两个维度：忠实度衡量答案中的论断能否在参考资料中找到依据，重点识别编造；答案相关性衡量是否切题，与忠实度相互独立。
 
-可靠性保障：``judge_temperature=0`` 降低随机性；强制 JSON，解析失败重试一次（仍失败则记该
-维度缺失而非猜分）；越界分数丢弃且不计入均值；聚合时分母只算成功评分的条数。
+可靠性保障：温度取零以降低随机性；强制输出 JSON 格式，解析失败重试一次，仍失败则记该维度缺失而不猜测分数；越界分数丢弃且不计入均值；汇总时分母只统计成功评分的条数。
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-#: 支持的评分维度及其中文名（用于报告表头）
+# 支持的评分维度及其中文名，用于报告表头
 METRIC_LABELS: dict[str, str] = {
     "faithfulness": "忠实度",
     "answer_relevancy": "答案相关性",
@@ -80,11 +77,11 @@ class JudgeScore:
     question: str = ""
     strategy: str = ""
     category: str = ""
-    #: 维度 -> 分数（1~5）
+    # 维度与分数的映射，取值 1 到 5
     scores: dict[str, float] = field(default_factory=dict)
-    #: 维度 -> 裁判给出的理由
+    # 维度与裁判给出的理由
     reasons: dict[str, str] = field(default_factory=dict)
-    #: 裁判原始输出（排查裁判跑偏时用）
+    # 裁判原始输出，用于排查评分偏差
     raw: str = ""
     error: str = ""
     seconds: float = 0.0
@@ -110,10 +107,10 @@ class JudgeScore:
 
 
 def _parse_judge_json(text: str, metrics: Sequence[str]) -> dict[str, dict[str, Any]]:
-    """宽容解析裁判输出：容忍 ```json 代码块与前后说明文字，而不是直接判失败。"""
+    """宽松解析裁判输出，容忍 JSON 代码块与前后说明文字，而不是直接判为失败。"""
     cleaned = text.strip()
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
-    # 截取第一个 { 到最后一个 }（应对前后多余文字）
+    # 截取第一个左花括号到最后一个右花括号之间的内容，去掉前后的多余文字
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start >= 0 and end > start:
         cleaned = cleaned[start : end + 1]
@@ -121,7 +118,7 @@ def _parse_judge_json(text: str, metrics: Sequence[str]) -> dict[str, dict[str, 
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        # 退化路径：用正则直接抠分数
+        # 解析失败时退化为用正则直接提取分数
         out: dict[str, dict[str, Any]] = {}
         for m in metrics:
             match = re.search(rf'"{m}"\s*:\s*\{{[^}}]*?"score"\s*:\s*(\d+)', cleaned, re.S)
@@ -146,7 +143,7 @@ class LLMJudge:
     """
     基于 DeepSeek 的答案质量裁判。
 
-    ``judge.score(question, contexts, answer, strategy=..., category=...)`` → ``JudgeScore``。
+    对单条答案调用打分方法，返回评分结果对象。
     """
 
     def __init__(
@@ -163,7 +160,7 @@ class LLMJudge:
                 f"未知评分维度 {unknown}，可选：{list(METRIC_LABELS)}"
             )
         self.model = model or settings.evaluation.judge_model
-        self._client = client  # 可注入 mock 客户端，测试时零 token
+        self._client = client  # 可注入模拟客户端，测试时不消耗调用额度
 
     @property
     def client(self):
@@ -176,12 +173,9 @@ class LLMJudge:
     @staticmethod
     def format_context(chunks: Sequence[Any], max_chars: int = 20000) -> str:
         """
-        把检索片段渲染成裁判可读的参考资料块，编号必须与生成阶段一致。
+        把检索片段渲染成参考资料块，编号必须与生成阶段一致。
 
-        必须传入生成阶段**实际使用**的上下文（``LLMResponse.contexts``）而非检索到的
-        全部结果：生成阶段会按 ``context_max_chars`` 预算裁剪，若裁判拿到未裁剪的列表，
-        编号体系就与模型看到的不同，会把正常引用误判为"引用了不存在的编号"（假阳性幻觉）。
-        ``max_chars`` 默认远大于生成预算（6000），传进来的既已裁剪过，这里只作防御性兜底。
+        必须传入生成阶段实际使用的上下文，而不是检索到的全部结果：生成阶段会按字符预算裁剪，若裁判拿到未裁剪的列表，编号体系就与模型看到的不同，会把正常引用误判为引用了不存在的编号，形成假阳性幻觉。字符上限默认远大于生成预算，传入的既已裁剪过，这里只作防御性限制。
         """
         lines: list[str] = []
         used = 0
@@ -219,9 +213,7 @@ class LLMJudge:
         """
         对一条答案打分。
 
-        :param contexts: 送入生成阶段的检索片段
-        :param retries: JSON 解析失败时的重试次数
-        :returns: JudgeScore（含分数、理由、原始输出）
+        上下文为送入生成阶段的检索片段；重试次数指 JSON 解析失败后的额外尝试次数。返回结果包含分数、理由与原始输出。
         """
         import time
 
@@ -274,7 +266,7 @@ class LLMJudge:
                         value = float(block.get("score"))
                     except (TypeError, ValueError):
                         continue
-                    # 越界分数判为裁判异常，避免污染均值
+                    # 越界分数视为裁判异常，避免污染均值
                     if not (1 <= value <= scale):
                         logger.warning("裁判给出越界分数 %s=%s，已忽略该维度", metric, value)
                         continue
@@ -299,12 +291,9 @@ class LLMJudge:
         workers: int | None = None,
     ) -> list[JudgeScore]:
         """
-        批量打分（并发）。
+        批量并发打分。
 
-        裁判调用是网络等待型，并发数由 ``judge_workers`` 控制，4 个并发即可把总耗时
-        压到约 1/4。
-
-        :param cases: ``[{question, contexts, answer, strategy, category}, ...]``
+        裁判调用属于网络等待，并发数由配置控制，多个并发可显著缩短总耗时。案例列表每项包含问题、上下文、答案、策略与类别。
         """
         items = list(cases)
         if not items:
@@ -336,7 +325,7 @@ def aggregate_scores(scores: Sequence[JudgeScore], metrics: Sequence[str] | None
     """
     汇总平均分。
 
-    分母只算成功评分的条数：某维度某条缺失时不计 0 分，否则会把"裁判失败"当成"答案很差"。
+    分母只统计成功评分的条数，某维度某条缺失时不计零分，否则会把裁判失败当成答案质量差。
     """
     ms = list(metrics or settings.evaluation.judge_metrics)
     out: dict[str, Any] = {"n": len(scores), "n_scored": sum(1 for s in scores if s.ok)}
