@@ -1,30 +1,7 @@
 """
-阶段 5 —— 评估命令行入口。
+评估命令行入口。
 
-用法::
-
-    # 1) 校验测试集（标注完成后先跑这个）
-    python -m src.evaluation.cli check
-
-    # 2) 生成标注候选（含 chunk_id 与摘要，供人工标注）
-    python -m src.evaluation.cli candidates --out data/testset.draft.json
-
-    # 3) 检索策略对比（不消耗 LLM token）
-    python -m src.evaluation.cli retrieval
-    python -m src.evaluation.cli retrieval --limit 10        # 小样本先验证
-
-    # 4) 生成质量评估（消耗 token，务必先小样本）
-    python -m src.evaluation.cli generation --limit 3
-
-    # 5) 消融实验
-    python -m src.evaluation.cli ablation
-    python -m src.evaluation.cli ablation --rerank-topk 3 5 8 --limit 5
-
-    # 6) 画图（读取已有 CSV 结果）
-    python -m src.evaluation.cli visualize --from-results
-
-    # 7) 一键：检索评估 + 消融 + 出图（不含生成评估，避免误耗 token）
-    python -m src.evaluation.cli all
+提供测试集校验、标注候选生成、检索策略对比、生成质量评估、消融实验与绘图等子命令。
 """
 
 from __future__ import annotations
@@ -311,7 +288,7 @@ def cmd_visualize(args: argparse.Namespace) -> int:
 
 
 def cmd_all(args: argparse.Namespace) -> int:
-    """一键：检索评估 + 消融 + 出图（刻意不含生成评估，避免误耗 token）。"""
+    """一键执行检索评估、消融与出图，不执行生成评估，避免消耗调用额度。"""
     rc = cmd_retrieval(args)
     if rc != 0:
         return rc
