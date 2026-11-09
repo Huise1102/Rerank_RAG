@@ -1,11 +1,8 @@
-"""文件存储抽象（storage.py）。
+"""文件存储抽象。
 
-用户上传的原始文档按 ``STORAGE_TYPE`` 落到本地 ``storage/`` 或 MinIO：
-- local：直接写 ``storage/<key>``，``file_path`` 存相对 key 即可
-- minio：上传到 bucket，解析时把对象 ``materialize`` 到本地临时文件
-
-上层（document_service / Celery 任务）只依赖 :func:`get_storage` 返回的统一接口，
-两种后端可无感切换；``file_path`` 列统一存 **key**（相对对象名），不存绝对路径。
+用户上传的原始文档按存储类型落到本地 storage 目录或 MinIO：
+本地后端直接写 storage 下的相对路径，MinIO 后端上传到 bucket，解析时把对象落地到本地文件。
+上层只依赖获取存储实例的接口，两种后端可无感切换；文档记录统一存相对对象名，不存绝对路径。
 """
 
 from __future__ import annotations
@@ -54,7 +51,7 @@ class BaseStorage(ABC):
 
 
 class LocalStorage(BaseStorage):
-    """本地文件系统后端：storage/<key>。"""
+    """本地文件系统后端，文件落在 storage 根目录下。"""
 
     def __init__(self, root: Path | None = None) -> None:
         self.root = Path(root or settings.paths.storage_dir)
@@ -93,7 +90,7 @@ class LocalStorage(BaseStorage):
 
 
 class MinioStorage(BaseStorage):
-    """MinIO 对象存储后端：上传到 bucket，解析时下载到临时文件。"""
+    """MinIO 对象存储后端：上传到 bucket，解析时下载到本地文件。"""
 
     def __init__(self) -> None:
         from src.utils.minio_client import ensure_bucket, get_minio_client
@@ -118,7 +115,7 @@ class MinioStorage(BaseStorage):
         return Path(tmp.name)
 
     def read_bytes(self, key: str) -> bytes:
-        # 直接读对象流，避免 materialize 产生的临时文件残留
+        # 直接读对象流，避免落地文件残留
         resp = self._client.get_object(self.bucket, key)
         try:
             return resp.read()
@@ -151,7 +148,7 @@ def get_storage() -> BaseStorage:
 
 
 def build_key(kb_id: int, filename: str) -> str:
-    """生成对象 key：``kb_<kb_id>/<uuid>_<filename>``，避免同名覆盖。"""
+    """生成对象 key，由知识库编号、随机短串与文件名组成，避免同名覆盖。"""
     import uuid
 
     safe = Path(filename).name.replace(" ", "_")
