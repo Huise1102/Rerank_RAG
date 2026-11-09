@@ -1,8 +1,6 @@
-"""阶段 0 环境冒烟测试。
+"""环境冒烟测试。
 
-逐层验证：配置 -> 第三方库导入 -> LangChain 切分 -> Chroma 读写 -> BM25 -> jieba -> torch。
-
-运行：.venv\\Scripts\\python.exe scripts\\smoke_test.py
+逐层验证配置、第三方库导入、文本切分、Chroma 读写、BM25、中文分词与 torch。
 """
 
 from __future__ import annotations
@@ -144,8 +142,8 @@ def _chroma():
     from config import configure_chroma_telemetry
 
     configure_chroma_telemetry()
-    # 探针目录放在系统临时目录，避免污染项目 indexes/（Chroma 在 Windows 上
-    # 即使用完自删也常留下空目录）
+    # 探针目录放在系统缓存目录，避免污染项目索引目录，因为 Chroma 在 Windows 上
+    # 即使用完自删也常留下空目录
     import tempfile
 
     probe_dir = Path(tempfile.mkdtemp(prefix="rag_smoke_chroma_"))
@@ -154,10 +152,10 @@ def _chroma():
 
     class FakeEmbeddings(Embeddings):
         """
-        确定性向量：按字符做哈希 one-hot 后归一化。
+        确定性向量：按字符做哈希后归一化。
 
-        实现真实 Embeddings 接口（而非鸭子类型），保证与生产代码同一条链路。
-        不能用 hash(整句)：那样任意两句话的向量距离都相同，检索会退化成随机。
+        实现真实的向量接口，保证与生产代码同一条链路。
+        不能用整句哈希：那样任意两句话的向量距离都相同，检索会退化成随机。
         """
 
         dim = 1024
