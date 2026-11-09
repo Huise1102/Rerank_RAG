@@ -1,7 +1,6 @@
-"""业务编排层：把「检索 → 生成 → 引用解析 → 组装响应」串成链路供路由调用。
+"""业务编排层，把检索、生成、引用解析与响应组装串成一条链路供路由调用。
 
-检索器必须是单例（向量模型 2.3 GB、精排 2.2 GB）；``warmup()`` 把首次请求的模型加载提前
-到启动阶段；``/ingest`` 重建索引后旧检索器仍指向旧集合，须调 ``reload()`` 失效重载。
+检索器必须是单例，向量模型与精排模型都占用大量内存；预热把首次请求的模型加载提前到启动阶段；重建索引后旧检索器仍指向旧集合，必须失效缓存才能重新加载。
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ logger = get_logger(__name__)
 
 
 def _to_doc(item: Any) -> RetrievedDoc:
-    """把 RetrievalResult 转为 API 模型。"""
+    """把检索结果对象转为接口模型。"""
     return RetrievedDoc(
         rank=int(getattr(item, "rank", 0) or 0),
         chunk_id=str(getattr(item, "chunk_id", "")),
@@ -43,7 +42,7 @@ def _to_doc(item: Any) -> RetrievedDoc:
 
 
 def _to_citation_report(report: Any, *, include_text: bool = True) -> CitationReport:
-    """把 generation.citation.CitationReport 转为 API 模型。"""
+    """把生成模块的引用报告转为接口模型。"""
     citations = [
         Citation(
             index=c.index,
@@ -70,7 +69,7 @@ def _to_citation_report(report: Any, *, include_text: bool = True) -> CitationRe
 
 @dataclass
 class WarmupState:
-    """预热结果，供 /health 展示。"""
+    """预热结果，供健康检查展示。"""
 
     done: bool = False
     seconds: float = 0.0
@@ -90,7 +89,7 @@ class RagService:
     """
     RAG 服务门面。
 
-    ``query()`` 无状态可并发；``reload()``/``warmup()`` 会替换缓存对象，故加锁。
+    问答无状态可并发；预热与缓存失效会替换共享对象，因此加锁。
     """
 
     def __init__(self) -> None:
@@ -101,8 +100,7 @@ class RagService:
     def pipeline_for(self, chunk_strategy: str | None = None):
         """取指定分块策略的检索管线。
 
-        分块策略是管线级配置（决定读哪个集合、哪个 BM25 文件），请求里带 chunk_strategy
-        时必须换管线实例，不能把参数透传给 ``retrieve()``（会 TypeError）；不传时用默认管线。
+        分块策略属于管线级配置，决定读取哪个集合与哪个 BM25 文件；请求带分块策略时必须切换管线实例，不能把该参数透传给检索方法。未指定时使用默认管线。
         """
         from src.retrieval.pipeline import get_pipeline
 
@@ -114,12 +112,12 @@ class RagService:
 
     @property
     def pipeline(self):
-        """默认分块策略的检索管线（按策略缓存于 pipeline 模块内部）。"""
+        """默认分块策略的检索管线，按策略缓存在检索模块内部。"""
         return self.pipeline_for(None)
 
     @property
     def llm(self):
-        """LLM 客户端（全局单例）。"""
+        """大模型客户端，全局单例。"""
         from src.generation.llm import get_llm_client
 
         if self._llm is None:
@@ -130,7 +128,7 @@ class RagService:
     def warmup_state(self) -> WarmupState:
         return self._warmup
     def warmup(self, *, include_reranker: bool = True) -> WarmupState:
-        """预热检索管线（加载向量模型、精排模型、BM25 索引）；幂等，已预热则返回上次结果。"""
+        """预热检索管线，加载向量模型、精排模型与 BM25 索引；重复调用返回上次结果。"""
         with self._lock:
             if self._warmup.done:
                 return self._warmup
@@ -150,7 +148,7 @@ class RagService:
                 logger.info(
                     "预热完成，总耗时 %.1fs：%s", self._warmup.seconds, self._warmup.detail
                 )
-            except Exception as exc:  # noqa: BLE001 - 预热失败不应让服务起不来
+            except Exception as exc:  # noqa: BLE001 - 预热失败不影响服务启动
                 self._warmup = WarmupState(
                     done=False, seconds=time.perf_counter() - t0,
                     error=f"{type(exc).__name__}: {exc}",
@@ -162,8 +160,7 @@ class RagService:
         """
         索引变更后失效缓存，使下次查询重新加载。
 
-        ``VectorRetriever`` 持有 Chroma collection 句柄、``BM25Retriever`` 持有 pickle
-        加载的对象，两者都不会自动感知磁盘变化。
+        向量检索器持有集合句柄，BM25 检索器持有加载后的对象，两者都不会自动感知磁盘变化。
         """
         with self._lock:
             from src.retrieval import pipeline as pipeline_module
@@ -171,11 +168,11 @@ class RagService:
             logger.info("索引已变更，失效检索器缓存以便重新加载")
             self._pipeline = None
             pipeline_module._PIPELINES.clear()
-            # 向量库与 BM25 都换了，必须重新预热（否则首请求又要等模型加载）
+            # 向量库与 BM25 都已更换，必须重新预热，否则首个请求仍要等待模型加载
             self._warmup = WarmupState()
     def query(self, request: QueryRequest) -> QueryResponse:
         """
-        执行一次完整问答：检索 → 生成 → 引用解析 → 组装响应。
+        执行一次完整问答，依次检索、生成、解析引用并组装响应。
         """
         from src.generation.llm import generate
 
@@ -202,7 +199,7 @@ class RagService:
         report = llm_response.citations
         docs = [_to_doc(item) for item in retrieval.results]
         if not request.include_contexts:
-            # 只保留溯源必需的字段，去掉正文以减小体积
+            # 只保留溯源必需字段，长度超过阈值的正文置空以减小响应体积
             docs = [
                 d.model_copy(update={"text": ""}) if len(d.text) > 120 else d for d in docs
             ]
@@ -238,7 +235,7 @@ class RagService:
         top_k: int | None = None,
     ) -> dict[str, Any]:
         """
-        只检索不生成，供前端"检索调试面板"展示两路召回的重叠情况。
+        只检索不生成，供前端检索调试面板展示两路召回的重叠情况。
         """
         result = self.pipeline_for(chunk_strategy).retrieve(
             question, strategy=strategy, top_k=top_k, write_log=False,
@@ -254,11 +251,9 @@ class RagService:
         }
     def stream_query(self, request: QueryRequest):
         """
-        流式问答。返回 ``(事件迭代器, 结果容器)``。
+        流式问答，返回事件迭代器与结果容器。
 
-        事件 ``type``：``meta``（检索完成，带 retrieved_docs 与耗时）、``delta``（答案增量）、
-        ``done``（结束，带完整 citations 与总耗时）、``error``（出错）。
-        迭代结束后 ``box["response"]`` 被填充为完整 QueryResponse，便于落库或记录日志。
+        事件类型依次为元信息，含检索结果与耗时；答案增量；完成，含完整引用与总耗时；以及错误。迭代结束后容器中的响应对象为完整结果，便于记录日志或落库。
         """
         t_start = time.perf_counter()
         retrieval = self.pipeline_for(request.chunk_strategy).retrieve(
@@ -340,10 +335,10 @@ class RagService:
 
         return _events(), box
     def health_components(self) -> list[dict[str, Any]]:
-        """各组件就绪状态。任一不可用不应让 /health 直接 500。"""
+        """各组件就绪状态，任一组件不可用都不应让健康检查直接报错。"""
         components: list[dict[str, Any]] = []
 
-        # LLM
+        # 大模型
         try:
             ready, detail = self.llm.is_ready()
             components.append({"name": "llm", "ready": bool(ready), "detail": detail})
@@ -365,7 +360,7 @@ class RagService:
             components.append({"name": "vector_store", "ready": False,
                                "detail": f"{type(exc).__name__}: {exc}"})
 
-        # BM25
+        # 稀疏检索
         try:
             from src.ingest.indexer import bm25_path, load_bm25_index
 
@@ -395,7 +390,7 @@ class RagService:
         return components
 
     def index_status(self) -> dict[str, Any]:
-        """当前分块策略的索引现状，含一致性检查。"""
+        """当前分块策略的索引现状，包含一致性检查。"""
         from src.ingest.indexer import index_stats
 
         strategy = settings.chunk.default_strategy
@@ -408,7 +403,7 @@ class RagService:
                 "vector_count": int(counts[1]),
                 "bm25_count": int(counts[2]),
                 "collection": str(info.get("collection", "")),
-                # 三者不一致说明索引与分块文件不同步（例如入库中途失败）
+                # 三项计数不一致说明索引与分块文件不同步，例如入库中途失败
                 "consistent": len(set(counts)) == 1 and counts[0] > 0,
             }
         except Exception as exc:  # noqa: BLE001
