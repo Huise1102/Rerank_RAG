@@ -1,17 +1,10 @@
-"""初始化种子数据（scripts/seed_data.py）：预置「法律领域」知识库。
+"""初始化种子数据，预置法律领域知识库。
 
-行为：
-1. 预置 1 个知识库「法律领域」，``enabled_strategies`` 默认全开。
-2. 扫描 ``product/resource/法律领域/`` 下的 pdf / docx / txt / md 四种格式文件
-   （**只读引用**，不复制、不改写），复用 ``ingest_service.ingest_paths`` 一次性
-   解析 -> 分块 -> 建索引（向量 + BM25），并在 ``documents`` 表登记 completed 记录。
-3. 幂等：已存在同名知识库直接复用；同名文档（同文件名）已登记则跳过，不重复入库。
-
-用法::
-
-    python scripts/seed_data.py                       # 预置「法律领域」（默认 recursive）
-    python scripts/seed_data.py --strategy fixed      # 指定分块策略
-    python scripts/seed_data.py --kb-name 法律领域 --resource-dir D:\\resource
+预置 1 个知识库，启用全部分块策略。扫描语料目录下的 pdf、docx、txt、md 文件，
+只读引用不复制，交给入库函数完成解析、分块与建索引，并在文档表登记完成记录。
+同名知识库直接复用，同名文档已登记则跳过。
+运行时用 python scripts/seed_data.py，可加 strategy 参数指定分块策略，
+或加 resource_dir 参数指定语料目录。
 """
 
 from __future__ import annotations
@@ -21,7 +14,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-#: 后端项目根：scripts/seed_data.py -> scripts -> backend
+# 后端项目根目录
 BACKEND_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -40,12 +33,12 @@ logger = get_logger("scripts.seed_data")
 
 PRESET_KB_NAME = "法律领域"
 
-#: 同一部法律多格式副本时的保留优先级（pdf > docx > md > txt）
+# 同名多格式副本的保留优先级，依次为 pdf、docx、md、txt
 _EXT_ORDER: dict[str, int] = {ext: i for i, ext in enumerate(supported_extensions())}
 
 
 def discover_files(root: Path) -> list[Path]:
-    """扫描目录下四种格式文件，同一文件名（stem）只保留优先级最高的一个副本。"""
+    """扫描目录下四种格式文件，同名文件只保留优先级最高的一个副本。"""
     if not root.exists():
         raise FileNotFoundError(f"资源目录不存在: {root}")
 
@@ -58,12 +51,12 @@ def discover_files(root: Path) -> list[Path]:
         ext = p.suffix.lower().lstrip(".")
         if ext not in _EXT_ORDER:
             continue
-        by_stem.setdefault(p.stem, p)  # 先到（优先级高）者胜出
+        by_stem.setdefault(p.stem, p)  # 先出现者优先级更高
     return sorted(by_stem.values(), key=lambda p: p.name)
 
 
 def _resolve_resource_dir(kb_name: str, override: str | None) -> Path:
-    """确定语料目录：优先命令行 > resource/<kb_name> > resource/。"""
+    """确定语料目录，优先级依次为命令行参数、按知识库名命名的子目录、语料根目录。"""
     if override:
         return Path(override).expanduser().resolve()
     base = settings.resource_dir
@@ -104,7 +97,7 @@ async def seed(kb_name: str, strategy: str, resource_override: str | None) -> No
             logger.info("全部文档均已入库，无需重复处理（幂等跳过）")
             return
 
-        # 用全部文件重建索引，保证分块文件与索引一致
+        # 用全部文件重建索引，使分块文件与索引内容对应
         result = ingest_paths(kb.id, files, kb.chunk_strategy, show_progress=True)
         per_file: dict[str, int] = result["per_file"]
 
