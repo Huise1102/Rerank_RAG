@@ -1,16 +1,14 @@
-"""检索统一入口（pipeline.py）。
+"""检索统一入口。
 
-对上层（对话、API、检索服务）只暴露 ``retrieve()``：按**构建块开关**组装链路——
-``vector`` 纯向量、``bm25`` 纯词匹配、``hybrid`` 双路 RRF 融合、``hybrid_rerank`` 融合后再
-交叉编码器精排（完整链路），四种开关组合可还原 demo 的四个档位。
+对上层只暴露 retrieve，按构建块开关组装链路：vector 为纯向量，bm25 为纯词匹配，
+hybrid 为双路 RRF 融合，hybrid_rerank 为融合后再做交叉编码器精排。
+四种开关组合对应四个可对比的检索档位。
 
-开关（``strategies``）为 ``{"vector","bm25","fusion","rerank"}``，默认全 true：
-- 只开 vector → 纯向量；只开 bm25 → 纯 BM25；vector+bm25(+fusion) → 混合(RRF)；再加 rerank → 混合+精排
-- 非法组合（两路召回都开但 fusion=false）→ 按融合执行，并在 ``RetrievalResponse.strategy``
-  记录**实际生效**的策略名（``vector`` | ``bm25`` | ``hybrid`` | ``hybrid_rerank``）
+开关分为 vector、bm25、fusion、rerank 四项，默认全开。
+两路召回都开但 fusion 关闭时按融合执行，并在响应的策略字段记录实际生效的策略名。
 
-检索器实例按 ``(kb_id, 分块策略)`` 缓存：向量模型加载成本高（约 2.3 GB / 7~15 秒），必须跨请求复用。
-精排模型不可用时降级为混合检索结果并告警，而不是让整条问答链路 500。
+检索器实例按知识库编号与分块策略缓存：向量模型加载成本高，必须跨请求复用。
+精排模型不可用时降级为混合检索结果并告警，而不是让整条问答链路失败。
 """
 
 from __future__ import annotations
@@ -29,21 +27,21 @@ from src.retrieval.vector_retriever import VectorRetriever
 
 logger = get_logger(__name__)
 
-#: 支持的检索策略名（四选一，用于记录实际生效策略）
+# 支持的检索策略名，四选一，用于记录实际生效策略
 RetrievalStrategy = Literal["vector", "bm25", "hybrid", "hybrid_rerank"]
 
 VALID_STRATEGIES: tuple[str, ...] = ("vector", "bm25", "hybrid", "hybrid_rerank")
 
-#: 构建块开关默认值：全开
+# 构建块开关默认值，全开
 DEFAULT_STRATEGIES: dict[str, bool] = {"vector": True, "bm25": True, "fusion": True, "rerank": True}
 
 
 
 def _preload_store_stack() -> None:
-    """在旁路线程里预热"索引侧"依赖（chromadb / jieba），与模型侧导入重叠。
+    """在旁路线程里预热索引侧依赖，即 chromadb 与 jieba，与模型侧导入重叠。
 
-    ``import torch`` + ``import transformers`` 要 20 秒左右，而 ``import chromadb``
-    还要 1.5~3 秒，两者之间没有依赖关系，串行做纯属浪费。失败不影响主流程：
+    torch 与 transformers 的导入要 20 秒左右，chromadb 还要 1.5 到 3 秒，
+    两者之间没有依赖关系，串行做纯属浪费。失败不影响主流程：
     真正用到时会再导入一次并抛出原始错误。
     """
     for module in ("chromadb", "jieba"):
@@ -92,7 +90,7 @@ class RetrievalResponse:
         return self.results[0] if self.results else None
 
     def as_context(self) -> list[dict[str, Any]]:
-        """转为生成侧组装 Prompt 所需的上下文结构。"""
+        """转为生成侧组装上下文所需的结构。"""
         return [
             {
                 "index": i,
@@ -151,9 +149,9 @@ def normalize_strategies(strategies: dict[str, bool] | None) -> dict[str, bool]:
 
 class RetrievalPipeline:
     """
-    检索管线：持有各检索器的单例，按构建块开关组装链路。
+    检索管线，持有各检索器的单例，按构建块开关组装链路。
 
-    不要频繁构造本类 —— 用模块级 ``get_pipeline()`` 拿（按 kb 缓存的）全局实例。
+    不要频繁构造本类，用模块级的获取函数拿按知识库缓存的全局实例。
     """
 
     def __init__(self, kb_id: int, chunk_strategy: str | None = None) -> None:
@@ -184,7 +182,7 @@ class RetrievalPipeline:
         """
         按 (融合方式, 权重) 缓存混合检索器。
 
-        权重是缓存键的一部分：调参会用不同权重反复检索，只缓存一个实例会让上一次的参数污染本次。
+        权重是缓存键的一部分：调参会用不同权重反复检索，只缓存一个实例会让上一次的参数影响新的检索。
         """
         cfg = settings.retrieval
         key = (
@@ -213,11 +211,7 @@ class RetrievalPipeline:
         """
         预热检索器与精排模型，返回各自耗时。
 
-        FastAPI 启动时调用，避免第一个真实请求承担约 20 秒的加载延迟。
-
-        启动耗时几乎全是 ``import torch`` / ``import transformers``（实测 20 秒上下），
-        模型权重本身只占 1 秒左右。chromadb 与 jieba 的导入和它们互不依赖，
-        因此放在旁路线程里同时导入（详见 ``_preload_store_stack``），可省下数秒。
+        启动时调用，避免第一个真实请求承担约 20 秒的加载延迟。
         """
         used: dict[str, float] = {}
         t0 = time.perf_counter()
@@ -245,10 +239,8 @@ class RetrievalPipeline:
         """
         执行检索。
 
-        :param query: 查询文本
-        :param strategies: 构建块开关 ``{"vector","bm25","fusion","rerank"}``，默认全 true
-        :param top_k: 覆盖最终返回条数（``hybrid_rerank`` 下等价于精排保留条数）；不传取配置值
-        :returns: RetrievalResponse，``strategy`` 为**实际生效**的策略名
+        构建块开关默认全开；返回条数可覆盖，精排链路下等价于精排保留条数，不传取配置值。
+        返回附带耗时、统计与参数的响应，策略字段为实际生效的策略名。
         """
         sw = normalize_strategies(strategies)
         cfg = settings.retrieval
@@ -266,12 +258,12 @@ class RetrievalPipeline:
         fusion_on = sw["fusion"]
         rerank_on = sw["rerank"]
 
-        # 两路召回都关 → 无召回路径，按双路混合执行
+        # 两路召回都关时没有召回路径，按双路混合执行
         if not vec_on and not bm_on:
             warnings.append("未启用任何召回路径，已按双路混合检索执行")
             vec_on = bm_on = True
 
-        # 组装实际链路：base ∈ {vector, bm25, hybrid}
+        # 组装实际链路，召回基座为 vector、bm25 或 hybrid
         if vec_on and bm_on:
             base = "hybrid"
             if not fusion_on:
@@ -314,7 +306,7 @@ class RetrievalPipeline:
                     warnings.append(msg)
                     stats["reranked"] = 0
 
-        # 记录实际生效策略名：hybrid 基座 + 精排 → hybrid_rerank；否则为召回基座
+        # 记录实际生效策略名，hybrid 基座加精排为 hybrid_rerank，否则为召回基座
         strategy = "hybrid_rerank" if (base == "hybrid" and rerank_applied) else base
 
         response = RetrievalResponse(
@@ -369,12 +361,12 @@ class RetrievalPipeline:
 
 
 
-#: 按 (kb_id, 分块策略) 缓存的全局管线
+# 按知识库编号与分块策略缓存的全局管线
 _PIPELINES: dict[tuple[int, str], RetrievalPipeline] = {}
 
 
 def get_pipeline(kb_id: int, chunk_strategy: str | None = None) -> RetrievalPipeline:
-    """获取（并按 (kb_id, 分块策略) 缓存的）全局检索管线。"""
+    """获取按知识库编号与分块策略缓存的全局检索管线。"""
     key = (int(kb_id), (chunk_strategy or settings.chunk.default_strategy).strip().lower())
     if key not in _PIPELINES:
         _PIPELINES[key] = RetrievalPipeline(key[0], key[1])
