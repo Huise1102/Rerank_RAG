@@ -1,8 +1,8 @@
-"""Agent 工具层（tools.py）：薄封装，复用检索服务，不含任何检索/生成业务。
+"""Agent 工具层，薄封装检索服务，不含检索与生成业务。
 
-每个工具只做「参数校验 + 调复用层 + 回填轨迹」。策略名 → 现有四开关的映射是唯一新增逻辑。
+每个工具只做参数校验、调用复用层与回填轨迹，
+策略名到四个开关的映射是唯一独立逻辑。
 """
-
 from __future__ import annotations
 
 import time
@@ -12,7 +12,7 @@ from src.agent.state import AgentState
 from src.generation.prompt import contexts_from_results
 from src.retrieval.base import RetrievalResult
 
-#: 策略名 → retrieval_service 四开关。第三版由 Agent 逐轮选择，而非知识库固定配置。
+# 策略名到四个构建块开关的映射，由 Agent 逐轮选择，不使用知识库固定配置
 STRATEGY_SWITCHES: dict[str, dict[str, bool]] = {
     "vector": {"vector": True, "bm25": False, "fusion": False, "rerank": False},
     "bm25": {"vector": False, "bm25": True, "fusion": False, "rerank": False},
@@ -51,7 +51,7 @@ def execute_retrieve(state: AgentState, query: str, strategy: str) -> dict[str, 
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
 
     new = state.add_evidences(resp.results)
-    # 跨轮连续编号：本轮新增证据的起始编号 = 已累积条数 - 新增条数 + 1
+# 跨轮连续编号，本轮新增证据的起始编号按已累积条数与新增条数计算
     start_index = len(state.evidences) - len(new) + 1
     if new:
         rendered = "\n\n".join(
