@@ -1,9 +1,6 @@
-"""阶段 2 —— 检索模块自测。
+"""检索模块自测。
 
-覆盖 VectorRetriever（编码与归一化）、BM25Retriever（分词、下标还原）、RRF 融合
-（公式逐项验算）、Reranker 排序能力、Pipeline 端到端与消融。
-
-运行：.venv\\Scripts\\python.exe scripts\\test_retrieval.py [--skip-rerank]
+覆盖向量检索的编码与归一化、BM25 的分词与下标还原、RRF 融合公式、精排的排序能力、检索流水线的端到端与消融对比。
 """
 
 from __future__ import annotations
@@ -28,7 +25,7 @@ FAILED: list[tuple[str, str]] = []
 
 STRATEGY = "recursive"
 
-#: 取自真实语料的查询，用于端到端与消融对比
+# 取自真实语料的查询，用于端到端与消融对比
 DEMO_QUERIES = [
     "学校规章制度的适用范围是怎么规定的？",
     "校级奖励的评选流程是什么",
@@ -150,7 +147,7 @@ def test_bm25(vector: VectorRetriever | None) -> BM25Retriever | None:
     all_oov = r.retrieve("zzzqqq wwweee", top_k=5)
     check("全部为未登录词时返回空", all_oov == [], f"{len(all_oov)} 条")
 
-    # 混合场景：有未登录词也有停用词，但无任何有效词 -> 仍应为空
+    # 混合场景：有未登录词也有停用词，但无任何有效词，最终仍应为空
     mixed = r.retrieve("zzzqqq 的 了吗", top_k=5)
     check("无有效查询词时返回空", mixed == [], f"{len(mixed)} 条")
 
@@ -186,7 +183,7 @@ def test_fusion(vector: VectorRetriever, bm25: BM25Retriever) -> None:
     k = settings.retrieval.rrf_k
     expect = {
         "A": 0.5 / (k + 1),
-        "B": 0.5 / (k + 2) + 0.5 / (k + 1),   # 两路都召回 -> 分数相加
+        "B": 0.5 / (k + 2) + 0.5 / (k + 1),   # 两路都召回时分数相加
         "C": 0.5 / (k + 3),
         "D": 0.5 / (k + 2),
     }
@@ -212,8 +209,8 @@ def test_fusion(vector: VectorRetriever, bm25: BM25Retriever) -> None:
     check("仅 BM25 权重时结果来自 BM25", {x.chunk_id for x in m2} == {"B", "D"},
           f"结果={[x.chunk_id for x in m2]}")
 
-    # 权重变化会改变融合排序：C = w_d/(k+3)、D = w_s/(k+2)，等权时 D > C（分母更小），
-    # 只留 dense 时 D 不参与、C 胜出。
+    # 权重变化会改变融合排序：C 为稠密权重除以 k 加 3，D 为稀疏权重除以 k 加 2，
+    # 等权时 D 的分数高于 C，只留稠密一路时 D 不参与、C 胜出。
     h_skew = HybridRetriever(STRATEGY, vector=vector, bm25=bm25, fusion="rrf",
                              dense_weight=0.8, sparse_weight=0.2)
     m3 = h_skew.fuse(dense, sparse, top_k=10)
@@ -289,7 +286,7 @@ def test_reranker() -> None:
     r_norm = Reranker(normalize_score=True)
     s_raw = r.score_of(query, [relevant, irrelevant])
     s_norm = r_norm.score_of(query, [relevant, irrelevant]) if False else None
-    # score_of 不做归一化，改为直接验证 sigmoid 映射后的区间
+    # score_of 不做归一化，因此这里直接验证 sigmoid 映射后的区间
     from src.retrieval.reranker import _sigmoid
 
     mapped = [_sigmoid(x) for x in s_raw]
@@ -335,7 +332,7 @@ def test_pipeline(skip_rerank: bool) -> None:
     empty = pl.retrieve("  ", strategy="hybrid")
     check("空查询安全返回", len(empty) == 0 and bool(empty.warnings), str(empty.warnings))
 
-    # as_context 供阶段 3 使用
+    # as_context 返回可交给生成模块的上下文结构
     ctx = responses["hybrid"].as_context()
     check("as_context 结构正确",
           ctx and all(set(c) >= {"index", "text", "score", "citation"} for c in ctx),
