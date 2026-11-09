@@ -1,11 +1,9 @@
 """异步会话工厂与 FastAPI 依赖。
 
-两条路径各自使用独立的引擎：
-请求路径直接跑在 Uvicorn 的事件循环里，用带连接池的 ``engine``；
-任务路径（Celery worker 或线程池兜底）由 ``asyncio.run`` 另起事件循环，
-与请求所在循环不共享，若复用连接池会取到属于旧循环的连接并抛
-``RuntimeError: got Future attached to a different loop``，
-因此任务侧改用 ``NullPool``（每次取用新建连接、用完即关），跨循环安全。
+请求路径直接跑在 Uvicorn 的事件循环里，使用带连接池的引擎。
+任务路径由 asyncio.run 另起事件循环，与请求所在循环不共享，
+复用连接池会取到属于旧循环的连接并报错，因此任务侧使用 NullPool，
+每次取用新建连接、用完即关，可跨事件循环安全使用。
 """
 
 from __future__ import annotations
@@ -26,7 +24,7 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-#: 任务侧引擎：不使用连接池，可在任意事件循环中安全重建连接
+# 任务侧引擎，不使用连接池，可在任意事件循环中安全使用
 task_engine: AsyncEngine = create_async_engine(
     settings.database.url,
     echo=settings.database.echo,
@@ -42,6 +40,6 @@ TaskSessionLocal = async_sessionmaker(
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI 依赖：yield 一个 AsyncSession，请求结束自动关闭。"""
+    """FastAPI 依赖，产出一个异步会话，请求结束自动关闭。"""
     async with AsyncSessionLocal() as session:
         yield session
