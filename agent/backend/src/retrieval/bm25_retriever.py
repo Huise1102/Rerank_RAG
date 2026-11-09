@@ -1,18 +1,16 @@
-"""稀疏 BM25 检索器（bm25_retriever.py）。
+"""稀疏 BM25 检索器。
 
-加载入库侧落盘的 BM25 索引（pickle），把 query 用 jieba 分词后检索，返回 Top-k 文档块及得分。
+加载入库侧落盘的 BM25 索引，把查询用 jieba 分词后检索，返回前若干条文档块及得分。
 
-稠密检索擅长语义泛化，但对专有名词、编号、型号容易失灵，
-BM25 的精确词匹配正好补上这块短板 —— 这是本项目做混合检索的根本原因。
+稠密检索擅长语义泛化，但对专有名词、编号、型号容易失灵，BM25 的精确词匹配正好补上这一点。
 
-``rank_bm25`` 会把负 IDF 截断成小正数，导致高频停用词反而加分，因此需要
-停用词表 + 文档频率上界双过滤（见 ``informative_terms``）。
+rank_bm25 会把负 IDF 截断成小正数，导致高频停用词反而加分，
+因此需要停用词表与文档频率上界双重过滤。
 
-``rank_bm25.BM25Okapi`` 只保存词频、不保存原文，pickle 里同时存 ``documents`` 与 ``tokenized``，
-两者必须一一对应，所以直接复用 ``indexer.load_bm25_index_kb()``（自带长度一致性校验），
-避免自己 pickle.load 漏掉校验而导致结果错位。
+索引只保存词频、不保存原文，原文与分词结果需要一一对应，
+因此复用入库侧的索引加载函数，其自带长度一致性校验。
 
-适配多知识库：从 ``indexes/bm25/kb_{kb_id}.pkl`` 加载。
+按知识库 ID 从对应索引文件加载。
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ logger = get_logger(__name__)
 
 class BM25Retriever(BaseRetriever):
     """
-    基于 rank_bm25 + jieba 的稀疏检索器（按知识库隔离）。
+    基于 rank_bm25 与 jieba 的稀疏检索器，按知识库隔离。
     """
 
     name = "bm25"
@@ -81,10 +79,9 @@ class BM25Retriever(BaseRetriever):
 
     def score_all(self, query: str) -> list[float]:
         """
-        返回查询对所有语料的原始 BM25 分数（消融与错误分析用）。
+        返回查询对所有语料的原始 BM25 分数，用于消融与错误分析。
 
-        这里用 ``informative_terms`` 过滤后的有效查询词打分，与 ``search`` 口径一致，
-        否则得分会包含停用词引入的噪声。
+        用有效查询词打分，与检索口径一致，避免停用词引入噪声。
         """
         if not self._loaded:
             self.warmup()
