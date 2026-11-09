@@ -1,8 +1,7 @@
-"""Agent 智能问答门面（agent_service.py）：复用 chat_service 的会话/消息/SSE 基础。
+"""Agent 智能问答门面，复用会话、消息与事件流的底层能力。
 
-Agent 多轮决策为顺序阻塞，放在 ``run_in_threadpool`` 执行，避免堵住事件循环。
-最终答案由 Agent 直接产出（方案 A），SSE 承载「决策步骤时间线 + 最终答案」：
-meta → agent_step×N → delta → done。
+Agent 多轮决策是顺序阻塞的，放在线程池中执行，避免堵住事件循环。
+最终答案由 Agent 直接产出，事件流依次承载决策步骤时间线与最终答案。
 """
 
 from __future__ import annotations
@@ -165,10 +164,10 @@ def _stream_agent_events(bundle: dict[str, Any], out: "queue.Queue[dict[str, Any
 
 
 async def agent_stream_events(bundle: dict[str, Any]) -> AsyncIterator[str]:
-    """按 SSE 协议实时产出：meta → (agent_step | delta)×N → done。
+    """按事件流协议实时产出，依次为元信息、决策步骤或文本增量、结束事件。
 
-    Agent 循环是同步阻塞的，放独立线程执行；事件经队列转发，正文因此可以边生成边下发。
-    结束时用独立会话落库（请求级会话在流式响应结束前可能已被依赖清理）。
+    Agent 循环是同步阻塞的，放独立线程执行，事件经队列转发，正文可以边生成边下发。
+    结束时用独立会话落库，请求级会话在流式响应结束前可能已被清理。
     """
     conversation_id: int = bundle["conversation_id"]
     yield sse({"type": "meta", "conversation_id": conversation_id, "agent": True})
