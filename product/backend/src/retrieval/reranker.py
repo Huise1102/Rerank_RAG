@@ -1,19 +1,17 @@
-"""交叉编码器精排（reranker.py）。
+"""交叉编码器精排。
 
-用 ``BAAI/bge-reranker-v2-m3`` 对混合检索的候选做精排，返回 Top-k。
+用 BAAI/bge-reranker-v2-m3 对混合检索的候选做精排，返回前若干条。
 
-召回用的双编码器把 query 与文档分别编码，两者从未交互，只能判断"大致相关"；
-交叉编码器把 (query, doc) 拼接后整体送入模型做词级交互，准确得多但计算量巨大，
-无法对全库实时打分，因此必须"先召回（几十条）再精排"。
+召回用的双编码器把查询与文档分别编码，两者从未交互，只能判断大致相关；
+交叉编码器把查询与文档拼接后整体送入模型做词级交互，准确得多但计算量巨大，
+无法对全库实时打分，因此必须先从全库召回几十条再精排。
 
-分数是 logits，可为负、不是 0~1 概率，排序只看相对大小，故默认 ``normalize_score=False``；
-需要展示"相关度百分比"或用 ``score_threshold`` 卡阈值时打开它（sigmoid 映射到 0~1）。
-不同 query 之间的分数不可直接比较，评估时只能用于排序。
+分数是 logits，可为负、不是 0 到 1 的概率，排序只看相对大小，因此默认不做归一化；
+需要展示相关度百分比或按分数阈值过滤时打开它，用 sigmoid 映射到 0 到 1。
+不同查询之间的分数不可直接比较，只用于排序。
 
-``config.rerank.backend``：``cross_encoder``（默认，transformers 直接前向，无需 FlagEmbedding 约 1.5 GB 依赖）、
-``flag_embedding``（FlagReranker，与官方示例逐一对应，保留供答辩时交叉验证）。
-
-（从 demo/src/retrieval/reranker.py 逐字复制，仅把 config 导入改为 src.core.config。）
+后端可选 cross_encoder 与 flag_embedding，前者用 transformers 直接前向，
+后者用 FlagReranker。
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ logger = get_logger(__name__)
 
 
 def resolve_local_reranker(model_name: str) -> Path | None:
-    """在本地 HuggingFace 缓存中查找 reranker 模型（绝不触发网络请求）。"""
+    """在本地 HuggingFace 缓存中查找精排模型，绝不触发网络请求。"""
     path = Path(model_name)
     if path.exists():
         return path
@@ -53,14 +51,14 @@ def _sigmoid(x: float) -> float:
 
 
 class _TransformerCrossEncoder:
-    """用 transformers 直接对 (query, doc) 前向打分，替代 sentence-transformers 的 CrossEncoder。
+    """用 transformers 直接对查询与文档前向打分，替代 sentence transformers 的 CrossEncoder。
 
-    唯一目的是启动速度：``import sentence_transformers`` 会连带导入训练/评估等模块
-    （本机实测约 30 秒），而精排只需要一次前向推理。
-    bge-reranker-v2-m3 是 ``num_labels=1`` 的回归头。sentence-transformers 的 CrossEncoder
-    默认对它套 Sigmoid（返回 0~1 概率）；这里保留**原始 logits**：排序结果完全一致
-    （sigmoid 单调），但 ``score_threshold=0.0`` 能真正过滤无关候选（sigmoid 后恒 > 0，
-    阈值形同虚设）。需要 0~1 分数时由 ``normalize_score=True`` 统一做一次 sigmoid。
+    目的是加快启动：导入 sentence transformers 会连带导入训练评估等模块，
+    而精排只需要一次前向推理。BGE 精排模型是单标签回归头。
+    sentence transformers 的 CrossEncoder 默认对它套 Sigmoid 返回 0 到 1 的概率；
+    这里保留原始 logits，排序结果完全一致，因为 sigmoid 单调，但分数阈值能真正
+    过滤无关候选，因为 sigmoid 后恒大于 0，阈值形同虚设。
+    需要 0 到 1 分数时由归一化开关统一做一次 sigmoid。
     """
 
     def __init__(self, model_ref: str, device: str, max_length: int) -> None:
@@ -81,7 +79,7 @@ class _TransformerCrossEncoder:
         show_progress_bar: bool = False,
         convert_to_numpy: bool = True,
     ):
-        """打分，签名与 ``CrossEncoder.predict`` 兼容，返回 (n,) 的分数数组。"""
+        """打分，方法与 CrossEncoder 的预测接口兼容，返回一维分数数组。"""
         import numpy as np
         import torch
 
@@ -243,10 +241,10 @@ class Reranker:
         }
     def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """
-        对 (query, doc) 对打分，返回原始分数列表。
+        对查询与文档组成的结果对打分，返回原始分数列表。
 
         CrossEncoder 输出 logits（可为负），FlagReranker 默认输出 float；
-        两种后端返回格式不同（ndarray / list / 标量），这里统一成 float 列表。
+        两种后端返回格式不同，可能是数组、列表或标量，这里统一成 float 列表。
         """
         if not pairs:
             return []
@@ -281,16 +279,12 @@ class Reranker:
         top_k: int | None = None,
     ) -> list[RetrievalResult]:
         """
-        精排：对候选重新打分并返回 Top-k。
+        精排，对候选重新打分并返回前若干条。
 
-        先对全部候选打分、再排序、最后截断到 k，排序与 k 无关，因此更小档位的结果是
-        更大档位结果的**前缀**（Top-k 消融据此只跑一遍最大档位再截断）。
-
-        :param query: 用户查询
-        :param candidates: 召回阶段的候选（通常来自 HybridRetriever）
-        :param top_k: 保留条数，默认 ``rerank.top_k``
-        :returns: 新的 RetrievalResult 列表，``rerank_score`` 为精排分数，
-                  ``rank`` 为精排后的名次，``fused_score`` 保留召回阶段分数以便对比
+        先对全部候选打分、再排序、最后截断到目标条数，排序与目标条数无关，
+        因此更小档位的结果是更大档位结果的前缀，消融时只跑一遍最大档位再截断。
+        返回新的结果列表，精排分数写入 score，名次按精排结果重排，
+        融合阶段分数保留以便对比。
         """
         cfg = settings.rerank
         k = top_k or cfg.top_k
@@ -365,8 +359,8 @@ def get_reranker() -> Reranker:
     """
     获取全局精排器单例。
 
-    模型加载要 7~15 秒、占 2 GB 内存，不能在每次请求里重新构造：
-    FastAPI 启动时调一次 ``warmup_reranker()`` 预热，后续请求直接复用。
+    模型加载需要数秒并占用约 2 GB 内存，不能在每次请求里重新构造；
+    启动时预热一次，之后的请求直接复用。
     """
     global _RERANKER
     if _RERANKER is None:
