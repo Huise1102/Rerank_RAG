@@ -1,22 +1,9 @@
-"""结构化日志（logging.py）：用 loguru 统一控制台与文件输出。
+"""结构化日志，用 loguru 统一控制台与文件输出。
 
-设计要点：
-- 通过 :class:`InterceptHandler` 把标准库 ``logging``（demo 复制过来的 retrieval/ingest
-  模块用的是 stdlib logger）统一转发到 loguru，避免两套日志系统各自为政。
-- 每个请求注入 ``request_id``：HTTP 中间件在 :data:`request_id_var` 里设置，loguru 的
-  ``patch`` 在每条日志上补上该字段，便于按请求串联日志。
-- 文件落 ``logs/app.log``，按大小轮转，保留 ``log.backup_count`` 份。
-
-用法::
-
-    from src.core.logging import setup_logging, get_logger, request_id_var
-    setup_logging()
-    logger = get_logger(__name__)
-    logger.info("...")
-
-``get_logger`` 返回的是 :class:`PercentStyleLogger`：项目内沿用 ``%``-风格占位符
-（``logger.info("doc=%s", doc_id)``，与 demo 及 stdlib logging 一致），而 loguru 只认
-``{}``，不做适配的话日志里会原样打印 ``%s``。该包装在调用前用 ``%`` 预格式化。
+标准库 logging 的记录经 InterceptHandler 转发到 loguru。
+每个请求在上下文中写入 request_id，日志记录由 patch 补上该字段。
+文件写入 logs/app.log，按大小轮转并保留指定份数。
+get_logger 返回的日志器支持百分号风格占位符，调用前先做预格式化。
 """
 
 from __future__ import annotations
@@ -31,10 +18,10 @@ from loguru import logger as _loguru_logger
 
 from src.core.config import settings
 
-#: 当前请求的 request_id；未处于请求上下文时为 "-"
+# 当前请求的 request_id，未处于请求上下文时为 "-"
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
-#: 级别名 -> loguru 级别
+# 级别名到 loguru 级别的映射
 _LEVEL_MAP = {
     "DEBUG": "DEBUG",
     "INFO": "INFO",
@@ -113,7 +100,7 @@ def setup_logging(level: str | None = None) -> None:
         enqueue=True,
     )
 
-    # 标准库 logging 一并转发，避免 demo 复制模块的日志丢失
+    # 标准库 logging 一并转发到 loguru
     logging.basicConfig(handlers=[InterceptHandler()], level=lvl, force=True)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "sqlalchemy.engine", "chromadb"):
         std = logging.getLogger(name)
@@ -126,8 +113,8 @@ def setup_logging(level: str | None = None) -> None:
 def clear_log_file() -> dict[str, Any]:
     """清空应用日志文件。
 
-    先移除 loguru 的 sink（关闭文件句柄，避免 Windows 上截断被占用文件失败），
-    再清空内容，最后重新 :func:`setup_logging` 打开。返回清空的路径与字节数。
+    先移除 loguru 的 sink 以关闭文件句柄，再清空内容，最后重新配置日志。
+    返回清空的路径与字节数。
     """
     path = settings.log.dir / settings.log.file_name
     size = path.stat().st_size if path.exists() else 0
@@ -139,12 +126,10 @@ def clear_log_file() -> dict[str, Any]:
 
 
 class PercentStyleLogger:
-    """把 ``%``-风格调用适配到 loguru。
+    """把百分号风格调用适配到 loguru。
 
-    ``logger.info("doc=%s kb=%s", doc_id, kb_id)`` 与 stdlib logging 的写法一致，但 loguru
-    只按 ``{}`` 格式化，传进来的参数会被忽略、``%s`` 原样输出。这里先尝试 ``%`` 预格式化：
-    成功则把结果作为纯文本交给 loguru（``{}`` 不再参与格式化）；失败说明不是 ``%``-风格，
-    原样交给 loguru 按 ``{}`` 处理，两种写法都能正常工作。
+    loguru 按花括号格式化，直接传入的参数会被忽略。这里先尝试用百分号预格式化，
+    成功则把结果作为纯文本交给 loguru，失败说明不是百分号风格，原样交给 loguru 处理。
     """
 
     __slots__ = ("_logger",)
@@ -204,7 +189,7 @@ class PercentStyleLogger:
 
 
 def get_logger(name: str | None = None) -> PercentStyleLogger:
-    """获取绑定了模块名的日志器（支持 ``%`` 与 ``{}`` 两种占位符风格）。"""
+    """获取绑定了模块名的日志器，支持百分号与花括号两种占位符风格。"""
     if not _configured:
         setup_logging()
     return PercentStyleLogger(_loguru_logger.bind(module=name or "-"))
