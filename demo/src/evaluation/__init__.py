@@ -1,19 +1,6 @@
-"""阶段 5 —— 评估模块。
+"""评估模块。
 
-testset.py 测试集加载与校验（只做加载校验，标注由人工完成），
-metrics.py 检索指标，retrieval_eval.py 多策略检索对比，
-judge.py LLM-as-Judge 打分，generation_eval.py 生成质量评估，
-ablation.py 消融，visualize.py 对比图，cli.py 命令行入口。
-
-快速开始::
-
-    python -m src.evaluation.cli candidates             # 生成标注候选
-    # （人工标注 data/testset.json）
-    python -m src.evaluation.cli check                  # 校验
-    python -m src.evaluation.cli retrieval              # 检索对比（不耗 token）
-    python -m src.evaluation.cli generation --limit 3   # 生成质量（耗 token）
-    python -m src.evaluation.cli ablation               # 消融
-    python -m src.evaluation.cli all                    # 一键：检索+消融+出图
+testset.py 加载与校验测试集，metrics.py 计算检索指标，retrieval_eval.py 对比多种检索策略，judge.py 做大模型打分，generation_eval.py 评估生成质量，ablation.py 做消融实验，visualize.py 出对比图，cli.py 提供命令行入口。
 """
 
 from __future__ import annotations
@@ -28,7 +15,7 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    """惰性暴露常用对象，避免导入包时就加载 pandas / matplotlib 等重依赖。"""
+    """按需暴露常用对象，避免导入包时加载 pandas 与 matplotlib 等重依赖。"""
     if name in __all__:
         from src.evaluation import testset as _t
 
