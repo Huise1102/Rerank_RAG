@@ -1,20 +1,12 @@
-"""阶段 1 —— 索引构建（indexer.py）：为阶段 2 的混合检索构建两套索引（按知识库隔离）。
+"""索引构建，为混合检索构建向量与 BM25 两套索引，按知识库隔离。
 
-    稠密  Chroma + bge-large-zh-v1.5（normalize_embeddings=True）-> indexes/chroma/
-          集合名 ``kb_<kb_id>_<strategy>``
-    稀疏  BM25Okapi（jieba 分词）-> indexes/bm25/kb_<kb_id>.pkl
+稠密索引使用 Chroma 与 bge-large-zh-v1.5，集合名按知识库与策略生成。
+稀疏索引使用 BM25Okapi 与 jieba 分词，落盘为 pickle 文件。
 
-``BM25Okapi`` 本身只存词频统计、不存原文，所以 pickle 里必须同时存 documents（原文块，
-顺序与语料**严格一致**）、tokenized（打分依赖）与 meta（策略/模型/构建时间，便于校验
-索引与配置是否匹配）。``documents[i]`` 必须对应 ``corpus[i]``，否则检索结果张冠李戴 ——
-所有写入路径都通过同一个 ``corpus`` 构造来保证。
+BM25Okapi 只存词频统计、不存原文，pickle 中同时存原文块、分词结果与元信息。
+原文块与分词结果顺序严格一致，所有写入路径都通过同一个语料构造保证对应关系。
 
-多知识库隔离：集合名带 ``kb_<kb_id>_`` 前缀，BM25 文件落 ``kb_<kb_id>.pkl``，
-分块文件落 ``data/processed/kb_<kb_id>/``，与 demo/ 的索引、数据零耦合。
-
-主流程::
-
-    build_kb_index(kb_id=1, strategy="recursive")     # 一步构建双索引
+多知识库隔离：集合名带知识库前缀，BM25 文件与分块文件也按知识库分开存放。
 """
 
 from __future__ import annotations
@@ -31,15 +23,13 @@ from src.core.config import configure_chroma_telemetry, settings
 from src.core.model_lock import MODEL_LOAD_LOCK
 from src.ingest.splitter import Chunk, ChunkResult, chunks_file, load_chunks
 
-#: BM25 pickle 的格式版本
+# BM25 pickle 的格式版本
 BM25_FORMAT_VERSION = 1
 
-#: 中文检索停用词表（虚词、代词、疑问词、通用动词）。
-#:
-#: 不能只靠文档频率（df）过滤：BM25 的 IDF 是**语料相关**的，功能词在本语料里若不常见，
-#: IDF 反而很高。实测查询「zzzzz不存在的词zzzzz」经 df 过滤后仍保留「不」「存在」
-#: （分别出现在 103/15 篇文档中），Top-1 拿到 4.66 分并返回毫不相关的结果。
-#: 因此必须**显式列出功能词**，与 df 过滤配合使用（两者是并集关系）。
+# 中文检索停用词表，收录虚词、代词、疑问词与通用动词。
+#
+# 不能只靠文档频率过滤：BM25 的 IDF 与语料相关，功能词在本语料里若不常见，IDF 反而很高。
+# 因此显式列出功能词，与文档频率过滤配合使用，两者取并集。
 _STOPWORDS: frozenset[str] = frozenset(
     """
     的 地 得 了 着 过 是 有 在 和 与 及 或 而 但 却 则 就 都 也 还 又 很 太 更 最 才 只
@@ -57,17 +47,17 @@ _STOPWORDS: frozenset[str] = frozenset(
 def collection_name_for_kb(kb_id: int, strategy: str) -> str:
     """每个知识库、每种分块策略使用独立的 Chroma 集合，避免互相覆盖。
 
-    命名规则：``kb_<kb_id>_<strategy>``。Chroma 集合名限制：3-63 字符，只允许
-    字母数字与 ``_``、``-``，且首尾为字母数字，故做一次规整。
+    集合名由知识库编号与策略拼成。Chroma 集合名限制为 3 到 63 字符，只允许
+    字母、数字、下划线与连字符，且首尾为字母数字，因此做一次规整。
     """
     name = f"kb_{int(kb_id)}_{strategy}".replace(".", "_").replace(" ", "_")
     return name[:63].strip("_-")
 
 
 def bm25_path_for_kb(kb_id: int, strategy: str | None = None) -> Path:
-    """BM25 索引文件路径：indexes/bm25/kb_<kb_id>.pkl
+    """BM25 索引文件路径，按知识库编号命名。
 
-    每个知识库固定使用一种分块策略，故文件名只带 kb_id（``strategy`` 仅为接口兼容保留）。
+    每个知识库固定使用一种分块策略，文件名只带知识库编号，策略参数仅为接口兼容保留。
     """
     return settings.paths.bm25_dir / f"kb_{int(kb_id)}.pkl"
 
@@ -79,9 +69,9 @@ def tokenize(
 ) -> list[str]:
     """分词，供 BM25 使用。
 
-    - ``jieba`` 中文分词（默认）；BM25 是词袋模型，中文不分词等于按字匹配，效果显著变差
-    - ``char`` 按字符切分，无需词典，作为对照基线；``whitespace`` 按空白切分，适合英文
-    - 过滤纯空白与纯标点 token，避免噪声进入词频统计
+    jieba 为中文分词，也是默认方式；BM25 是词袋模型，中文不分词等于按字匹配，效果显著变差。
+    char 按字符切分，无需词典，作为对照基线；whitespace 按空白切分，适合英文。
+    过滤纯空白与纯标点词，避免噪声进入词频统计。
     """
     mode = (method or settings.retrieval.bm25_tokenizer).strip().lower()
     if mode == "jieba":
@@ -113,9 +103,9 @@ def tokenize_corpus(texts: Sequence[str], method: str | None = None, show_progre
 
 
 def resolve_local_snapshot(model_name: str) -> Path | None:
-    """查询模型是否已在本地 HuggingFace 缓存中，返回快照目录。
+    """查询模型是否已在本地缓存中，返回快照目录。
 
-    用 ``local_files_only=True``：**绝不触发网络请求**；若改成联网查询，无外网环境下会长时间挂起。
+    只做本地查询，绝不触发网络请求；联网查询在无外网环境下会长时间挂起。
     """
     path = Path(model_name)
     if path.exists():
@@ -131,10 +121,9 @@ def resolve_local_snapshot(model_name: str) -> Path | None:
 class _TransformerEmbedder:
     """直接用 transformers 前向编码，替代 SentenceTransformer 的模型包装。
 
-    唯一目的是启动速度：``import sentence_transformers`` 会连带导入 CrossEncoder 与
-    训练/评估模块（本机实测约 30 秒），而检索只需要一次前向推理。
-    语义与 SentenceTransformer 完全一致：bge-large-zh-v1.5 的 1_Pooling 配置是
-    CLS 池化（取 last_hidden_state[:, 0]），再按需 L2 归一化。
+    目的是加快启动：导入 sentence transformers 会连带导入 CrossEncoder 与训练评估模块，
+    而检索只需要一次前向推理。语义与 SentenceTransformer 一致：BGE 中文大模型
+    使用 CLS 池化取首向量，再按需做 L2 归一化。
     """
 
     def __init__(self, model_ref: str, device: str, max_seq_length: int) -> None:
@@ -154,7 +143,7 @@ class _TransformerEmbedder:
         convert_to_numpy: bool = True,
         show_progress_bar: bool = False,
     ):
-        """批量编码为向量，签名与 ``SentenceTransformer.encode`` 兼容。"""
+        """批量编码为向量，方法与 SentenceTransformer 的编码接口兼容。"""
         import numpy as np
         import torch
 
@@ -192,15 +181,12 @@ class _TransformerEmbedder:
 
 
 def load_embedder(device: str | None = None, *, offline: bool | None = None):
-    """加载 bge-large-zh-v1.5（transformers 前向，不导入 sentence-transformers）。
+    """加载 BGE 中文嵌入模型，用 transformers 前向，不导入 sentence transformers。
 
-    1. **离线优先**：加载时会访问 HuggingFace 校验缓存（即使文件已下全），
-       国内网络下会 connect timeout 并触发 5 轮指数退避，表现为程序卡住几十分钟；
-       因此默认走 ``HF_HUB_OFFLINE``，只要本地有快照就完全不联网。
-    2. **加载前预检**：先用 ``local_files_only=True`` 确认本地有模型，没有则立刻抛出可操作的
-       错误提示，而不是让程序卡在重试里。
-
-    文档侧**不加**检索指令前缀，只有查询侧加（阶段 2 处理），这是 bge 官方推荐用法。
+    离线优先：加载时会访问 HuggingFace 校验缓存，国内网络下会连接超时并触发多轮退避，
+    因此默认走离线模式，只要本地有快照就完全不联网。
+    加载前先做本地预检，没有模型时立刻抛出可操作的错误提示，而不是卡在重试里。
+    文档侧不加检索指令前缀，只有查询侧加，这是 BGE 官方推荐用法。
     """
     import os
 
@@ -209,7 +195,7 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
     cfg = settings.embedding
     use_offline = cfg.offline if offline is None else offline
 
-    # CPU 推理时显式用满物理核心：torch 默认只取一部分（实测 24 核机器上仅用 16 线程）
+    # CPU 推理时显式用满物理核心，torch 默认只使用部分核心
     if not torch.cuda.is_available():
         torch.set_num_threads(os.cpu_count() or torch.get_num_threads())
 
@@ -242,7 +228,7 @@ def load_embedder(device: str | None = None, *, offline: bool | None = None):
     else:
         target = "cpu"
 
-    # 与精排模型等其他大模型的加载互斥，避免并发 from_pretrained 拿到 meta 参数
+    # 与其他大模型的加载互斥，避免并发加载拿到错误的设备参数
     with MODEL_LOAD_LOCK:
         model = _TransformerEmbedder(model_ref, target, cfg.max_length)
     return model, target
@@ -258,7 +244,7 @@ def embed_texts(
 ):
     """生成归一化向量。
 
-    ``normalize_embeddings=True`` 是必须的：Chroma 用余弦距离，只有向量已归一化时
+    向量必须归一化：Chroma 使用余弦距离，只有向量已归一化时，
     余弦相似度才等价于点积，检索结果才正确。
     """
     bs = batch_size or settings.embedding.batch_size
@@ -275,7 +261,7 @@ def embed_texts(
 def flatten_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """把元数据规整为 Chroma 可接受的类型。
 
-    Chroma 的 metadata 只允许 str / int / float / bool（不允许 None、列表、嵌套字典），
+    Chroma 的元数据只允许字符串、整数、浮点与布尔值，不允许空值、列表与嵌套字典，
     因此在写入前显式转换，而不是等写入时报错。
     """
     out: dict[str, Any] = {}
@@ -295,7 +281,7 @@ def flatten_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_chroma_client():
-    """创建/复用本地持久化 Chroma 客户端（indexes/chroma/）。"""
+    """创建或复用本地持久化的 Chroma 客户端。"""
     import chromadb
     from chromadb.config import Settings as ChromaSettings
 
@@ -307,17 +293,13 @@ def get_chroma_client():
 
 
 def check_embedding_health(vectors: Any, *, sample: int = 50) -> dict[str, Any]:
-    """写入前校验向量质量，拦截"退化向量"：任一指标不达标即抛 ValueError。
+    """写入前校验向量质量，拦截退化向量，任一指标不达标即抛出异常。
 
-    三项体检：① 非零维度比例（真实 BGE 接近 100%，稀疏向量说明用错了 embedder）；
-    ② 平均模长应接近 1（配置要求 normalize_embeddings=True）；③ 两两余弦最大值。
-
-    假 embedder（如测试用的字符哈希）产生的向量库内自洽（自查相似度 1.0），但与真实模型
-    编码的查询完全正交（余弦≈0），只表现为"向量检索时好时坏"、表面看不出错误，故必须拦截。
-
-    :param vectors: 嵌入矩阵（numpy 数组或列表）
-    :param sample: 抽样条数（全量检查太慢，抽样已足够发现问题）
-    :returns: 体检指标
+    三项检查：非零维度比例，真实 BGE 接近 100%，稀疏向量说明用错了嵌入器；
+    平均模长应接近 1；两两余弦最大值。
+    假嵌入器产生的向量库内自洽，但与真实模型编码的查询完全正交，
+    只表现为向量检索时好时坏，表面看不出错误，因此必须拦截。
+    返回体检指标。
     """
     import numpy as np
 
@@ -386,12 +368,12 @@ def build_vector_index_for_kb(
     show_progress: bool = True,
     skip_health_check: bool = False,
 ) -> dict[str, Any]:
-    """构建知识库的 Chroma 向量索引（集合名 ``kb_<kb_id>_<strategy>``）。
+    """构建知识库的 Chroma 向量索引，集合名按知识库与策略生成。
 
-    :param rebuild: True 表示先删除同名集合再重建（保证幂等、无残留）
-    :param skip_health_check: **仅供测试使用**。跳过嵌入质量校验；生产路径必须校验，
-        否则假 embedder 的退化向量会静默污染向量库（症状是"向量检索时好时坏"）
-    :returns: 构建统计信息
+    重建开关为真时先删除同名集合再重建，保证幂等且无残留。
+    跳过体检开关仅供测试使用，生产路径必须校验，
+    否则退化向量会静默污染向量库。
+    返回构建统计信息。
     """
     client = get_chroma_client()
     name = collection_name_for_kb(kb_id, strategy)
@@ -461,7 +443,7 @@ def build_vector_index_for_kb(
 class BM25Index:
     """BM25 索引的内存表示，同时是 pickle 的落盘结构。
 
-    documents 与 tokenized 顺序一一对应是硬约束，切勿单独修改其中一个。
+    原文块与分词结果顺序一一对应，不可单独修改其中一个。
     """
 
     documents: list[dict[str, Any]] = field(default_factory=list)
@@ -498,18 +480,13 @@ class BM25Index:
         return self._df
 
     def informative_terms(self, query: str) -> list[str]:
-        """从查询中筛出**有区分度**的词，剔除停用词与未登录词。
+        """从查询中筛出有区分度的词，剔除停用词与未登录词。
 
-        ``rank_bm25.BM25Okapi`` 会把负 IDF 截断为一个很小的正数（epsilon，默认约 0.25），
-        于是「的」「不」这类在 90% 文档中都出现的词**反而给每篇文档加分**；实测在 290 篇语料上
-        用完全不含语料词的查询（``zzzzz不存在的词zzzzz``）检索，275 篇拿到正分且 Top-1 毫不相关，
-        会直接污染混合检索的融合结果。
-
-        过滤规则（两道并集，缺一不可）：显式停用词表（详见 ``_STOPWORDS``，即使 df 低、
-        IDF 高也不参与匹配）；文档频率上界 ``df / N > bm25_max_df_ratio``；另外
-        ``df < bm25_min_term_df`` 的查询词不在语料中，对检索无贡献，一并剔除。
-
-        附带好处：查询词全被剔除时可直接返回空结果，而不是把噪声文档当"命中"喂给下游。
+        BM25Okapi 会把负 IDF 截断为很小的正数，于是高频功能词反而给每篇文档加分，
+        会用无关查询命中大量文档，污染混合检索的融合结果。
+        过滤规则取两道并集：显式停用词表，即使文档频率低、IDF 高也不参与匹配；
+        文档频率上界，以及文档频率低于下限的查询词一并剔除。
+        查询词全被剔除时直接返回空结果，而不是把噪声文档当作命中喂给下游。
         """
         cfg = settings.retrieval
         tokens = tokenize(query)
@@ -532,9 +509,9 @@ class BM25Index:
         return kept
 
     def search(self, query: str, top_k: int = 20) -> list[tuple[int, float]]:
-        """返回 [(语料下标, 分数)]，按分数降序，只保留正分。
+        """返回语料下标与分数组成的列表，按分数降序，只保留正分。
 
-        先用 ``informative_terms`` 剔除停用词/未登录词；若查询词全被剔除，说明该查询
+        先用区分度过滤剔除停用词与未登录词；若查询词全被剔除，说明该查询
         在本语料中没有有效匹配依据，直接返回空列表。
         """
         import numpy as np
@@ -557,7 +534,7 @@ class BM25Index:
 
 
 def _make_bm25_index(chunks: Sequence[Chunk], strategy: str, *, show_progress: bool = True) -> BM25Index:
-    """把分块列表构造成 ``BM25Index``（不落盘）。"""
+    """把分块列表构造成 BM25 索引对象，不落盘。"""
     texts = [c.text for c in chunks]
     tokenized = tokenize_corpus(texts, show_progress=show_progress)
     return BM25Index(
@@ -577,7 +554,7 @@ def _make_bm25_index(chunks: Sequence[Chunk], strategy: str, *, show_progress: b
 
 
 def _save_bm25_index(index: BM25Index, path: Path) -> Path:
-    """pickle 落盘（先写临时文件再替换）；写前清掉惰性缓存对象，避免版本耦合。"""
+    """把索引写入 pickle，先写中间文件再替换；写前清掉惰性缓存对象，避免版本耦合。"""
     index._bm25 = None
     index._df = None
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -595,7 +572,7 @@ def build_bm25_index_for_kb(
     *,
     show_progress: bool = True,
 ) -> tuple[BM25Index, Path]:
-    """构建知识库的 BM25 索引并 pickle 落盘到 ``indexes/bm25/kb_<kb_id>.pkl``。"""
+    """构建知识库的 BM25 索引并写入 pickle 文件。"""
     index = _make_bm25_index(chunks, strategy, show_progress=show_progress)
     target = _save_bm25_index(index, bm25_path_for_kb(kb_id, strategy))
     return index, target
@@ -652,12 +629,12 @@ def build_kb_index(
     progress: Callable[[str], None] | None = None,
     skip_health_check: bool = False,
 ) -> IndexReport:
-    """构建指定知识库、指定分块策略下的双索引（向量 + BM25），检索阶段的入口。
+    """构建指定知识库与分块策略下的双索引，向量与 BM25 一并完成。
 
-    :param kb_id: 知识库 id；:param strategy: "fixed" | "recursive"，默认取 config.chunk.default_strategy
-    :param chunks: 直接传入分块列表（入库链路用）；不传则从 ``chunks_<strategy>.json`` 读取
-    :param rebuild: 是否先清空再重建（True 保证幂等）
-    :param embedder: 复用已加载模型，避免重复加载；:returns: IndexReport
+    strategy 可取 fixed 或 recursive，默认取配置中的默认策略。
+    chunks 可直接传入分块列表，入库链路使用；不传则从分块文件读取。
+    rebuild 控制是否先清空再重建；embedder 可复用已加载模型，避免重复加载。
+    返回索引构建报告。
     """
     name = (strategy or settings.chunk.default_strategy).strip().lower()
     if name not in ("fixed", "recursive"):
@@ -723,10 +700,10 @@ def append_chunks_to_index(
     show_progress: bool = True,
     skip_health_check: bool = False,
 ) -> dict[str, Any]:
-    """增量入库：把新增文档块追加到已有索引，不重建。
+    """增量入库，把新增文档块追加到已有索引，不重建。
 
-    向量侧用 ``upsert``（同 id 幂等覆盖）；BM25 侧读回已有 pickle 后追加
-    documents/tokenized 再落盘。新增知识与旧知识在检索时同等参与。
+    向量侧用覆盖写入，同一编号幂等；BM25 侧读回已有索引后追加原文与分词再落盘。
+    新增知识与旧知识在检索时同等参与。
     """
     name = (strategy or settings.chunk.default_strategy).strip().lower()
     if name not in ("fixed", "recursive"):
@@ -798,7 +775,7 @@ def append_chunks_to_index(
 
 
 def delete_kb_index(kb_id: int, strategy: str | None = None) -> dict[str, Any]:
-    """删除知识库的全部索引：所有 ``kb_<kb_id>_*`` 集合与 ``kb_<kb_id>.pkl``。"""
+    """删除知识库的全部索引，包括该知识库的全部集合与 BM25 文件。"""
     deleted: dict[str, Any] = {"kb_id": int(kb_id), "collections": [], "bm25": False}
     prefix = f"kb_{int(kb_id)}_"
 
