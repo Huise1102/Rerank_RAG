@@ -1,4 +1,4 @@
-// 轻量 toast：替代 Element 的 ElMessage，无框架依赖。
+// 轻量 toast 提示，无框架依赖
 let counter = 0
 
 export function toast(type, text) {
