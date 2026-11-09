@@ -1,9 +1,4 @@
-"""知识库启用开关（is_active）。
-
-Revision ID: 0002
-Revises: 0001
-Create Date: 2026-10-14
-"""
+"""为知识库增加启用开关字段。"""
 
 from __future__ import annotations
 
@@ -17,7 +12,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 启用开关：默认启用，保证存量知识库升级后仍可用
+    # 启用开关，默认启用
     op.add_column(
         "knowledge_bases",
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
