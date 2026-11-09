@@ -269,11 +269,11 @@ const previewLoading = ref(false)
 
 const hasFailed = computed(() => documents.value.some((d) => d.status === 'failed'))
 
-//: 原始文档直链（走 Vite 代理 /api → 后端）
+// 原始文档直链，经 Vite 代理访问后端接口
 const previewUrl = computed(() =>
   previewDoc.value ? documentFileUrl(previewDoc.value.id) : ''
 )
-//: pdf 交给浏览器内置阅读器；md / txt 取回文本自行渲染；docx 无法在线预览
+// pdf 交给浏览器内置阅读器，md 与 txt 取回文本自行渲染，其他格式不支持在线预览
 const previewKind = computed(() => {
   const type = previewDoc.value?.file_type
   if (type === 'pdf') return 'pdf'
@@ -542,7 +542,7 @@ function formatTime(value) {
   return String(value).replace('T', ' ').replace(/\.\d+$/, '').slice(0, 19)
 }
 
-// 直接访问/刷新该页时也要拉取列表，避免依赖从其他页面带入的 store 数据
+// 进入页面时拉取知识库列表
 onMounted(() => {
   kbStore.fetchKbs()
 })
