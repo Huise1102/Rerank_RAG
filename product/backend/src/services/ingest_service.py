@@ -1,17 +1,14 @@
-"""入库编排（ingest_service.py）：把 loader / splitter / indexer 串成一条入库链路。
+"""入库编排，把加载、分块与索引串成一条入库链路。
 
-被 Celery 任务（单文档上传）与 seed_data 脚本（预置法律领域知识库）共用，
-避免两处各写一遍解析->分块->索引的编排而产生行为差异。
+被 Celery 任务与种子数据脚本共用，避免两处各写一遍解析、分块、索引的编排而产生行为差异。
 
-保留 demo 的两道防线：
-1. 分块文件「一次性写入」——同一批文件全部解析分块后合并、再统一落盘，
-   不在逐文件循环里写（否则后一个文件覆盖前一个）。
-2. 入库结束做一致性校验：分块文件块数 == 向量索引条数 == BM25 索引条数，
-   不一致直接报错中止，避免"索引与数据对不上"的静默错误。
+两道防线：分块文件一次性写入，同一批文件全部解析分块后合并、再统一落盘，
+不在逐文件循环里写，否则后一个文件覆盖前一个；入库结束做一致性校验，
+分块文件块数、向量索引条数与 BM25 索引条数必须相等，不一致直接报错中止，
+避免索引与数据对不上的静默错误。
 
-增量 vs 重建：
-- 知识库已有索引 → 新文档块 ``append`` 到索引（向量 upsert / BM25 追加），不重建
-- 知识库尚无索引 → 用全部块 ``build`` 一次
+增量与重建：知识库已有索引时新文档块追加到索引，不重建；
+尚无索引时用全部块构建一次。
 """
 
 from __future__ import annotations
@@ -44,10 +41,11 @@ from src.ingest.splitter import (
 logger = get_logger(__name__)
 
 
-#: 索引变更互斥锁。上传的增量入库、删除文档后的整体重建、删除知识库的清理现在都在
-#: 后台线程里执行，可能彼此并发（如一次性拖入多个文件、或边删边传）；不加锁会出现
-#: "一方在读写分块文件、另一方在删/建 Chroma 集合并重嵌入"的交叉，最终导致分块文件
-#: 块数与向量/BM25 条数不一致。锁的作用只是把这几条变更串行化，不改变任何入库参数。
+# 索引变更互斥锁。上传的增量入库、删除文档后的整体重建与删除知识库的清理
+# 都在后台线程里执行，可能彼此并发，例如一次拖入多个文件或边删边传；
+# 不加锁会出现一方读写分块文件、另一方删建集合并重嵌入的交叉，
+# 最终导致分块文件块数与向量、BM25 条数不一致。
+# 锁只把这几条变更串行化，不改变任何入库参数。
 _INDEX_LOCK = threading.Lock()
 
 
@@ -63,7 +61,7 @@ def _index_guard(fn):
 
 
 def split_file(path: str | Path, strategy: str) -> ChunkResult:
-    """解析 + 分块单个文件，返回该文件的 ``ChunkResult``。"""
+    """解析并分块单个文件，返回该文件的分块结果。"""
     pages = load_document(path)
     if not pages:
         return ChunkResult(chunks=[], strategy=strategy, params={})
@@ -88,16 +86,16 @@ def _verify_consistency(kb_id: int, strategy: str, expected: int) -> dict[str, A
 
 @_index_guard
 def ingest_document(kb_id: int, file_path: str | Path, strategy: str) -> dict[str, Any]:
-    """把单个用户上传文档解析入库（增量）。
+    """把单个用户上传文档解析入库，采用增量方式。
 
-    :returns: ``{filename, added_chunks, total_chunks, vector_count, bm25_count}``
+    返回文件名、新增块数、总块数、向量条数与 BM25 条数。
     """
     name = strategy.strip().lower()
     new = split_file(file_path, name)
     if new.total == 0:
         raise ValueError(f"文档未解析出任何文本内容：{file_path}")
 
-    # 读取已有分块，合并后一次性落盘（防线 1）
+    # 读取已有分块，合并后一次性落盘
     if chunks_file(kb_id, name).exists():
         existing = load_chunks(kb_id, name)
         merged = merge_results([existing, new])
@@ -137,9 +135,9 @@ def ingest_paths(
     *,
     show_progress: bool = False,
 ) -> dict[str, Any]:
-    """批量入库（种子数据用）：全部解析分块后一次性写入并构建索引。
+    """批量入库，供种子数据使用：全部解析分块后一次性写入并构建索引。
 
-    :returns: ``{total_chunks, per_file: {filename: chunks}, vector_count, bm25_count}``
+    返回总块数、每个文件的块数、向量条数、BM25 条数与索引报告。
     """
     name = strategy.strip().lower()
     results: list[ChunkResult] = []
