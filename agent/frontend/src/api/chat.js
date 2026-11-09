@@ -16,7 +16,7 @@ export function clearConversations(kbId) {
   return request.delete('/conversations', { params: { kb_id: kbId } })
 }
 
-// 通用 SSE 解析器：逐行读 data:，回调 onEvent(type, payload)
+// 通用 SSE 解析器：逐行读取 data 字段，并回调 onEvent(type, payload)
 export async function parseSSE(response, onEvent) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
