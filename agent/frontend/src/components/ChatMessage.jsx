@@ -23,11 +23,11 @@ function expandIndices(group) {
   return out
 }
 
-// 把 [1] / [2,3] / [1-3] 形式的证据引用转成可点击的 .cite-ref。
-// maxIndex 为本次累积证据条数：整组编号都超出范围时（通常是法条条号，如 [38]）按普通文字显示。
-// validIndices 为「引用来源」里真实存在的编号；范围内但缺卡片时标成越界引用。
+// 把 [1]、[2,3]、[1-3] 形式的证据编号转成可点击的引用标记。
+// maxIndex 为可用证据条数：整组编号都超出范围时按普通文字显示，法条条号即属此列。
+// validIndices 为引用列表里真实存在的编号；编号在范围内但缺少卡片时标成越界引用。
 function decorateCitations(html, validIndices, maxIndex) {
-  // 证据条数未知（流式中 / 本轮未检索）时不解释方括号数字
+  // 证据条数未知时（流式输出中或本轮未检索）不解析方括号数字
   if (!maxIndex) return html
   return html.replace(
     /\[(\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)\]/g,
