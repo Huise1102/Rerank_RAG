@@ -1,13 +1,12 @@
-"""文档解析入库 Celery 任务（document_tasks.py）。
+"""文档解析入库 Celery 任务。
 
-任务参数只用基本类型（doc_id），不传 ORM 对象。任务体是同步函数：内部用
-``asyncio.run`` 跑一段 async 逻辑（读写数据库），中间的解析/分块/索引是阻塞计算，
-在 worker 进程里顺序执行不会阻塞任何事件循环。
+任务参数只用基本类型，不传 ORM 对象。任务体是同步函数：内部用 asyncio.run
+跑一段异步逻辑，中间的解析、分块与索引是阻塞计算，在 worker 进程里顺序执行不会阻塞任何事件循环。
 
-``asyncio.run`` 每次都新建事件循环，因此数据库会话必须走 ``TaskSessionLocal``
-（NullPool 引擎，不跨循环复用连接），不能复用请求路径的连接池。
+asyncio.run 每次都新建事件循环，因此数据库会话必须使用任务侧会话工厂，
+即 NullPool 引擎，不跨循环复用连接，不能复用请求路径的连接池。
 
-状态流转：pending -> parsing -> indexing -> completed / failed。
+状态流转为 pending、parsing、indexing，最后到达 completed 或 failed。
 """
 
 from __future__ import annotations
