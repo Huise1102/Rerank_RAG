@@ -20,6 +20,7 @@ celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
+    task_default_queue="rag_agent",
     timezone="Asia/Shanghai",
     enable_utc=False,
     task_track_started=True,
