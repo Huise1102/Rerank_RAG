@@ -6,9 +6,11 @@
   "scripts": {
     "dev:admin": "cross-env VITE_APP_MODE=admin vite --port 5174",
     "dev:user": "cross-env VITE_APP_MODE=user vite --port 5175",
+    "dev:mobile": "cross-env VITE_APP_MODE=mobile vite --port 5176",
     "build:admin": "cross-env VITE_APP_MODE=admin vite build --outDir dist/admin",
     "build:user": "cross-env VITE_APP_MODE=user vite build --outDir dist/user",
-    "build": "npm run build:admin && npm run build:user"
+    "build:mobile": "cross-env VITE_APP_MODE=mobile vite build --outDir dist/mobile",
+    "build": "npm run build:admin && npm run build:user && npm run build:mobile"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.1",
@@ -17,6 +19,7 @@
     "element-plus": "2.8.8",
     "marked": "^15.0.4",
     "pinia": "2.2.6",
+    "qrcode": "^1.5.4",
     "vue": "3.5.13",
     "vue-router": "4.4.5"
   },
