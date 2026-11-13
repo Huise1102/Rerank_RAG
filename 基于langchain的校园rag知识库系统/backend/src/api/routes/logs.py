@@ -14,7 +14,7 @@ from src.db.session import get_db
 router = APIRouter(prefix="/admin/logs", tags=["日志"])
 
 LOG_PATTERN = re.compile(
-    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\w+)\s+([\w\.]+)\s+(.*)$"
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\w+)\s+([\w\.]+)\s+(?:\[([\w\-]*)\]\s+)?(.*)$"
 )
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
@@ -34,7 +34,8 @@ def _read_system_log(path, limit: int) -> list[dict]:
                     "time": match.group(1),
                     "level": match.group(2),
                     "logger": match.group(3),
-                    "message": match.group(4),
+                    "request_id": match.group(4) or "",
+                    "message": match.group(5),
                 }
             )
         elif entries and text.strip():
