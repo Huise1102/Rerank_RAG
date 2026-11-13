@@ -13,9 +13,29 @@ from src.schemas.chat import (
     MessageOut,
     RetrievalDetailOut,
 )
-from src.services.chat_service import prepare_chat, stream_answer
+from src.services.agent_service import stream_deep_answer
+from src.services.agent_settings import deep_allowed, get_agent_settings
+from src.services.cache_service import get_cache_settings
+from src.services.chat_service import prepare_chat, prepare_deep_chat, stream_answer
 
 router = APIRouter(tags=["问答"])
+
+
+@router.get("/chat/capabilities")
+async def chat_capabilities(
+    kb_id: int | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    agent_settings = await get_agent_settings(db)
+    cache_settings = await get_cache_settings(db)
+    deep_enabled = kb_id is not None and deep_allowed(agent_settings, user, kb_id)
+    return {
+        "deep_enabled": deep_enabled,
+        "cache_enabled": bool(cache_settings.get("enabled")),
+        "max_rounds": int(agent_settings.get("max_rounds", 3)),
+        "role": user.role,
+    }
 
 
 @router.post("/chat/stream")
@@ -26,9 +46,14 @@ async def chat_stream(
 ):
     if payload.app_key == "admin" and user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="无权限访问")
-    context = await prepare_chat(db, user, payload)
+    if payload.mode == "deep":
+        context = await prepare_deep_chat(db, user, payload)
+        generator = stream_deep_answer(context, user)
+    else:
+        context = await prepare_chat(db, user, payload)
+        generator = stream_answer(context, user)
     return StreamingResponse(
-        stream_answer(context, user),
+        generator,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
