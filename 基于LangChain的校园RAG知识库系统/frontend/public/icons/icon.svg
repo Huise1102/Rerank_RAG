@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="校园知识库">
+  <rect width="512" height="512" rx="96" fill="#1f3b73" />
+  <path d="M128 144h196c30 0 54 24 54 54v170c0 18-14 32-32 32H166c-21 0-38-17-38-38V144z" fill="#ffffff" />
+  <path d="M176 196h172v24H176zM176 252h172v24H176zM176 308h112v24H176z" fill="#2f6fb3" />
+  <circle cx="368" cy="352" r="76" fill="#4c9be8" />
+  <path d="M336 330h64v10h-64zM336 352h64v10h-64zM336 374h42v10h-42z" fill="#ffffff" />
+</svg>
