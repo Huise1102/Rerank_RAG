@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("init", "backend", "admin", "user")]
+    [ValidateSet("init", "backend", "admin", "user", "mobile")]
     [string]$Target = "backend"
 )
 
@@ -32,6 +32,11 @@ switch ($Target) {
     "user" {
         Push-Location $FrontendRoot
         npm run dev:user
+        Pop-Location
+    }
+    "mobile" {
+        Push-Location $FrontendRoot
+        npm run dev:mobile
         Pop-Location
     }
 }
