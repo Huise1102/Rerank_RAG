@@ -20,8 +20,12 @@ export function getRetrievalDetail(messageId) {
   return request.get(`/messages/${messageId}/retrieval-detail`)
 }
 
-export function listKnowledgeBases() {
-  return request.get('/kb')
+export function listKnowledgeBases(appMode = 'user') {
+  return request.get(appMode === 'admin' ? '/kb' : '/knowledge-bases')
+}
+
+export function getChatCapabilities(kbId) {
+  return request.get('/chat/capabilities', { params: { kb_id: kbId } })
 }
 
 export function listStrategies() {
