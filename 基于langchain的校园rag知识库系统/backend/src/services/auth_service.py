@@ -45,6 +45,18 @@ async def authenticate(
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="账号已被禁用，请联系管理员")
 
     await reset_counter(key)
+    return await issue_session(db, user, ip, user_agent, action="login")
+
+
+async def issue_session(
+    db: AsyncSession,
+    user: User,
+    ip: str,
+    user_agent: str | None,
+    action: str = "login",
+    detail: str | None = None,
+) -> tuple[str, User]:
+    """为用户签发登录会话并写入审计日志，账号密码与企业微信登录共用。"""
     jti = uuid.uuid4().hex
     token, expires_at = create_access_token(user.id, jti)
     db.add(
@@ -61,9 +73,10 @@ async def authenticate(
         AuditLog(
             user_id=user.id,
             username=user.username,
-            action="login",
+            action=action,
             target_type="user",
             target_id=str(user.id),
+            detail=detail,
             ip=ip,
         )
     )
