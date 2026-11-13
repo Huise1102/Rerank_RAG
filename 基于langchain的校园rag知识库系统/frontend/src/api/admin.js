@@ -20,6 +20,18 @@ export function disableUser(id) {
   return request.delete(`/admin/users/${id}`)
 }
 
+export function listDepartments() {
+  return request.get('/admin/departments')
+}
+
+export function createDepartment(payload) {
+  return request.post('/admin/departments', payload)
+}
+
+export function updateDepartment(id, payload) {
+  return request.patch(`/admin/departments/${id}`, payload)
+}
+
 export function listRetrievalLogs(params) {
   return request.get('/admin/logs/retrieval', { params })
 }
