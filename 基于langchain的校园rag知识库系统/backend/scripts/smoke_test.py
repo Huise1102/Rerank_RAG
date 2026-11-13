@@ -6,7 +6,7 @@ import httpx
 
 BASE_URL = "http://127.0.0.1:8004"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESOURCE_DIR = PROJECT_ROOT / "resource" / "示例"
+TEST_DOCUMENT = PROJECT_ROOT / "测试集.pdf"
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -28,26 +28,26 @@ def ensure_documents(client: httpx.Client, token: str, kb_id: int) -> None:
     existing = client.get(f"{BASE_URL}/api/v1/kb/{kb_id}/documents", headers=auth_headers(token))
     existing.raise_for_status()
     names = {item["filename"] for item in existing.json()}
-    for path in sorted(RESOURCE_DIR.glob("*.md")):
-        if path.name in names:
-            continue
-        with open(path, "rb") as handle:
-            response = client.post(
-                f"{BASE_URL}/api/v1/kb/{kb_id}/documents",
-                headers=auth_headers(token),
-                files={"file": (path.name, handle, "text/markdown")},
-                timeout=120,
-            )
-        response.raise_for_status()
-        document_id = response.json()["id"]
-        print(f"已上传 {path.name}，文档 ID {document_id}")
-        ingest = client.post(
-            f"{BASE_URL}/api/v1/kb/{kb_id}/documents/{document_id}/ingest",
+    if TEST_DOCUMENT.name in names:
+        print(f"{TEST_DOCUMENT.name} 已入库，跳过上传")
+        return
+    with open(TEST_DOCUMENT, "rb") as handle:
+        response = client.post(
+            f"{BASE_URL}/api/v1/kb/{kb_id}/documents",
             headers=auth_headers(token),
-            timeout=900,
+            files={"file": (TEST_DOCUMENT.name, handle, "application/pdf")},
+            timeout=120,
         )
-        ingest.raise_for_status()
-        print(f"入库完成 {path.name}，分块数 {ingest.json()['chunk_count']}")
+    response.raise_for_status()
+    document_id = response.json()["id"]
+    print(f"已上传 {TEST_DOCUMENT.name}，文档 ID {document_id}")
+    ingest = client.post(
+        f"{BASE_URL}/api/v1/kb/{kb_id}/documents/{document_id}/ingest",
+        headers=auth_headers(token),
+        timeout=3600,
+    )
+    ingest.raise_for_status()
+    print(f"入库完成 {TEST_DOCUMENT.name}，分块数 {ingest.json()['chunk_count']}")
 
 
 def ask(
@@ -115,7 +115,7 @@ def main() -> int:
 
         ensure_documents(client, admin_token, kb_id)
 
-        result = ask(client, admin_token, kb_id, strategy_id, "请假三天需要谁审批？")
+        result = ask(client, admin_token, kb_id, strategy_id, "学生对处分决定有异议，应在几日内提出申诉？")
         print(f"回答：{result['answer'][:200]}")
         print(f"引用数量：{len(result['citations'])}，消息 ID：{result['message_id']}")
         if not result["citations"]:
@@ -128,7 +128,7 @@ def main() -> int:
             user_token,
             kb_id,
             strategy_id,
-            "奖学金一等奖金额是多少？",
+            "学生申诉处理委员会受理申诉后，应在多少日内作出复查结论？",
             app_key="user",
         )
         print(f"用户端回答：{user_result['answer'][:160]}")
@@ -142,7 +142,7 @@ def main() -> int:
             json={
                 "assistant_message_id": user_result["message_id"],
                 "feedback_type": "回答不完整",
-                "description": "示例反馈：希望补充奖学金申请的截止日期说明。",
+                "description": "冒烟测试反馈：希望补充申诉材料的提交方式说明。",
                 "contact": "student01@example.com",
             },
         )
