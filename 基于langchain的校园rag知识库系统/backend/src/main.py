@@ -1,12 +1,13 @@
 import logging
+import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.router import api_router
 from src.api.routes.health import router as health_router
 from src.core.config import settings
-from src.core.logging import configure_logging
+from src.core.logging import configure_logging, request_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def attach_request_id(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+        token = request_id_var.set(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_var.reset(token)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     @app.on_event("startup")
     async def prepare_directories() -> None:
