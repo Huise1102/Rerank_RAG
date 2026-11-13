@@ -12,3 +12,11 @@ app.use(createPinia())
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 app.mount('#app')
+
+if (import.meta.env.VITE_APP_MODE === 'mobile' && import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // 浏览器不支持或注册失败时不影响在线使用
+    })
+  })
+}
