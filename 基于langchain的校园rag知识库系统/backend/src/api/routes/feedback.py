@@ -5,8 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_user
 from src.db.models import Feedback, User
 from src.db.session import get_db
-from src.schemas.feedback import FeedbackCreateRequest, FeedbackOut, MyFeedbackListItem
-from src.services.feedback_service import create_feedback
+from src.schemas.feedback import (
+    FeedbackCreateRequest,
+    FeedbackOut,
+    MyFeedbackListItem,
+    TransferCreateRequest,
+)
+from src.services.feedback_service import create_feedback, create_transfer
 
 router = APIRouter(prefix="/feedback", tags=["用户反馈"])
 
@@ -18,6 +23,15 @@ async def submit_feedback(
     db: AsyncSession = Depends(get_db),
 ):
     return await create_feedback(db, user, payload)
+
+
+@router.post("/transfer", response_model=FeedbackOut)
+async def submit_transfer(
+    payload: TransferCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await create_transfer(db, user, payload)
 
 
 @router.get("/mine", response_model=list[MyFeedbackListItem])
