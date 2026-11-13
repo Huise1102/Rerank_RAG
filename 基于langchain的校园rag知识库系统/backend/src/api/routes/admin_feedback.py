@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import client_ip, require_admin
+from src.api.deps import client_ip, require_document_manager
 from src.db.models import AuditLog, Feedback, FeedbackEvent, KnowledgeBase, User
 from src.db.session import get_db
 from src.schemas.feedback import FeedbackStatsResponse, FeedbackUpdateRequest
@@ -17,8 +17,13 @@ def _serialize(feedback: Feedback, submitter: User | None, kb_name: str | None, 
     data = {
         "id": feedback.id,
         "ticket_no": feedback.ticket_no,
+        "kind": feedback.kind,
         "status": feedback.status,
         "feedback_type": feedback.feedback_type,
+        "assigned_department_id": feedback.assigned_department_id,
+        "assigned_user_id": feedback.assigned_user_id,
+        "transfer_reason": feedback.transfer_reason,
+        "first_response_at": feedback.first_response_at,
         "description": feedback.description,
         "expected_answer": feedback.expected_answer,
         "contact": feedback.contact,
@@ -58,12 +63,23 @@ def _serialize(feedback: Feedback, submitter: User | None, kb_name: str | None, 
     return data
 
 
+def _department_scope(user: User) -> int | None:
+    return None if user.role == "admin" else user.department_id
+
+
+def _ensure_feedback_scope(user: User, feedback: Feedback) -> None:
+    if user.role == "admin":
+        return
+    if feedback.assigned_department_id != user.department_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="反馈不存在")
+
+
 @router.get("/stats", response_model=FeedbackStatsResponse)
 async def stats(
-    admin: User = Depends(require_admin),
+    user: User = Depends(require_document_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    return await feedback_stats(db)
+    return await feedback_stats(db, _department_scope(user))
 
 
 @router.get("")
@@ -77,12 +93,18 @@ async def list_feedback(
     keyword: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    admin: User = Depends(require_admin),
+    kind: str | None = None,
+    user: User = Depends(require_document_manager),
     db: AsyncSession = Depends(get_db),
 ):
     statement = select(Feedback, User, KnowledgeBase).join(
         User, User.id == Feedback.user_id, isouter=True
     ).join(KnowledgeBase, KnowledgeBase.id == Feedback.kb_id, isouter=True)
+    department_id = _department_scope(user)
+    if department_id is not None:
+        statement = statement.where(Feedback.assigned_department_id == department_id)
+    if kind:
+        statement = statement.where(Feedback.kind == kind)
     if status_value:
         statement = statement.where(Feedback.status == status_value)
     if feedback_type:
@@ -123,12 +145,13 @@ async def list_feedback(
 @router.get("/{feedback_id}")
 async def feedback_detail(
     feedback_id: int,
-    admin: User = Depends(require_admin),
+    user: User = Depends(require_document_manager),
     db: AsyncSession = Depends(get_db),
 ):
     feedback = await db.get(Feedback, feedback_id)
     if feedback is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="反馈不存在")
+    _ensure_feedback_scope(user, feedback)
     submitter = await db.get(User, feedback.user_id)
     kb = await db.get(KnowledgeBase, feedback.kb_id) if feedback.kb_id else None
     events = (
@@ -150,14 +173,28 @@ async def handle_feedback(
     feedback_id: int,
     payload: FeedbackUpdateRequest,
     request: Request,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_document_manager),
     db: AsyncSession = Depends(get_db),
 ):
     feedback = await db.get(Feedback, feedback_id)
     if feedback is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="反馈不存在")
+    _ensure_feedback_scope(admin, feedback)
+    if (
+        admin.role == "dept_admin"
+        and payload.assigned_department_id is not None
+        and payload.assigned_department_id != admin.department_id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="不能转办到其他部门")
     updated = await update_feedback_status(
-        db, admin, feedback, payload.action, payload.reply, payload.reject_reason, payload.note
+        db,
+        admin,
+        feedback,
+        payload.action,
+        payload.reply,
+        payload.reject_reason,
+        payload.note,
+        payload.assigned_department_id,
     )
     db.add(
         AuditLog(
