@@ -25,15 +25,24 @@ async def authenticate(
     key = _login_key(ip, username)
     failures = await get_counter(key, settings.login_window_seconds)
     if failures >= settings.login_max_failures:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="登录失败次数过多，请稍后再试")
+        wait_minutes = max(1, settings.login_window_seconds // 60)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"登录失败次数过多，请在 {wait_minutes} 分钟后重试",
+        )
 
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None:
         await increment_counter(key, settings.login_window_seconds)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="账号不存在，请检查用户名")
+    if not verify_password(password, user.password_hash):
+        failures = await increment_counter(key, settings.login_window_seconds)
+        remaining = max(settings.login_max_failures - failures, 0)
+        detail = f"密码错误，还可尝试 {remaining} 次" if remaining else "密码错误，本次登录已锁定"
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=detail)
     if user.status != "active":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="账号已被禁用，请联系管理员")
 
     await reset_counter(key)
     jti = uuid.uuid4().hex
