@@ -40,13 +40,34 @@
           <p class="muted">回答会标注引用来源，可点击「检索详情」查看召回过程</p>
         </div>
         <div v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
-          <div class="bubble">
-            <div>{{ message.content }}<span v-if="message.streaming" class="streaming-cursor">|</span></div>
-            <div v-if="message.citations && message.citations.length" style="margin-top: 10px">
-              <div v-for="cite in message.citations" :key="cite.index" class="citation-card">
-                [{{ cite.index }}] {{ cite.filename }}<span v-if="cite.page"> 第 {{ cite.page }} 页</span>
-                <div style="margin-top: 4px">{{ cite.snippet }}</div>
+          <div v-if="message.role === 'assistant'" class="message-role">回答</div>
+          <div class="bubble" :class="message.role === 'assistant' ? 'bubble-assistant' : 'bubble-user'">
+            <template v-if="message.role === 'assistant'">
+              <AnswerContent
+                :content="message.content"
+                :citations="message.citations || []"
+                @cite="(indices) => focusCitation(index, indices)"
+              />
+              <span v-if="message.streaming" class="streaming-cursor">▋</span>
+            </template>
+            <div v-else class="user-text">{{ message.content }}</div>
+            <div v-if="message.citations && message.citations.length" class="citation-list">
+              <div
+                v-for="cite in message.citations"
+                :id="`cite-${index}-${cite.index}`"
+                :key="cite.index"
+                class="citation-card"
+              >
+                <div class="citation-head">
+                  <span class="citation-index">[{{ cite.index }}]</span>
+                  <span>{{ cite.filename }}</span>
+                  <span v-if="cite.page" class="citation-page">第 {{ cite.page }} 页</span>
+                </div>
+                <div class="citation-text">{{ cite.snippet }}</div>
               </div>
+            </div>
+            <div v-if="message.role === 'assistant' && message.strategy" class="message-strategy">
+              策略：{{ message.strategy }}
             </div>
             <div v-if="message.role === 'assistant' && !message.streaming" class="message-actions">
               <el-button v-if="message.id" link size="small" @click="submitFeedback(message)">反馈</el-button>
@@ -128,6 +149,7 @@ import {
   listMessages,
   listStrategies
 } from '../api/chat'
+import AnswerContent from '../components/AnswerContent.vue'
 import FeedbackDialog from '../components/FeedbackDialog.vue'
 
 const adminMode = import.meta.env.VITE_APP_MODE === 'admin'
@@ -151,6 +173,16 @@ const detailVisible = ref(false)
 const detail = ref(null)
 
 const currentStrategy = computed(() => strategies.value.find((item) => item.id === strategyId.value))
+
+function focusCitation(messageIndex, indices) {
+  const target = document.getElementById(`cite-${messageIndex}-${indices[0]}`)
+  if (!target) {
+    return
+  }
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  target.classList.add('citation-active')
+  window.setTimeout(() => target.classList.remove('citation-active'), 1600)
+}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -186,7 +218,8 @@ async function openConversation(id) {
     id: item.id,
     role: item.role,
     content: item.content,
-    citations: item.citations || []
+    citations: item.citations || [],
+    strategy: item.role === 'assistant' ? strategies.value.find((preset) => preset.id === item.strategy_id)?.name : ''
   }))
   if (data.conversation.kb_id) {
     kbId.value = data.conversation.kb_id
@@ -232,7 +265,7 @@ async function send() {
   input.value = ''
   sending.value = true
   messages.value.push({ role: 'user', content: question })
-  const assistant = { role: 'assistant', content: '', citations: [], streaming: true, id: null }
+  const assistant = { role: 'assistant', content: '', citations: [], streaming: true, id: null, strategy: '' }
   messages.value.push(assistant)
   scrollToBottom()
 
@@ -307,6 +340,7 @@ async function send() {
 function handleEvent(payload, assistant) {
   if (payload.event === 'meta') {
     activeId.value = payload.conversation_id
+    assistant.strategy = payload.strategy
   } else if (payload.event === 'delta') {
     assistant.content += payload.content
   } else if (payload.event === 'citations') {
@@ -422,5 +456,11 @@ onMounted(async () => {
 .detail-empty {
   padding: 32px 0;
   text-align: center;
+}
+
+.message-strategy {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>
