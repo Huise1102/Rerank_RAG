@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     kb_id: int
     conversation_id: int | None = None
     strategy_id: int | None = None
+    mode: str = Field(default="fast", pattern="^(fast|deep)$")
     app_key: str = Field(default="user", pattern="^(admin|user)$")
 
 
