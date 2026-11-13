@@ -19,12 +19,15 @@ request.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const detail = error.response?.data?.detail
+    const isLoginRequest = String(error.config?.url || '').includes('/auth/login')
     if (status === 401) {
       sessionStorage.removeItem('token')
       sessionStorage.removeItem('user')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
+    } else if (isLoginRequest && (status === 403 || status === 429)) {
+      // 登录页自行展示失败原因，避免重复提示
     } else if (status === 403) {
       ElMessage.error(detail || '无权限访问')
     } else if (detail) {
