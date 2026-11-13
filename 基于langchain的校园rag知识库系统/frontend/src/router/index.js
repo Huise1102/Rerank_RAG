@@ -18,6 +18,9 @@ router.beforeEach(async (to) => {
     }
     return true
   }
+  if (to.path === '/wecom/callback') {
+    return true
+  }
   if (!auth.token) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
