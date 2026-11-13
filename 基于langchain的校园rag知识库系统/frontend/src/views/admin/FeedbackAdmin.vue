@@ -10,16 +10,28 @@
         <div class="stat-value">{{ stats.processing }}</div>
       </div>
       <div class="stat-card">
-        <div class="muted">今日新增</div>
-        <div class="stat-value">{{ stats.today_new }}</div>
+        <div class="muted">已回复</div>
+        <div class="stat-value">{{ stats.replied }}</div>
       </div>
       <div class="stat-card">
-        <div class="muted">今日已解决</div>
-        <div class="stat-value">{{ stats.today_resolved }}</div>
+        <div class="muted">转办待受理</div>
+        <div class="stat-value">{{ stats.transfer_pending }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="muted">超时工单</div>
+        <div class="stat-value" :style="{ color: stats.overdue ? '#f56c6c' : '#303133' }">{{ stats.overdue }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="muted">今日新增</div>
+        <div class="stat-value">{{ stats.today_new }}</div>
       </div>
     </div>
 
     <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap">
+      <el-select v-model="filters.kind" placeholder="工单来源" clearable style="width: 130px" @change="search">
+        <el-option label="用户反馈" value="feedback" />
+        <el-option label="转人工" value="transfer" />
+      </el-select>
       <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
         <el-option v-for="(label, value) in statusLabels" :key="value" :label="label" :value="value" />
       </el-select>
@@ -34,6 +46,13 @@
 
     <el-table :data="items" size="small" border @row-click="openDetail">
       <el-table-column prop="ticket_no" label="工单号" width="180" />
+      <el-table-column label="来源" width="90">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.kind === 'transfer' ? 'warning' : 'info'">
+            {{ row.kind === 'transfer' ? '转人工' : '反馈' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="feedback_type" label="类型" width="150" />
       <el-table-column prop="question_snapshot" label="问题摘要" show-overflow-tooltip />
       <el-table-column label="提交人" width="120">
@@ -72,7 +91,10 @@
           <el-descriptions-item label="联系方式">{{ detail.contact || '未填写' }}</el-descriptions-item>
           <el-descriptions-item label="知识库">{{ detail.kb_name || '未关联' }}</el-descriptions-item>
           <el-descriptions-item label="策略">{{ detail.strategy || '未记录' }}</el-descriptions-item>
+          <el-descriptions-item label="转办部门">{{ departmentName(detail.assigned_department_id) }}</el-descriptions-item>
+          <el-descriptions-item label="首次响应">{{ formatTime(detail.first_response_at) || '未响应' }}</el-descriptions-item>
         </el-descriptions>
+        <p v-if="detail.transfer_reason" class="muted">转办说明：{{ detail.transfer_reason }}</p>
 
         <h4>问题描述</h4>
         <p class="block">{{ detail.description }}</p>
@@ -105,12 +127,31 @@
 
         <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap">
           <el-button v-if="detail.status === 'pending'" type="primary" @click="accept">受理</el-button>
-          <el-button v-if="['pending', 'processing'].includes(detail.status)" @click="openAction('reply_resolve')">
+          <el-button
+            v-if="['pending', 'processing', 'replied'].includes(detail.status)"
+            @click="openAction('reply')"
+          >
+            回复
+          </el-button>
+          <el-button
+            v-if="['pending', 'processing', 'replied'].includes(detail.status)"
+            @click="openAction('reply_resolve')"
+          >
             回复并解决
           </el-button>
-          <el-button v-if="['pending', 'processing'].includes(detail.status)" @click="openAction('resolve')">解决</el-button>
-          <el-button v-if="['pending', 'processing'].includes(detail.status)" type="danger" @click="openAction('reject')">
+          <el-button v-if="['pending', 'processing', 'replied'].includes(detail.status)" @click="openAction('resolve')">
+            解决
+          </el-button>
+          <el-button
+            v-if="['pending', 'processing', 'replied'].includes(detail.status)"
+            type="danger"
+            @click="openAction('reject')"
+          >
             驳回
+          </el-button>
+          <el-button @click="openAction('forward')">转办</el-button>
+          <el-button v-if="['resolved', 'rejected'].includes(detail.status)" @click="openAction('reopen')">
+            重新打开
           </el-button>
           <el-button @click="openAction('note')">内部备注</el-button>
         </div>
@@ -119,13 +160,18 @@
 
     <el-dialog v-model="actionDialog" :title="actionTitle" width="480px">
       <el-form label-position="top">
-        <el-form-item v-if="['reply_resolve', 'resolve'].includes(actionForm.action)" label="用户可见回复">
+        <el-form-item v-if="['reply', 'reply_resolve', 'resolve'].includes(actionForm.action)" label="用户可见回复">
           <el-input v-model="actionForm.reply" type="textarea" :rows="4" maxlength="2000" />
         </el-form-item>
         <el-form-item v-if="actionForm.action === 'reject'" label="驳回原因" required>
           <el-input v-model="actionForm.reject_reason" type="textarea" :rows="3" maxlength="1000" />
         </el-form-item>
-        <el-form-item v-if="['note', 'resolve'].includes(actionForm.action)" label="内部备注">
+        <el-form-item v-if="actionForm.action === 'forward'" label="转办部门" required>
+          <el-select v-model="actionForm.assigned_department_id" style="width: 100%">
+            <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="['note', 'resolve', 'forward'].includes(actionForm.action)" label="内部备注">
           <el-input v-model="actionForm.note" type="textarea" :rows="3" maxlength="1000" />
         </el-form-item>
       </el-form>
@@ -146,34 +192,72 @@ import {
   adminFeedbackStats,
   handleFeedback
 } from '../../api/feedback'
+import { listDepartments } from '../../api/admin'
 
-const statusLabels = { pending: '待处理', processing: '处理中', resolved: '已解决', rejected: '已驳回' }
-const types = ['答案错误', '引用错误或缺失', '回答不完整', '知识库无相关内容', '制度过期', '其他']
+const statusLabels = {
+  pending: '待处理',
+  processing: '处理中',
+  replied: '已回复',
+  resolved: '已解决',
+  rejected: '已驳回'
+}
+const types = ['答案错误', '引用错误或缺失', '回答不完整', '知识库无相关内容', '内容过期', '转人工', '其他']
 
-const stats = reactive({ pending: 0, processing: 0, today_new: 0, today_resolved: 0 })
+const departments = ref([])
+const stats = reactive({
+  pending: 0,
+  processing: 0,
+  replied: 0,
+  today_new: 0,
+  today_resolved: 0,
+  transfer_pending: 0,
+  overdue: 0
+})
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
-const filters = reactive({ status: '', feedback_type: '', submitter: '', keyword: '' })
+const filters = reactive({ kind: '', status: '', feedback_type: '', submitter: '', keyword: '' })
 const drawer = ref(false)
 const detail = ref(null)
 const actionDialog = ref(false)
 const submitting = ref(false)
-const actionForm = reactive({ action: 'note', reply: '', reject_reason: '', note: '' })
+const actionForm = reactive({
+  action: 'note',
+  reply: '',
+  reject_reason: '',
+  note: '',
+  assigned_department_id: null
+})
 
 const actionTitle = computed(
   () =>
     ({
+      reply: '回复用户',
       reply_resolve: '回复并解决',
       resolve: '解决反馈',
       reject: '驳回反馈',
+      forward: '转办工单',
+      reopen: '重新打开',
       note: '内部备注'
     })[actionForm.action] || '处理反馈'
 )
 
 function statusType(status) {
-  return { pending: 'warning', processing: 'primary', resolved: 'success', rejected: 'danger' }[status] || 'info'
+  return {
+    pending: 'warning',
+    processing: 'primary',
+    replied: 'success',
+    resolved: 'success',
+    rejected: 'danger'
+  }[status] || 'info'
+}
+
+function departmentName(id) {
+  if (!id) {
+    return '未分配'
+  }
+  return departments.value.find((item) => item.id === id)?.name || `部门 ${id}`
 }
 
 function formatTime(value) {
@@ -185,6 +269,7 @@ async function load() {
     adminFeedbackList({
       page: page.value,
       page_size: pageSize,
+      kind: filters.kind || undefined,
       status: filters.status || undefined,
       feedback_type: filters.feedback_type || undefined,
       submitter: filters.submitter || undefined,
@@ -203,6 +288,7 @@ function search() {
 }
 
 function reset() {
+  filters.kind = ''
   filters.status = ''
   filters.feedback_type = ''
   filters.submitter = ''
@@ -233,6 +319,7 @@ function openAction(action) {
   actionForm.reply = ''
   actionForm.reject_reason = ''
   actionForm.note = ''
+  actionForm.assigned_department_id = detail.value?.assigned_department_id || null
   actionDialog.value = true
 }
 
@@ -241,8 +328,12 @@ async function submitAction() {
     ElMessage.warning('驳回必须填写原因')
     return
   }
-  if (actionForm.action === 'reply_resolve' && !actionForm.reply.trim()) {
+  if (['reply', 'reply_resolve'].includes(actionForm.action) && !actionForm.reply.trim()) {
     ElMessage.warning('请填写用户可见回复')
+    return
+  }
+  if (actionForm.action === 'forward' && !actionForm.assigned_department_id) {
+    ElMessage.warning('请选择转办部门')
     return
   }
   submitting.value = true
@@ -251,7 +342,8 @@ async function submitAction() {
       action: actionForm.action,
       reply: actionForm.reply || null,
       reject_reason: actionForm.reject_reason || null,
-      note: actionForm.note || null
+      note: actionForm.note || null,
+      assigned_department_id: actionForm.assigned_department_id || null
     })
     ElMessage.success('处理完成')
     actionDialog.value = false
@@ -261,7 +353,10 @@ async function submitAction() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  departments.value = await listDepartments()
+  await load()
+})
 </script>
 
 <style scoped>
