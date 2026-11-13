@@ -3,6 +3,14 @@
     <div class="login-card">
       <div class="login-title">校园 RAG 知识库系统</div>
       <div class="login-subtitle">{{ modeLabel }}</div>
+      <el-alert
+        v-if="errorMessage"
+        :title="errorMessage"
+        type="error"
+        show-icon
+        :closable="false"
+        class="login-error"
+      />
       <el-form :model="form" label-position="top" @submit.prevent="submit">
         <el-form-item label="用户名">
           <el-input v-model="form.username" placeholder="请输入用户名" autocomplete="username" />
@@ -49,7 +57,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login, changePassword as changePasswordApi } from '../api/auth'
@@ -63,20 +71,29 @@ const modeLabel = adminMode ? '管理端' : '用户端'
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+const errorMessage = ref('')
 const passwordDialog = ref(false)
 const changing = ref(false)
 const passwordForm = reactive({ newPassword: '', confirm: '' })
 
+watch(
+  () => [form.username, form.password],
+  () => {
+    errorMessage.value = ''
+  }
+)
+
 async function submit() {
   if (!form.username || !form.password) {
-    ElMessage.warning('请输入用户名和密码')
+    errorMessage.value = '请输入用户名和密码'
     return
   }
+  errorMessage.value = ''
   loading.value = true
   try {
     const data = await login({ username: form.username, password: form.password })
     if (adminMode && data.user.role !== 'admin') {
-      ElMessage.error('该账号无权登录管理端，请使用用户端')
+      errorMessage.value = '该账号无权登录管理端，请使用用户端登录'
       return
     }
     auth.setAuth(data.access_token, data.user)
@@ -87,7 +104,19 @@ async function submit() {
     await enter()
   } catch (error) {
     if (!error.response) {
-      ElMessage.error('无法连接后端服务')
+      errorMessage.value = '无法连接后端服务，请确认后端已启动'
+      return
+    }
+    const status = error.response.status
+    const detail = error.response.data?.detail
+    if (status === 429) {
+      errorMessage.value = typeof detail === 'string' ? detail : '登录失败次数过多，请稍后重试'
+    } else if (status === 401 || status === 403) {
+      errorMessage.value = typeof detail === 'string' ? detail : '登录失败，请检查用户名和密码'
+    } else if (status >= 500) {
+      errorMessage.value = '后端服务未连接或异常，请确认后端已启动'
+    } else {
+      errorMessage.value = '登录失败，请稍后重试'
     }
   } finally {
     loading.value = false
@@ -123,3 +152,9 @@ async function enter() {
   await router.replace(typeof redirect === 'string' ? redirect : '/chat')
 }
 </script>
+
+<style scoped>
+.login-error {
+  margin-bottom: 16px;
+}
+</style>
