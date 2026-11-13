@@ -82,7 +82,7 @@ class DatabaseSettings(_Section):
     """MySQL 连接（异步驱动 aiomysql）。"""
 
     url: str = Field(
-        default="mysql+aiomysql://rag:rag123456@127.0.0.1:3306/rag_system?charset=utf8mb4",
+        default="mysql+aiomysql://rag:rag123456@127.0.0.1:3307/rag_system?charset=utf8mb4",
         description="SQLAlchemy 异步连接串",
     )
     echo: bool = Field(default=False, description="是否打印 SQL")
