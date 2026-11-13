@@ -1,6 +1,8 @@
 .env
 backend/.venv/
 backend/.pytest_cache/
+backend/backups/
+backend/evaluation_data/
 __pycache__/
 *.pyc
 frontend/node_modules/
