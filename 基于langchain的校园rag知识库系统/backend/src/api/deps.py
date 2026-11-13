@@ -42,6 +42,18 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+async def require_document_manager(user: User = Depends(get_current_user)) -> User:
+    if user.role not in {"admin", "dept_admin"}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="无权限访问")
+    return user
+
+
+def retrieval_scope(user: User):
+    from src.retrieval.scope import RetrievalScope
+
+    return RetrievalScope.from_user(user)
+
+
 async def get_owned_conversation(db: AsyncSession, conversation_id: int, user: User) -> Conversation:
     conversation = await db.get(Conversation, conversation_id)
     if conversation is None or conversation.user_id != user.id:
