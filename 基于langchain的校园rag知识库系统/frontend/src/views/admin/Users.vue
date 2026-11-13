@@ -2,16 +2,18 @@
   <div class="page">
     <div class="page-header">
       <div>
-        <div class="muted">角色分为管理员与普通用户，禁用后已登录会话立即失效</div>
+        <div class="muted">角色分为系统管理员、部门管理员、教职工和学生，禁用后已登录会话立即失效</div>
       </div>
       <el-button type="primary" @click="openCreate">新建用户</el-button>
     </div>
 
     <div style="display: flex; gap: 8px; margin-bottom: 12px">
       <el-input v-model="filters.keyword" placeholder="用户名或姓名" clearable style="width: 200px" @keyup.enter="search" />
-      <el-select v-model="filters.role" placeholder="角色" clearable style="width: 130px" @change="search">
-        <el-option label="管理员" value="admin" />
-        <el-option label="普通用户" value="user" />
+      <el-select v-model="filters.role" placeholder="角色" clearable style="width: 150px" @change="search">
+        <el-option v-for="(label, value) in roleLabels" :key="value" :label="label" :value="value" />
+      </el-select>
+      <el-select v-model="filters.department_id" placeholder="部门" clearable style="width: 150px" @change="search">
+        <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
       </el-select>
       <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
         <el-option label="启用" value="active" />
@@ -23,14 +25,14 @@
     <el-table :data="items" size="small" border>
       <el-table-column prop="username" label="用户名" width="140" />
       <el-table-column prop="display_name" label="姓名" width="130" />
-      <el-table-column label="角色" width="100">
+      <el-table-column label="角色" width="110">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.role === 'admin' ? 'danger' : 'info'">
-            {{ row.role === 'admin' ? '管理员' : '普通用户' }}
-          </el-tag>
+          <el-tag size="small" :type="roleType(row.role)">{{ roleLabels[row.role] || row.role }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="department" label="部门" width="140" />
+      <el-table-column label="部门" width="140">
+        <template #default="{ row }">{{ departmentName(row) }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
@@ -79,12 +81,13 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="createForm.role" style="width: 100%">
-            <el-option label="普通用户" value="user" />
-            <el-option label="管理员" value="admin" />
+            <el-option v-for="(label, value) in roleLabels" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="createForm.department" />
+          <el-select v-model="createForm.department_id" clearable style="width: 100%">
+            <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -100,8 +103,7 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="editForm.role" style="width: 100%">
-            <el-option label="普通用户" value="user" />
-            <el-option label="管理员" value="admin" />
+            <el-option v-for="(label, value) in roleLabels" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -111,7 +113,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="editForm.department" />
+          <el-select v-model="editForm.department_id" clearable style="width: 100%">
+            <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -138,15 +142,29 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createUser, disableUser, listUsers, resetPassword, updateUser } from '../../api/admin'
+import {
+  createUser,
+  disableUser,
+  listDepartments,
+  listUsers,
+  resetPassword,
+  updateUser
+} from '../../api/admin'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
+const roleLabels = {
+  admin: '系统管理员',
+  dept_admin: '部门管理员',
+  staff: '教职工',
+  student: '学生'
+}
+const departments = ref([])
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
-const filters = reactive({ keyword: '', role: '', status: '' })
+const filters = reactive({ keyword: '', role: '', department_id: '', status: '' })
 const createDialog = ref(false)
 const editDialog = ref(false)
 const resetDialog = ref(false)
@@ -154,8 +172,28 @@ const saving = ref(false)
 const editing = ref(null)
 const resetting = ref(null)
 const resetPasswordValue = ref('')
-const createForm = reactive({ username: '', display_name: '', password: '', role: 'user', department: '' })
-const editForm = reactive({ display_name: '', role: 'user', status: 'active', department: '' })
+const createForm = reactive({
+  username: '',
+  display_name: '',
+  password: '',
+  role: 'student',
+  department_id: null
+})
+const editForm = reactive({ display_name: '', role: 'student', status: 'active', department_id: null })
+
+function roleType(role) {
+  return { admin: 'danger', dept_admin: 'warning', staff: 'primary', student: 'info' }[role] || 'info'
+}
+
+function departmentName(row) {
+  if (row.department_id) {
+    const matched = departments.value.find((item) => item.id === row.department_id)
+    if (matched) {
+      return matched.name
+    }
+  }
+  return row.department || '未分配'
+}
 
 function formatTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : ''
@@ -167,6 +205,7 @@ async function load() {
     page_size: pageSize,
     keyword: filters.keyword || undefined,
     role: filters.role || undefined,
+    department_id: filters.department_id || undefined,
     status: filters.status || undefined
   })
   items.value = data.items
@@ -179,7 +218,13 @@ function search() {
 }
 
 function openCreate() {
-  Object.assign(createForm, { username: '', display_name: '', password: '', role: 'user', department: '' })
+  Object.assign(createForm, {
+    username: '',
+    display_name: '',
+    password: '',
+    role: 'student',
+    department_id: null
+  })
   createDialog.value = true
 }
 
@@ -205,7 +250,7 @@ function openEdit(row) {
     display_name: row.display_name,
     role: row.role,
     status: row.status,
-    department: row.department || ''
+    department_id: row.department_id || null
   })
   editDialog.value = true
 }
@@ -256,5 +301,8 @@ async function disable(row) {
   await load()
 }
 
-onMounted(load)
+onMounted(async () => {
+  departments.value = await listDepartments()
+  await load()
+})
 </script>
