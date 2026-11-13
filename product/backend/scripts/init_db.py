@@ -35,7 +35,7 @@ async def ensure_database() -> str:
 
     conn = await aiomysql.connect(
         host=url.host or "127.0.0.1",
-        port=url.port or 3306,
+        port=url.port or 3307,
         user=url.username,
         password=url.password,
         autocommit=True,
