@@ -8,7 +8,7 @@ from src.schemas.chat import ChatRequest
 
 def test_chat_request_rejects_unknown_fields():
     with pytest.raises(ValidationError):
-        ChatRequest(question="问题", kb_id=1, model="gpt-4o")
+        ChatRequest(question="问题", kb_id=1, temperature=0.9)
 
 
 def test_build_citations_uses_order_and_metadata():
