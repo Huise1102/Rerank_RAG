@@ -13,7 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from scripts.init_admin import ensure_admin  # noqa: E402
 from src.core.config import settings  # noqa: E402
-from src.db.models import KnowledgeBase, StrategyPreset  # noqa: E402
+from src.db.models import StrategyPreset  # noqa: E402
 from src.db.session import async_session_factory, engine  # noqa: E402
 
 
@@ -87,16 +87,6 @@ async def seed_defaults() -> None:
             )
             print("已写入默认检索策略")
 
-        kb_result = await db.execute(select(KnowledgeBase).limit(1))
-        if kb_result.scalar_one_or_none() is None:
-            db.add(
-                KnowledgeBase(
-                    name="校园制度示例库",
-                    description="用于本地验收的示例知识库，内容均为示例文档，非正式制度",
-                    status="published",
-                )
-            )
-            print("已创建示例知识库")
         await db.commit()
 
 
