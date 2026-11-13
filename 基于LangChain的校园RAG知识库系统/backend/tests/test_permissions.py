@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from src.api.deps import get_current_user, require_admin
+from src.api.deps import get_current_user, require_admin, require_document_manager
 from src.db.models import User
 from src.main import create_app
 from src.schemas.chat import ChatRequest
@@ -16,6 +16,7 @@ def make_user(role: str) -> User:
 
 def collect_dependencies(dependant, seen: set | None = None) -> set:
     """递归收集路由依赖的处理函数。"""
+
     seen = seen or set()
     for dependency in dependant.dependencies:
         seen.add(dependency.call)
@@ -34,9 +35,9 @@ def find_route(app, path: str, method: str):
     return None
 
 
-def test_require_admin_rejects_normal_user() -> None:
+def test_require_admin_rejects_student() -> None:
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(require_admin(make_user("user")))
+        asyncio.run(require_admin(make_user("student")))
     assert exc.value.status_code == 403
 
 
@@ -45,15 +46,29 @@ def test_require_admin_accepts_admin() -> None:
     assert asyncio.run(require_admin(admin)) is admin
 
 
-def test_admin_routes_require_admin_dependency() -> None:
+def test_require_document_manager_rejects_staff() -> None:
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(require_document_manager(make_user("staff")))
+    assert exc.value.status_code == 403
+
+
+def test_require_document_manager_accepts_department_admin() -> None:
+    manager = make_user("dept_admin")
+    assert asyncio.run(require_document_manager(manager)) is manager
+
+
+def test_admin_routes_require_manager_or_admin_dependency() -> None:
     app = create_app()
     admin_routes = [route for route in routes_by_path(app) if route.path.startswith("/api/v1/admin")]
     assert admin_routes, "应存在管理端接口"
     for route in admin_routes:
-        assert require_admin in collect_dependencies(route.dependant), f"{route.path} 缺少管理员鉴权"
+        dependencies = collect_dependencies(route.dependant)
+        assert (
+            require_admin in dependencies or require_document_manager in dependencies
+        ), f"{route.path} 缺少管理端鉴权"
 
 
-def test_knowledge_write_routes_require_admin() -> None:
+def test_knowledge_write_routes_require_manager() -> None:
     app = create_app()
     protected = [
         ("/api/v1/kb", "POST"),
@@ -65,15 +80,19 @@ def test_knowledge_write_routes_require_admin() -> None:
     for path, method in protected:
         route = find_route(app, path, method)
         assert route is not None, f"{method} {path} 不存在"
-        assert require_admin in collect_dependencies(route.dependant), f"{method} {path} 缺少管理员鉴权"
+        assert require_document_manager in collect_dependencies(
+            route.dependant
+        ), f"{method} {path} 缺少管理端鉴权"
 
 
 def test_knowledge_read_routes_require_login() -> None:
     app = create_app()
-    for path in ("/api/v1/kb", "/api/v1/kb/{kb_id}/documents"):
-        route = find_route(app, path, "GET")
-        assert route is not None, f"GET {path} 不存在"
-        assert get_current_user in collect_dependencies(route.dependant), f"{path} 缺少登录鉴权"
+    route = find_route(app, "/api/v1/kb", "GET")
+    assert route is not None, "GET /api/v1/kb 不存在"
+    assert get_current_user in collect_dependencies(route.dependant), "/api/v1/kb 缺少登录鉴权"
+    documents_route = find_route(app, "/api/v1/kb/{kb_id}/documents", "GET")
+    assert documents_route is not None
+    assert require_document_manager in collect_dependencies(documents_route.dependant)
 
 
 def test_chat_request_rejects_unknown_fields() -> None:
