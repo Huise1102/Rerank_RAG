@@ -81,6 +81,6 @@ def test_chat_request_rejects_unknown_fields() -> None:
         ChatRequest(question="测试", kb_id=1, temperature=0.9)
 
 
-def test_chat_request_accepts_model_override_field() -> None:
-    payload = ChatRequest(question="测试", kb_id=1, model="qwen3:8b")
-    assert payload.model == "qwen3:8b"
+def test_chat_request_rejects_model_override() -> None:
+    with pytest.raises(ValidationError):
+        ChatRequest(question="测试", kb_id=1, model="qwen3:8b")
