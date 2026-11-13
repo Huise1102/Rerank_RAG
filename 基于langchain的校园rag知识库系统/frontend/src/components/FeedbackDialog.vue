@@ -51,7 +51,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'submitted'])
 const auth = useAuthStore()
 
-const types = ['答案错误', '引用错误或缺失', '回答不完整', '知识库无相关内容', '制度过期', '其他']
+const types = ['答案错误', '引用错误或缺失', '回答不完整', '知识库无相关内容', '内容过期', '其他']
 const form = reactive({
   feedbackType: '答案错误',
   description: '',
