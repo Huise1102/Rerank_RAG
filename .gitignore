@@ -25,3 +25,6 @@ agent/backend/data/model_config.json
 
 # 本地一键启动脚本
 start_all.py
+
+# 独立仓库，自带 .git，不纳入本仓库
+校园rag知识库系统/
