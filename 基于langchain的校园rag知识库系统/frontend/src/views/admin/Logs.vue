@@ -101,6 +101,7 @@
             </template>
           </el-table-column>
           <el-table-column prop="logger" label="模块" width="220" show-overflow-tooltip />
+          <el-table-column prop="request_id" label="请求 ID" width="130" show-overflow-tooltip />
           <el-table-column prop="message" label="内容" show-overflow-tooltip />
         </el-table>
       </el-tab-pane>
