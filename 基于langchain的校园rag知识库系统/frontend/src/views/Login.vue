@@ -27,6 +27,25 @@
         </el-form-item>
         <el-button type="primary" style="width: 100%" :loading="loading" @click="submit">登录</el-button>
       </el-form>
+      <template v-if="wecomEnabled">
+        <el-divider>或</el-divider>
+        <el-button
+          class="wecom-button"
+          style="width: 100%"
+          :loading="wecomLoading"
+          @click="loginWithWecom"
+        >
+          企业微信登录
+        </el-button>
+      </template>
+      <template v-if="showQrEntry">
+        <el-divider>手机访问</el-divider>
+        <div class="mobile-entry">
+          <img v-if="qrDataUrl" :src="qrDataUrl" alt="移动端访问二维码" class="mobile-qr" />
+          <div class="muted">{{ qrHint }}</div>
+          <div class="mobile-url">{{ mobileUrl }}</div>
+        </div>
+      </template>
       <div v-if="adminMode" class="muted" style="margin-top: 16px; text-align: center">
         普通用户请访问用户端入口
       </div>
@@ -57,17 +76,24 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { login, changePassword as changePasswordApi } from '../api/auth'
+import QRCode from 'qrcode'
+import {
+  login,
+  changePassword as changePasswordApi,
+  getWecomStatus,
+  getWecomAuthorizeUrl
+} from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const adminMode = import.meta.env.VITE_APP_MODE === 'admin'
-const modeLabel = adminMode ? '管理端' : '用户端'
+const mobileMode = import.meta.env.VITE_APP_MODE === 'mobile'
+const modeLabel = adminMode ? '管理端' : mobileMode ? '移动端' : '用户端'
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
@@ -75,6 +101,46 @@ const errorMessage = ref('')
 const passwordDialog = ref(false)
 const changing = ref(false)
 const passwordForm = reactive({ newPassword: '', confirm: '' })
+const wecomEnabled = ref(false)
+const wecomLoading = ref(false)
+const showQrEntry = !adminMode && !mobileMode
+const isLoopbackHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+const mobileUrl = showQrEntry ? resolveMobileUrl() : ''
+const qrHint = isLoopbackHost
+  ? '本机地址生成的二维码仅本机可用，手机请改用局域网地址或配置 VITE_MOBILE_URL'
+  : '扫码进入移动端，企业微信内可直接打开'
+const qrDataUrl = ref('')
+
+function resolveMobileUrl() {
+  const configured = (import.meta.env.VITE_MOBILE_URL || '').trim()
+  if (configured) return configured
+  return `${window.location.protocol}//${window.location.hostname}:5176`
+}
+
+onMounted(async () => {
+  if (showQrEntry && mobileUrl) {
+    QRCode.toDataURL(mobileUrl, {
+      width: 168,
+      margin: 1,
+      color: { dark: '#1f3b73', light: '#ffffff' }
+    })
+      .then((url) => {
+        qrDataUrl.value = url
+      })
+      .catch(() => {
+        qrDataUrl.value = ''
+      })
+  }
+  if (adminMode) {
+    return
+  }
+  try {
+    const data = await getWecomStatus()
+    wecomEnabled.value = Boolean(data.enabled)
+  } catch {
+    wecomEnabled.value = false
+  }
+})
 
 watch(
   () => [form.username, form.password],
@@ -123,6 +189,19 @@ async function submit() {
   }
 }
 
+async function loginWithWecom() {
+  errorMessage.value = ''
+  wecomLoading.value = true
+  try {
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/chat'
+    const data = await getWecomAuthorizeUrl(redirect)
+    window.location.href = data.authorize_url
+  } catch {
+    errorMessage.value = '企业微信登录暂不可用，请稍后重试'
+    wecomLoading.value = false
+  }
+}
+
 async function changePassword() {
   if (passwordForm.newPassword.length < 8) {
     ElMessage.warning('新密码至少 8 位')
@@ -156,5 +235,36 @@ async function enter() {
 <style scoped>
 .login-error {
   margin-bottom: 16px;
+}
+
+.mobile-entry {
+  text-align: center;
+}
+
+.mobile-qr {
+  width: 140px;
+  height: 140px;
+  margin: 4px auto 8px;
+  display: block;
+  border-radius: 8px;
+}
+
+.mobile-url {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  word-break: break-all;
+}
+
+@media (max-width: 767px) {
+  .login-page {
+    padding: 24px 16px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 24px 20px;
+  }
 }
 </style>
