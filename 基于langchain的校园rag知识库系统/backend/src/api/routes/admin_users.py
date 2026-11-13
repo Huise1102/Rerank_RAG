@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import client_ip, require_admin
 from src.core.security import hash_password
-from src.db.models import AuditLog, User, utcnow
+from src.db.models import AuditLog, Department, User, utcnow
 from src.db.session import get_db
 from src.schemas.user import (
     ResetPasswordRequest,
@@ -52,7 +52,8 @@ async def list_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     keyword: str | None = None,
-    role: str | None = Query(default=None, pattern="^(admin|user)$"),
+    role: str | None = Query(default=None, pattern="^(admin|dept_admin|staff|student)$"),
+    department_id: int | None = None,
     status_value: str | None = Query(default=None, alias="status", pattern="^(active|disabled)$"),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -63,6 +64,8 @@ async def list_users(
         statement = statement.where(or_(User.username.like(like), User.display_name.like(like)))
     if role:
         statement = statement.where(User.role == role)
+    if department_id:
+        statement = statement.where(User.department_id == department_id)
     if status_value:
         statement = statement.where(User.status == status_value)
 
@@ -93,12 +96,19 @@ async def create_user(
     if exists.scalar_one_or_none() is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="用户名已存在")
 
+    department = None
+    if payload.department_id is not None:
+        department = await db.get(Department, payload.department_id)
+        if department is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="部门不存在")
+
     user = User(
         username=payload.username,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
         role=payload.role,
-        department=payload.department,
+        department_id=department.id if department else None,
+        department=department.name if department else payload.department,
         must_change_password=True,
     )
     db.add(user)
@@ -127,11 +137,17 @@ async def update_user(
         if target.role == "admin" and await _count_active_admins(db, exclude_id=target.id) == 0:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="不能禁用最后一个管理员")
 
-    if payload.role == "user" and target.role == "admin":
+    if payload.role is not None and payload.role != "admin" and target.role == "admin":
         if target.id == admin.id:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="不能移除自己的管理员角色")
         if await _count_active_admins(db, exclude_id=target.id) == 0:
             raise HTTPException(status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
+
+    department = None
+    if payload.department_id is not None:
+        department = await db.get(Department, payload.department_id)
+        if department is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="部门不存在")
 
     changes: list[str] = []
     if payload.display_name is not None and payload.display_name != target.display_name:
@@ -143,7 +159,11 @@ async def update_user(
     if payload.status is not None and payload.status != target.status:
         target.status = payload.status
         changes.append(f"状态改为 {payload.status}")
-    if payload.department is not None and payload.department != target.department:
+    if department is not None and department.id != target.department_id:
+        target.department_id = department.id
+        target.department = department.name
+        changes.append(f"部门改为 {department.name}")
+    elif payload.department is not None and payload.department != target.department:
         target.department = payload.department
         changes.append("修改部门")
     target.updated_at = utcnow()
