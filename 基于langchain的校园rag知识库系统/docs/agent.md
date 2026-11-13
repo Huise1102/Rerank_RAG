@@ -21,10 +21,10 @@
 ├── demo/                      现有验证版，只读参考
 ├── product/                   现有产品版，行为参考，只读
 ├── agent/                     现有智能体版，只读参考
-└── 基于langchain的校园rag知识库系统/          本项目，唯一允许写入的项目目录
+└── 基于LangChain的校园RAG知识库系统/          本项目，唯一允许写入的项目目录
 ```
 
-`基于langchain的校园rag知识库系统/` 与 `demo/`、`product/`、`agent/` 三版并列，不是其中任何一版的子目录，也不是第四种演示形态。
+`基于LangChain的校园RAG知识库系统/` 与 `demo/`、`product/`、`agent/` 三版并列，不是其中任何一版的子目录，也不是第四种演示形态。
 
 本项目以 LangChain 作为检索与生成链路的统一框架，从零构建独立后端与前端。`product/` 只用于对照业务流程与交互形态，不复制其代码、配置、索引、模型缓存或启动脚本。本项目不依赖 `demo/`、`product/`、`agent/` 中的任何内容。
 
@@ -62,11 +62,11 @@
 
 | 文档中的旧位置 | 本项目目标位置 |
 | --- | --- |
-| `product/backend/` | `基于langchain的校园rag知识库系统/backend/` |
-| `product/frontend/` | `基于langchain的校园rag知识库系统/frontend/` |
-| `product/resource/` | `基于langchain的校园rag知识库系统/resource/`，只复制实际需要的语料 |
-| `product/backend/.env` | `基于langchain的校园rag知识库系统/.env` |
-| `product/backend/src/core/config.py` | `基于langchain的校园rag知识库系统/backend/src/core/config.py` |
+| `product/backend/` | `基于LangChain的校园RAG知识库系统/backend/` |
+| `product/frontend/` | `基于LangChain的校园RAG知识库系统/frontend/` |
+| `product/resource/` | `基于LangChain的校园RAG知识库系统/resource/`，只复制实际需要的语料 |
+| `product/backend/.env` | `基于LangChain的校园RAG知识库系统/.env` |
+| `product/backend/src/core/config.py` | `基于LangChain的校园RAG知识库系统/backend/src/core/config.py` |
 
 ### 1.5 阶段文档索引
 
@@ -94,13 +94,13 @@
 5. 授权只对当次任务有效，必须限定任务范围、文件和产出；子智能体的结果必须由主智能体逐项复核后才能采用。
 6. 任务量大时，智能体应自行拆成里程碑顺序执行，而不是开子智能体并行。上下文不足时，先读文件和整理笔记，再继续。
 
-### H2 所有项目内容只能放在 `基于langchain的校园rag知识库系统/` 内
+### H2 所有项目内容只能放在 `基于LangChain的校园RAG知识库系统/` 内
 
 1. 新增的源码、配置、依赖清单、脚本、测试、文档、示例数据、运行产物，全部位于本项目文件夹内。
 2. 不得在仓库根目录新增其他文件或文件夹；不得在 `demo/`、`product/`、`agent/` 内新增、修改、删除任何内容。
 3. 不得使用符号链接、目录联接、Git 子模块等方式引用父目录中的代码、数据或依赖。
 4. 临时脚本和临时数据优先放在项目内被忽略的目录，或系统临时目录，完成后清理；不得散落在仓库根目录。
-5. 本项目文件夹本身不得再嵌套一个同名项目目录，例如不得出现 `基于langchain的校园rag知识库系统/基于langchain的校园rag知识库系统/`。
+5. 本项目文件夹本身不得再嵌套一个同名项目目录，例如不得出现 `基于LangChain的校园RAG知识库系统/基于LangChain的校园RAG知识库系统/`。
 
 ### H3 项目必须能脱离主文件夹独立运行
 
@@ -108,7 +108,7 @@
 2. 运行时不得读取父目录的 `.env`、`.venv`、`node_modules`、`.hf-cache`、`.uv-cache`、`resource/` 或任何父级配置。
 3. 不得出现 `../product`、`../demo`、`../agent`、`..\\product` 等跨项目引用。
 4. 不得出现个人电脑绝对路径，例如 `C:\Users\...`、`D:\...`；所有路径必须由项目根目录推导或来自环境变量。
-5. 把 `基于langchain的校园rag知识库系统/` 单独复制到仓库外的目录后，按 README 重新安装依赖、准备 `.env`、初始化数据库，即可启动。验收时必须实际验证或如实说明未验证项。
+5. 把 `基于LangChain的校园RAG知识库系统/` 单独复制到仓库外的目录后，按 README 重新安装依赖、准备 `.env`、初始化数据库，即可启动。验收时必须实际验证或如实说明未验证项。
 
 ### H4 现有三版只读，不得破坏
 
@@ -170,7 +170,7 @@
 允许根据实际实现微调，但必须保持“一个项目根、一个后端、前端可双模式、配置与运行数据分离”的结构。
 
 ```text
-基于langchain的校园rag知识库系统/
+基于LangChain的校园RAG知识库系统/
 ├── README.md                       从零启动、配置、验收、排障
 ├── .env                            本地真实配置，不入库
 ├── .env.example                    配置模板，只放占位值
@@ -541,7 +541,7 @@ JSDoc 的 `@param`、`@returns` 标签保留，标签后的说明文字必须改
 
 1. 未经用户明确授权调用 subagent、探索代理、通用代理、后台代理或并行子会话。
 2. 修改、移动、删除 `demo/`、`product/`、`agent/` 中的任何内容。
-3. 在 `基于langchain的校园rag知识库系统/` 之外新增项目文件。
+3. 在 `基于LangChain的校园RAG知识库系统/` 之外新增项目文件。
 4. 使用符号链接、目录联接、子模块引用父目录。
 5. 在代码、配置、文档中写入个人绝对路径。
 6. 复制 `.env`、`.venv`、`node_modules`、`dist`、索引、上传文件、日志、模型缓存到新项目。
