@@ -1,10 +1,16 @@
 import { defineConfig } from 'vite'
+import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig(() => {
   const mode = process.env.VITE_APP_MODE === 'admin' ? 'admin' : 'user'
   return {
     plugins: [vue()],
+    resolve: {
+      alias: {
+        '@app-routes': fileURLToPath(new URL(`./src/router/routes.${mode}.js`, import.meta.url))
+      }
+    },
     define: {
       'import.meta.env.VITE_APP_MODE': JSON.stringify(mode)
     },
