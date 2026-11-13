@@ -7,13 +7,23 @@ from pydantic import BaseModel, ConfigDict, Field
 class KbCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=500)
-    status: str = Field(default="published", pattern="^(published|unpublished)$")
+    status: str = Field(default="published", pattern="^(published|unpublished|disabled)$")
+    department_id: int | None = None
+    visibility: str = Field(default="department", pattern="^(public|department)$")
+    owner_user_id: int | None = None
+    review_cycle_days: int = Field(default=180, ge=1, le=3650)
+    chunk_strategy: str = Field(default="clause", pattern="^(clause|recursive|fixed)$")
 
 
 class KbUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
-    status: str | None = Field(default=None, pattern="^(published|unpublished)$")
+    status: str | None = Field(default=None, pattern="^(published|unpublished|disabled)$")
+    department_id: int | None = None
+    visibility: str | None = Field(default=None, pattern="^(public|department)$")
+    owner_user_id: int | None = None
+    review_cycle_days: int | None = Field(default=None, ge=1, le=3650)
+    chunk_strategy: str | None = Field(default=None, pattern="^(clause|recursive|fixed)$")
 
 
 class KbOut(BaseModel):
@@ -23,6 +33,12 @@ class KbOut(BaseModel):
     name: str
     description: str
     status: str
+    department_id: int | None = None
+    visibility: str = "department"
+    owner_user_id: int | None = None
+    review_cycle_days: int = 180
+    index_epoch: int = 1
+    chunk_strategy: str = "clause"
     created_at: datetime
     updated_at: datetime
 
