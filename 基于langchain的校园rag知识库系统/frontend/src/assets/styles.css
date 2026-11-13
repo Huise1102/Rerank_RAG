@@ -36,13 +36,16 @@ body,
 .login-page {
   height: 100%;
   display: flex;
-  align-items: center;
   justify-content: center;
+  overflow-y: auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
   background: linear-gradient(135deg, #1f3b73, #2f6fb3);
 }
 
 .login-card {
   width: 380px;
+  margin: auto;
   padding: 32px;
   border-radius: 12px;
   background: #fff;
@@ -146,6 +149,13 @@ body,
   font-size: 12px;
   font-weight: 600;
   color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-status {
+  font-weight: 400;
 }
 
 .bubble {
@@ -466,3 +476,184 @@ body,
   font-weight: 700;
   margin-top: 6px;
 }
+
+.mobile-only {
+  display: none;
+}
+
+.back-to-bottom {
+  position: sticky;
+  bottom: 12px;
+  float: right;
+  margin-top: -44px;
+  z-index: 5;
+}
+
+.citation-detail {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #303133;
+}
+
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1999;
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding: 8px 12px 16px;
+  }
+
+  .user-header {
+    height: 52px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .user-header > div:last-child {
+    gap: 12px !important;
+  }
+
+  .user-header .brand {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .user-header .nav-item {
+    font-size: 14px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .chat-layout {
+    position: relative;
+  }
+
+  .conversation-panel {
+    display: none;
+  }
+
+  .conversation-panel.mobile-open {
+    display: flex;
+    position: fixed;
+    top: 52px;
+    bottom: 0;
+    left: 0;
+    width: 82%;
+    max-width: 320px;
+    z-index: 2000;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  .chat-toolbar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .chat-toolbar .el-select {
+    width: 100% !important;
+  }
+
+  .chat-toolbar .el-tag {
+    display: none;
+  }
+
+  .message-list {
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .message {
+    margin-bottom: 16px;
+  }
+
+  .bubble {
+    max-width: 92%;
+    padding: 10px 12px;
+  }
+
+  .answer-body {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .answer-body h1 {
+    font-size: 18px;
+  }
+
+  .answer-body h2 {
+    font-size: 16px;
+  }
+
+  .answer-body h3,
+  .answer-body h4 {
+    font-size: 15px;
+  }
+
+  .answer-body table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .answer-body pre {
+    max-width: 100%;
+  }
+
+  .citation-card {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .chat-input {
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .chat-input-actions .muted {
+    display: none;
+  }
+
+  .chat-input-actions > div {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .chat-input-actions .el-button {
+    min-height: 44px;
+  }
+
+  .detail-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    z-index: 2100;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .el-dialog {
+    width: calc(100% - 24px) !important;
+  }
+
+  .el-drawer__body {
+    padding: 12px;
+  }
+
+  .conversation-item {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .el-message-box {
+    width: calc(100% - 32px) !important;
+  }
+}
+
