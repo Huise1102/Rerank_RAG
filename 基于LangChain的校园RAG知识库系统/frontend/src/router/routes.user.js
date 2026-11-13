@@ -1,10 +1,12 @@
 import Login from '../views/Login.vue'
+import WecomCallback from '../views/WecomCallback.vue'
 import Chat from '../views/Chat.vue'
 import MyFeedback from '../views/MyFeedback.vue'
 import UserLayout from '../layouts/UserLayout.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: Login },
+  { path: '/wecom/callback', name: 'wecom-callback', component: WecomCallback },
   {
     path: '/',
     component: UserLayout,
