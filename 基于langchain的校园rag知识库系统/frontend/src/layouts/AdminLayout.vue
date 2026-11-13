@@ -9,16 +9,22 @@
         active-text-color="#ffffff"
         router
       >
-        <el-menu-item index="/chat">问答</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/chat">问答</el-menu-item>
         <el-menu-item index="/knowledge">知识库</el-menu-item>
-        <el-menu-item index="/strategy">检索策略</el-menu-item>
-        <el-menu-item index="/model">模型配置</el-menu-item>
-        <el-menu-item index="/logs">日志</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/strategy">检索策略</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/model">模型配置</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/logs">日志</el-menu-item>
         <el-menu-item index="/feedback">
           反馈处理
           <el-badge v-if="pendingCount > 0" :value="pendingCount" style="margin-left: 10px" />
         </el-menu-item>
-        <el-menu-item index="/users">用户与权限</el-menu-item>
+        <el-menu-item index="/dashboard">运营看板</el-menu-item>
+        <el-menu-item index="/gaps">知识缺口</el-menu-item>
+        <el-menu-item index="/evaluation">评估回归</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/cache">热点缓存</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/agent">深度问答</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/users">用户与权限</el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/departments">部门管理</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
