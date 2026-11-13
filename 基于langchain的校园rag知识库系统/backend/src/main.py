@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 
@@ -10,6 +11,16 @@ from src.core.config import settings
 from src.core.logging import configure_logging, request_id_var
 
 logger = logging.getLogger(__name__)
+
+
+def _preload_models() -> None:
+    from src.retrieval.retrievers import preload_models
+
+    try:
+        preload_models()
+        logger.info("嵌入与精排模型预加载完成")
+    except Exception as exc:
+        logger.warning("检索模型预加载失败：%s", exc)
 
 
 def create_app() -> FastAPI:
@@ -53,6 +64,7 @@ def create_app() -> FastAPI:
         ):
             path.mkdir(parents=True, exist_ok=True)
         logger.info("服务启动，配置加载完成")
+        asyncio.create_task(asyncio.to_thread(_preload_models))
 
     app.include_router(health_router)
     app.include_router(api_router, prefix=settings.api_prefix)
