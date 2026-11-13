@@ -1,0 +1,12 @@
+{"id":"campus-001","question":"新生入学后多久需要进行学籍注册？","category":"学籍管理","relevant_doc_ids":["3"],"expected_keywords":["学籍","注册"],"reference_answer":"","difficulty":"easy"}
+{"id":"campus-002","question":"学生申请转专业需要满足哪些条件？","category":"学籍管理","relevant_doc_ids":["3"],"expected_keywords":["转专业","申请"],"reference_answer":"","difficulty":"medium"}
+{"id":"campus-003","question":"课程考试不及格后可以补考几次？","category":"考试管理","relevant_doc_ids":["3"],"expected_keywords":["补考","不及格"],"reference_answer":"","difficulty":"easy"}
+{"id":"campus-004","question":"考试作弊会受到什么处理？","category":"考试管理","relevant_doc_ids":["3"],"expected_keywords":["作弊","处理"],"reference_answer":"","difficulty":"medium"}
+{"id":"campus-005","question":"学生请假超过三天需要谁审批？","category":"日常管理","relevant_doc_ids":["3"],"expected_keywords":["请假","审批"],"reference_answer":"","difficulty":"easy"}
+{"id":"campus-006","question":"申请休学需要提交哪些材料？","category":"学籍管理","relevant_doc_ids":["3"],"expected_keywords":["休学","材料"],"reference_answer":"","difficulty":"medium"}
+{"id":"campus-007","question":"休学期满后如何办理复学？","category":"学籍管理","relevant_doc_ids":["3"],"expected_keywords":["复学","休学"],"reference_answer":"","difficulty":"medium"}
+{"id":"campus-008","question":"什么情况下学生会被退学处理？","category":"学籍管理","relevant_doc_ids":["3"],"expected_keywords":["退学"],"reference_answer":"","difficulty":"hard"}
+{"id":"campus-009","question":"毕业需要修满多少学分？","category":"毕业管理","relevant_doc_ids":["3"],"expected_keywords":["毕业","学分"],"reference_answer":"","difficulty":"easy"}
+{"id":"campus-010","question":"申请学士学位对外语成绩有什么要求？","category":"学位管理","relevant_doc_ids":["3"],"expected_keywords":["学位","外语"],"reference_answer":"","difficulty":"medium"}
+{"id":"campus-011","question":"校级奖学金一年评选几次？","category":"奖助管理","relevant_doc_ids":["3"],"expected_keywords":["奖学金","评选"],"reference_answer":"","difficulty":"easy"}
+{"id":"campus-012","question":"学生对处分决定有异议如何申诉？","category":"学生权益","relevant_doc_ids":["3"],"expected_keywords":["申诉","处分"],"reference_answer":"","difficulty":"hard"}
