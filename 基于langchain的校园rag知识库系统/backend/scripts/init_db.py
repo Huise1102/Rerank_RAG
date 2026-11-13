@@ -13,7 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from scripts.init_admin import ensure_admin  # noqa: E402
 from src.core.config import settings  # noqa: E402
-from src.db.models import StrategyPreset  # noqa: E402
+from src.db.models import Department, StrategyPreset  # noqa: E402
 from src.db.session import async_session_factory, engine  # noqa: E402
 
 
@@ -44,8 +44,21 @@ def run_migrations() -> None:
     print("数据库迁移完成")
 
 
+async def seed_departments(db) -> None:
+    defaults = [
+        ("教务处", "JWC"),
+        ("待分配", "PENDING"),
+    ]
+    for name, code in defaults:
+        result = await db.execute(select(Department).where(Department.code == code))
+        if result.scalar_one_or_none() is None:
+            db.add(Department(name=name, code=code, status="active"))
+    await db.commit()
+
+
 async def seed_defaults() -> None:
     async with async_session_factory() as db:
+        await seed_departments(db)
         existing = await db.execute(select(StrategyPreset).limit(1))
         if existing.scalar_one_or_none() is None:
             db.add_all(
