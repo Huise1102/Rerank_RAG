@@ -6,6 +6,13 @@
     </div>
     <el-table :data="items" size="small" border>
       <el-table-column prop="ticket_no" label="工单号" width="190" />
+      <el-table-column label="来源" width="90">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.kind === 'transfer' ? 'warning' : 'info'">
+            {{ row.kind === 'transfer' ? '转人工' : '反馈' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="feedback_type" label="类型" width="140" />
       <el-table-column prop="description" label="问题描述" show-overflow-tooltip />
       <el-table-column label="状态" width="100">
@@ -33,7 +40,10 @@
           <el-descriptions-item label="提交时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="知识库">{{ detail.kb_name || '未关联' }}</el-descriptions-item>
           <el-descriptions-item label="策略">{{ detail.strategy || '未记录' }}</el-descriptions-item>
+          <el-descriptions-item label="首次响应">{{ formatTime(detail.first_response_at) || '待响应' }}</el-descriptions-item>
+          <el-descriptions-item label="转办说明">{{ detail.transfer_reason || '无' }}</el-descriptions-item>
         </el-descriptions>
+        <p class="muted">人工转办承诺：1 个工作日内首次响应，3 个工作日内办结。</p>
 
         <h4>问题描述</h4>
         <p class="detail-text">{{ detail.description }}</p>
@@ -62,6 +72,7 @@ const detail = ref(null)
 const statusMap = {
   pending: ['待处理', 'warning'],
   processing: ['处理中', 'primary'],
+  replied: ['已回复', 'success'],
   resolved: ['已解决', 'success'],
   rejected: ['已驳回', 'danger']
 }
