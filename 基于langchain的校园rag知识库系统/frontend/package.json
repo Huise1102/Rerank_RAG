@@ -1,0 +1,26 @@
+{
+  "name": "campus-rag-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:admin": "cross-env VITE_APP_MODE=admin vite --port 5174",
+    "dev:user": "cross-env VITE_APP_MODE=user vite --port 5175",
+    "build:admin": "cross-env VITE_APP_MODE=admin vite build --outDir dist/admin",
+    "build:user": "cross-env VITE_APP_MODE=user vite build --outDir dist/user",
+    "build": "npm run build:admin && npm run build:user"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.1",
+    "axios": "1.7.9",
+    "element-plus": "2.8.8",
+    "pinia": "2.2.6",
+    "vue": "3.5.13",
+    "vue-router": "4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.1",
+    "cross-env": "7.0.3",
+    "vite": "6.0.3"
+  }
+}
