@@ -23,3 +23,15 @@ export function adminFeedbackDetail(id) {
 export function handleFeedback(id, payload) {
   return request.patch(`/admin/feedback/${id}`, payload)
 }
+
+export function submitTransfer(payload) {
+  return request.post('/feedback/transfer', payload)
+}
+
+export function previewDocumentBlob(documentId, versionId) {
+  return request.get(`/documents/${documentId}/preview`, {
+    params: versionId ? { version_id: versionId } : {},
+    responseType: 'blob',
+    timeout: 120000
+  })
+}
