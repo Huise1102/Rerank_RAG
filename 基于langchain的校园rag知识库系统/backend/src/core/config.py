@@ -22,7 +22,11 @@ class Settings(BaseSettings):
     secret_key: str = "please-change-this-secret-in-env"
     access_token_expire_minutes: int = 480
 
-    cors_origins: str = "http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175"
+    cors_origins: str = (
+        "http://localhost:5174,http://127.0.0.1:5174,"
+        "http://localhost:5175,http://127.0.0.1:5175,"
+        "http://localhost:5176,http://127.0.0.1:5176"
+    )
 
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3307
@@ -40,6 +44,22 @@ class Settings(BaseSettings):
     login_window_seconds: int = 600
     login_lock_seconds: int = 600
     feedback_hourly_limit: int = 10
+
+    wecom_enabled: bool = False
+    wecom_corp_id: str = ""
+    wecom_agent_id: str = ""
+    wecom_secret: str = ""
+    wecom_redirect_uri: str = ""
+    wecom_api_base: str = "https://qyapi.weixin.qq.com"
+
+    @property
+    def wecom_configured(self) -> bool:
+        return bool(
+            self.wecom_corp_id
+            and self.wecom_agent_id
+            and self.wecom_secret
+            and self.wecom_redirect_uri
+        )
 
     llm_provider: str = "api"
     llm_base_url: str = "https://api.deepseek.com/v1"
@@ -62,11 +82,22 @@ class Settings(BaseSettings):
     bm25_top_k: int = 50
     rrf_k: int = 60
     rerank_top_n: int = 5
+    rerank_input_k: int = 20
     context_max_chars: int = 6000
     chunk_size: int = 600
     chunk_overlap: int = 100
+    chunk_strategy: str = "clause"
+    chunk_min_size: int = 30
+    clause_max_chars: int = 1200
+    parent_text_max_chars: int = 800
+    table_max_rows: int = 30
     history_max_turns: int = 5
     upload_max_mb: int = 20
+
+    default_department_code: str = "JWC"
+    transfer_first_response_hours: int = 24
+    transfer_resolve_hours: int = 72
+    evaluation_max_samples: int = 400
 
     data_dir: str = ""
     storage_dir: str = ""
