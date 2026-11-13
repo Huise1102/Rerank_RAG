@@ -6,12 +6,13 @@ from typing import AsyncIterator
 
 from fastapi import HTTPException, status
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.db.models import (
     Conversation,
+    Department,
     KnowledgeBase,
     Message,
     RetrievalLog,
@@ -20,10 +21,20 @@ from src.db.models import (
     utcnow,
 )
 from src.db.session import async_session_factory
-from src.generation.chain import build_chain, build_citations, format_context
+from src.generation.chain import (
+    DISCLAIMER,
+    REFUSAL,
+    build_chain,
+    build_citations,
+    format_context,
+)
 from src.generation.llm import build_chat_model, llm_available
 from src.retrieval.retrievers import build_retriever
+from src.retrieval.scope import RetrievalScope
 from src.schemas.chat import ChatRequest
+from src.services.agent_settings import deep_allowed, get_agent_settings
+from src.services.cache_service import lookup_cached_answer, store_cached_answer
+from src.services.kb_service import can_access_kb
 from src.services.setting_service import get_model_config
 
 logger = logging.getLogger(__name__)
@@ -42,6 +53,11 @@ class ChatContext:
     history: list[BaseMessage]
     question: str
     model_config: dict
+    scope: RetrievalScope
+    transfer_required: bool = False
+    cached_answer: str | None = None
+    cache_eligible: bool = False
+    agent_config: dict | None = None
 
 
 def _sse(event: str, data: dict) -> str:
@@ -88,6 +104,23 @@ async def _load_history(db: AsyncSession, conversation_id: int, exclude_message_
     return history
 
 
+async def _resolve_chat_kb(db: AsyncSession, kb_id: int, user: User) -> KnowledgeBase:
+    kb = await db.get(KnowledgeBase, kb_id)
+    if kb is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="知识库不存在或未发布")
+    department = await db.get(Department, kb.department_id) if kb.department_id else None
+    if not can_access_kb(
+        user.role,
+        user.department_id,
+        kb.visibility,
+        kb.department_id,
+        kb.status,
+        department.status if department else None,
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="知识库不存在或未发布")
+    return kb
+
+
 async def prepare_chat(db: AsyncSession, user: User, payload: ChatRequest) -> ChatContext:
     is_admin = user.role == "admin"
     model_config = await get_model_config(db)
@@ -97,11 +130,158 @@ async def prepare_chat(db: AsyncSession, user: User, payload: ChatRequest) -> Ch
             detail="尚未配置大模型密钥，请在项目根 .env 中设置 LLM_API_KEY",
         )
 
-    kb = await db.get(KnowledgeBase, payload.kb_id)
-    if kb is None or (not is_admin and kb.status != "published"):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="知识库不存在或未发布")
+    kb = await _resolve_chat_kb(db, payload.kb_id, user)
 
     preset = await _resolve_strategy(db, payload.strategy_id, is_admin)
+    scope = RetrievalScope.from_user(user)
+    strategy_id = preset.id if preset else None
+    cache_eligible = payload.mode == "fast"
+    if cache_eligible and payload.conversation_id is not None:
+        existing_messages = await db.scalar(
+            select(func.count(Message.id)).where(
+                Message.conversation_id == payload.conversation_id
+            )
+        )
+        cache_eligible = int(existing_messages or 0) == 0
+    cached = None
+    if cache_eligible:
+        cached = await lookup_cached_answer(db, kb, strategy_id, scope, payload.question)
+
+    if payload.conversation_id is not None:
+        conversation = await db.get(Conversation, payload.conversation_id)
+        if conversation is None or conversation.user_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="会话不存在")
+        conversation.kb_id = kb.id
+    else:
+        title = payload.question.strip()[:30] or "新会话"
+        conversation = Conversation(
+            user_id=user.id, kb_id=kb.id, app_key=payload.app_key, title=title
+        )
+        db.add(conversation)
+        await db.flush()
+
+    user_message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=payload.question,
+        kb_id=kb.id,
+        strategy_id=strategy_id,
+    )
+    db.add(user_message)
+    await db.commit()
+    await db.refresh(user_message)
+    await db.refresh(conversation)
+
+    history = await _load_history(db, conversation.id, user_message.id)
+    if cached is not None:
+        cached_detail = dict(cached.get("detail") or {})
+        cached_detail["cache"] = {
+            "hit": True,
+            "epoch": kb.index_epoch,
+            "created_at": cached.get("created_at", ""),
+            "match_type": cached.get("match_type", "exact"),
+            "similarity": cached.get("similarity"),
+            "matched_question": cached.get("matched_question", ""),
+        }
+        cached_detail["strategy"] = cached.get("strategy_name") or cached_detail.get("strategy", "")
+        return ChatContext(
+            conversation_id=conversation.id,
+            user_message_id=user_message.id,
+            kb=kb,
+            strategy=preset,
+            strategy_name=cached.get("strategy_name") or (preset.name if preset else "系统默认"),
+            documents=[],
+            citations=cached.get("citations") or [],
+            detail=cached_detail,
+            history=history,
+            question=payload.question,
+            model_config=model_config,
+            scope=scope,
+            transfer_required=False,
+            cached_answer=cached.get("answer", ""),
+            cache_eligible=True,
+        )
+
+    started = time.perf_counter()
+    bundle = build_retriever(kb.id, preset, scope)
+    try:
+        documents = await bundle.retriever.ainvoke(payload.question)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    duration_ms = int((time.perf_counter() - started) * 1000)
+
+    citations = build_citations(documents)
+    vector_hits = len(bundle.vector_tracker.bucket) if bundle.vector_tracker else 0
+    bm25_hits = len(bundle.bm25_tracker.bucket) if bundle.bm25_tracker else 0
+    versions = sorted(
+        {
+            f"{item.metadata.get('document_id')}:{item.metadata.get('version_label')}"
+            for item in documents
+            if item.metadata.get("document_id")
+        }
+    )
+    detail = {
+        "strategy": preset.name if preset else "系统默认",
+        "rerank": bundle.used_rerank,
+        "vector_hits": vector_hits,
+        "bm25_hits": bm25_hits,
+        "fused_hits": max(vector_hits, bm25_hits),
+        "reranked_hits": len(documents),
+        "duration_ms": duration_ms,
+        "role": scope.role,
+        "department_id": scope.department_id,
+        "visibility_scope": scope.description,
+        "versions": versions,
+        "params": bundle.fields,
+        "cache": {"hit": False, "epoch": kb.index_epoch},
+        "documents": [
+            {
+                "index": index,
+                "filename": item.metadata.get("filename", ""),
+                "page": item.metadata.get("page"),
+                "article_no": item.metadata.get("article_no"),
+                "version_label": item.metadata.get("version_label"),
+                "document_id": item.metadata.get("document_id"),
+                "preview": item.page_content.strip()[:160],
+            }
+            for index, item in enumerate(documents, start=1)
+        ],
+    }
+
+    return ChatContext(
+        conversation_id=conversation.id,
+        user_message_id=user_message.id,
+        kb=kb,
+        strategy=preset,
+        strategy_name=preset.name if preset else "系统默认",
+        documents=documents,
+        citations=citations,
+        detail=detail,
+        history=history,
+        question=payload.question,
+        model_config=model_config,
+        scope=scope,
+        transfer_required=not citations,
+        cache_eligible=cache_eligible,
+    )
+
+
+async def prepare_deep_chat(db: AsyncSession, user: User, payload: ChatRequest) -> ChatContext:
+    """准备深度问答上下文，检索交给 Agent 循环执行。"""
+    agent_settings = await get_agent_settings(db)
+    kb = await _resolve_chat_kb(db, payload.kb_id, user)
+    if not deep_allowed(agent_settings, user, kb.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="当前知识库未开放深度问答")
+    model_config = await get_model_config(db)
+    if not llm_available(model_config):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="尚未配置大模型密钥，请在项目根 .env 中设置 LLM_API_KEY",
+        )
+
+    is_admin = user.role == "admin"
+    preset = await _resolve_strategy(db, payload.strategy_id, is_admin)
+    scope = RetrievalScope.from_user(user)
 
     if payload.conversation_id is not None:
         conversation = await db.get(Conversation, payload.conversation_id)
@@ -127,52 +307,43 @@ async def prepare_chat(db: AsyncSession, user: User, payload: ChatRequest) -> Ch
     await db.commit()
     await db.refresh(user_message)
     await db.refresh(conversation)
+    history = await _load_history(db, conversation.id, user_message.id)
 
-    started = time.perf_counter()
-    bundle = build_retriever(kb.id, preset)
-    try:
-        documents = await bundle.retriever.ainvoke(payload.question)
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
-    duration_ms = int((time.perf_counter() - started) * 1000)
-
-    citations = build_citations(documents)
-    vector_hits = len(bundle.vector_tracker.bucket) if bundle.vector_tracker else 0
-    bm25_hits = len(bundle.bm25_tracker.bucket) if bundle.bm25_tracker else 0
     detail = {
         "strategy": preset.name if preset else "系统默认",
-        "rerank": bundle.used_rerank,
-        "vector_hits": vector_hits,
-        "bm25_hits": bm25_hits,
-        "fused_hits": max(vector_hits, bm25_hits),
-        "reranked_hits": len(documents),
-        "duration_ms": duration_ms,
-        "params": bundle.fields,
-        "documents": [
-            {
-                "index": index,
-                "filename": item.metadata.get("filename", ""),
-                "page": item.metadata.get("page"),
-                "document_id": item.metadata.get("document_id"),
-                "preview": item.page_content.strip()[:160],
-            }
-            for index, item in enumerate(documents, start=1)
-        ],
+        "mode": "deep",
+        "rerank": bool(preset.rerank) if preset else settings.rerank_enabled,
+        "vector_hits": 0,
+        "bm25_hits": 0,
+        "fused_hits": 0,
+        "reranked_hits": 0,
+        "duration_ms": 0,
+        "role": scope.role,
+        "department_id": scope.department_id,
+        "visibility_scope": scope.description,
+        "versions": [],
+        "cache": {"hit": False, "epoch": kb.index_epoch},
+        "agent_trace": [],
+        "agent_rounds": 0,
+        "agent_retrievals": 0,
+        "documents": [],
     }
-
-    history = await _load_history(db, conversation.id, user_message.id)
     return ChatContext(
         conversation_id=conversation.id,
         user_message_id=user_message.id,
         kb=kb,
         strategy=preset,
         strategy_name=preset.name if preset else "系统默认",
-        documents=documents,
-        citations=citations,
+        documents=[],
+        citations=[],
         detail=detail,
         history=history,
         question=payload.question,
         model_config=model_config,
+        scope=scope,
+        transfer_required=False,
+        cache_eligible=False,
+        agent_config=agent_settings,
     )
 
 
@@ -202,12 +373,17 @@ async def _persist_answer(
                 message_id=message.id,
                 strategy_id=context.strategy.id if context.strategy else None,
                 strategy_name=context.strategy_name,
+                role=context.scope.role,
+                department_id=context.scope.department_id,
+                visibility_scope=context.scope.description,
+                document_versions=context.detail.get("versions", []),
                 question=context.question[:500],
                 vector_hits=context.detail.get("vector_hits", 0),
                 bm25_hits=context.detail.get("bm25_hits", 0),
                 fused_hits=context.detail.get("fused_hits", 0),
                 reranked_hits=context.detail.get("reranked_hits", 0),
                 duration_ms=context.detail.get("duration_ms", 0),
+                cache_hit=bool(context.detail.get("cache", {}).get("hit", False)),
                 citations=context.citations,
             )
         )
@@ -225,11 +401,47 @@ async def stream_answer(context: ChatContext, user: User) -> AsyncIterator[str]:
             "conversation_id": context.conversation_id,
             "user_message_id": context.user_message_id,
             "strategy": context.strategy_name,
+            "transfer_required": context.transfer_required,
         },
     )
     yield _sse("citations", {"citations": context.citations})
 
-    chain = build_chain(build_chat_model(context.model_config))
+    if context.cached_answer is not None:
+        answer = context.cached_answer
+        for index in range(0, len(answer), 48):
+            yield _sse("delta", {"content": answer[index : index + 48]})
+        message_id = await _persist_answer(context, user.id, answer, None)
+        yield _sse(
+            "done",
+            {
+                "message_id": message_id,
+                "citations": context.citations,
+                "disclaimer": DISCLAIMER,
+                "transfer_required": False,
+                "cached": True,
+                "cache_created_at": context.detail.get("cache", {}).get("created_at", ""),
+            },
+        )
+        return
+
+    if not context.documents:
+        message_id = await _persist_answer(context, user.id, REFUSAL, None)
+        yield _sse("delta", {"content": REFUSAL})
+        yield _sse(
+            "done",
+            {
+                "message_id": message_id,
+                "citations": context.citations,
+                "disclaimer": DISCLAIMER,
+                "transfer_required": True,
+            },
+        )
+        return
+
+    config = context.model_config
+    model_name = str(config.get("ollama_model", "") if config.get("provider") == "ollama" else "")
+    no_think = model_name.lower().startswith("qwen3")
+    chain = build_chain(build_chat_model(config), no_think=no_think)
     parts: list[str] = []
     failure: str | None = None
     try:
@@ -250,7 +462,37 @@ async def stream_answer(context: ChatContext, user: User) -> AsyncIterator[str]:
         yield _sse("error", {"detail": "回答生成失败，请稍后重试"})
 
     answer = "".join(parts).strip()
+    transfer_required = context.transfer_required
     if not answer:
-        answer = "未找到相关内容。"
+        answer = REFUSAL
+        transfer_required = True
     message_id = await _persist_answer(context, user.id, answer, failure)
-    yield _sse("done", {"message_id": message_id, "citations": context.citations})
+    if (
+        context.cache_eligible
+        and failure is None
+        and not transfer_required
+        and answer != REFUSAL
+    ):
+        cache_detail = dict(context.detail)
+        cache_detail["transfer_required"] = False
+        await store_cached_answer(
+            context.kb.id,
+            context.kb.index_epoch,
+            context.strategy.id if context.strategy else None,
+            context.strategy_name,
+            context.scope,
+            context.question,
+            answer,
+            context.citations,
+            cache_detail,
+        )
+    yield _sse(
+        "done",
+        {
+            "message_id": message_id,
+            "citations": context.citations,
+            "disclaimer": DISCLAIMER,
+            "transfer_required": transfer_required,
+            "cached": False,
+        },
+    )
