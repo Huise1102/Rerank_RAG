@@ -135,7 +135,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminStrategies, createStrategy, deleteStrategy, updateStrategy } from '../../api/knowledge'
 
@@ -251,7 +251,7 @@ async function remove(row) {
   await load()
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
