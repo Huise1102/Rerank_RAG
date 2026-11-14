@@ -110,7 +110,7 @@ stateDiagram-v2
 
 ## 二、界面预览
 
-> 以下截图取自本地真实运行的实例：管理端 10 个页面、PC 用户端问答页与移动端问答页，问答内容为实际检索与生成结果。
+> 以下 12 张截图均取自本地真实运行的管理端，问答内容为实际检索与生成结果。
 
 <table>
   <tr>
@@ -134,12 +134,12 @@ stateDiagram-v2
     <td align="center"><b>评估回归</b><br /><img src="docs/images/screenshots/admin-evaluation.png" width="100%" /></td>
   </tr>
   <tr>
-    <td align="center"><b>PC 用户端 · 回答与引用卡片</b><br /><img src="docs/images/screenshots/user-chat.png" width="100%" /></td>
-    <td align="center"><b>移动端 H5 · 问答</b><br /><img src="docs/images/screenshots/mobile-chat.png" width="100%" style="max-width: 300px" /></td>
+    <td align="center"><b>系统日志</b><br /><img src="docs/images/screenshots/admin-logs.png" width="100%" /></td>
+    <td align="center"><b>知识缺口</b><br /><img src="docs/images/screenshots/admin-gaps.png" width="100%" /></td>
   </tr>
 </table>
 
-管理端共 13 个页面：问答、知识库、检索策略、模型配置、反馈处理、运营看板、知识缺口、评估回归、热点缓存、深度问答、用户权限、部门管理、系统日志。用户端与移动端共用问答与我的反馈页面，移动端另外提供通知抽屉、引用底部抽屉与 PWA 安装能力。
+管理端共 13 个页面：问答、知识库、检索策略、模型配置、反馈处理、运营看板、知识缺口、评估回归、热点缓存、深度问答、用户权限、部门管理、系统日志，上图展示其中 12 个。用户端与移动端共用问答与我的反馈页面，移动端另外提供通知抽屉、引用底部抽屉与 PWA 安装能力。
 
 ## 三、技术栈
 
