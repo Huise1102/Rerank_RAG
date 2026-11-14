@@ -90,7 +90,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createDepartment, listDepartments, updateDepartment } from '../../api/admin'
 
@@ -124,7 +124,7 @@ const parentOptions = computed(() => {
   return items.value.filter((item) => !blocked.has(item.id))
 })
 
-onMounted(load)
+onActivated(load)
 
 async function load() {
   items.value = await listDepartments()
