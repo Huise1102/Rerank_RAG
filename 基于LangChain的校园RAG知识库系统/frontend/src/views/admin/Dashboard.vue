@@ -137,7 +137,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound,
@@ -415,7 +415,7 @@ async function sendReviewNotice() {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   if (auth.isAdmin) {
     try {
       departments.value = await listDepartments()
