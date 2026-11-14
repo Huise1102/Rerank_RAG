@@ -24,6 +24,15 @@
       <router-view />
     </div>
 
+    <button
+      class="theme-fab"
+      type="button"
+      :title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+      @click="isDark = !isDark"
+    >
+      <el-icon :size="18"><component :is="isDark ? Sunny : Moon" /></el-icon>
+    </button>
+
     <el-drawer v-model="notificationDrawer" title="站内通知" direction="rtl" size="380px">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
         <span class="muted">未读 {{ unread }} 条</span>
@@ -50,6 +59,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Moon, Sunny } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { logout as logoutApi } from '../api/auth'
 import {
@@ -57,9 +67,11 @@ import {
   useNotifications
 } from '../composables/useNotifications'
 import PasswordDialog from '../components/PasswordDialog.vue'
+import { useTheme } from '../composables/useTheme'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { isDark } = useTheme()
 const passwordDialog = ref(false)
 const notificationDrawer = ref(false)
 const { notifications, unread, loadNotifications, markAllRead, readOne } = useNotifications()
@@ -103,6 +115,31 @@ function gotoAdmin() {
   font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
   font-size: 16px;
   line-height: 1;
+}
+
+.theme-fab {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #606266;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.theme-fab:hover {
+  background: #f2f6fc;
+  color: #1f6fd0;
 }
 
 .notification-item {
