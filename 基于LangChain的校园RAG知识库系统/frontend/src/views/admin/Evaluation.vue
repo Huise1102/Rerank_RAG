@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { adminKbList } from '../../api/knowledge'
 import { getEvaluationReport, listEvaluationReports, runEvaluation, validateTestset } from '../../api/evaluation'
@@ -196,7 +196,7 @@ async function run() {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   kbList.value = await adminKbList()
   if (kbList.value.length) {
     form.kb_id = kbList.value[0].id
