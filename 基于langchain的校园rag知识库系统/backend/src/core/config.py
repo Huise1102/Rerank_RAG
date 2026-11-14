@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     login_window_seconds: int = 600
     login_lock_seconds: int = 600
     feedback_hourly_limit: int = 10
+    scheduler_enabled: bool = True
 
     wecom_enabled: bool = False
     wecom_corp_id: str = ""
