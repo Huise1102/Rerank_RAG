@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onActivated, ref } from 'vue'
 import { myFeedback, myFeedbackDetail } from '../api/feedback'
 
 const items = ref([])
@@ -98,7 +98,7 @@ async function showDetail(row) {
   detailVisible.value = true
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
