@@ -3,6 +3,14 @@
     <header class="mobile-topbar">
       <div class="mobile-brand">校园知识库</div>
       <div class="mobile-actions">
+        <button
+          class="icon-button"
+          type="button"
+          :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'"
+          @click="isDark = !isDark"
+        >
+          <el-icon :size="20"><component :is="isDark ? Sunny : Moon" /></el-icon>
+        </button>
         <el-badge :value="unread" :hidden="unread === 0" :max="99">
           <button class="icon-button" aria-label="通知" @click="openNotifications">
             <el-icon :size="20"><Bell /></el-icon>
@@ -65,7 +73,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, ChatDotRound, Document, Setting } from '@element-plus/icons-vue'
+import { Bell, ChatDotRound, Document, Moon, Setting, Sunny } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { logout as logoutApi } from '../api/auth'
 import {
@@ -73,9 +81,11 @@ import {
   useNotifications
 } from '../composables/useNotifications'
 import PasswordDialog from '../components/PasswordDialog.vue'
+import { useTheme } from '../composables/useTheme'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { isDark } = useTheme()
 const passwordDialog = ref(false)
 const notificationDrawer = ref(false)
 const { notifications, unread, loadNotifications, markAllRead, readOne } = useNotifications()
