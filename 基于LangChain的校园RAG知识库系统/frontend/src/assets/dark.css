@@ -1,0 +1,335 @@
+/* 深色模式覆盖：Element Plus 组件由官方暗色变量接管，这里处理页面自定义样式 */
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body,
+html.dark #app {
+  background: #0f1522;
+  color: #d6ddea;
+}
+
+/* 顶部栏与侧栏 */
+html.dark .admin-header {
+  background: #141c2c;
+  border-bottom-color: #24304a;
+}
+
+html.dark .aside-footer {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 面板与卡片底色 */
+html.dark .panel,
+html.dark .metric-card,
+html.dark .pending-card,
+html.dark .summary-card,
+html.dark .stat-card,
+html.dark .strategy-card,
+html.dark .mode-card,
+html.dark .login-card {
+  background: #151d2e;
+  border-color: #26324a;
+}
+
+/* 标题与数值 */
+html.dark .panel-title,
+html.dark .metric-value,
+html.dark .summary-value,
+html.dark .stat-value,
+html.dark .strategy-name,
+html.dark .mode-title,
+html.dark .kb-name,
+html.dark .section-label,
+html.dark .block-name,
+html.dark .pending-value,
+html.dark .donut-center strong,
+html.dark .preview-line b,
+html.dark .status-legend-item strong {
+  color: #e8edf6;
+}
+
+/* 次要说明文字 */
+html.dark .muted,
+html.dark .count,
+html.dark .metric-top,
+html.dark .metric-sub,
+html.dark .metric-unit,
+html.dark .summary-label,
+html.dark .stat-label,
+html.dark .strategy-desc,
+html.dark .mode-sub,
+html.dark .block-desc,
+html.dark .pending-label,
+html.dark .legend,
+html.dark .legend-value,
+html.dark .donut-center span,
+html.dark .empty,
+html.dark .form-hint,
+html.dark .kb-sub,
+html.dark .table-tip {
+  color: #8a94a8;
+}
+
+html.dark .strategy-combo,
+html.dark .strategy-params,
+html.dark .open-switch,
+html.dark .donut-legend,
+html.dark .status-legend,
+html.dark .kb-head,
+html.dark .preview-line {
+  color: #aab3c2;
+}
+
+/* 图表 */
+html.dark .axis-text {
+  fill: #7f8a9d;
+}
+
+html.dark .chart-svg line {
+  stroke: #26324a;
+}
+
+html.dark .donut::after {
+  background: #151d2e;
+}
+
+/* 知识库页面 */
+html.dark .kb-sidebar {
+  border-right-color: #24304a;
+}
+
+html.dark .kb-item:hover {
+  background: #1b2537;
+}
+
+html.dark .kb-item.active {
+  background: #172f47;
+  border-color: #2f6fb3;
+}
+
+html.dark .report-block,
+html.dark .block {
+  background: #1b2537;
+  color: #c3ccdb;
+}
+
+/* 检索策略 */
+html.dark .block-list {
+  border-color: #26324a;
+}
+
+html.dark .block-row {
+  border-bottom-color: #202b40;
+}
+
+html.dark .strategy-footer {
+  border-top-color: #202b40;
+}
+
+html.dark .block-tag {
+  border-color: #2b4a6b;
+  background: #17263a;
+  color: #84b7e8;
+}
+
+html.dark .block-tag.is-off {
+  border-color: #2c3648;
+  background: #1b2537;
+  color: #6b7587;
+}
+
+html.dark .preview-line {
+  background: #1b2537;
+}
+
+/* 模型配置 */
+html.dark .mode-glyph {
+  background: #172f47;
+  color: #6fb1ea;
+}
+
+/* 进度条与状态条轨道 */
+html.dark .kb-track,
+html.dark .status-bar,
+html.dark .status-track,
+html.dark .progress-track {
+  background: #232f44;
+}
+
+/* 登录页 */
+html.dark .login-title {
+  color: #e8edf6;
+}
+
+/* 通用表格与滚动条在暗色下的观感 */
+html.dark .el-table {
+  --el-table-border-color: #26324a;
+  --el-table-header-bg-color: #182134;
+  --el-table-tr-bg-color: #151d2e;
+  --el-table-row-hover-bg-color: #1b2537;
+}
+
+/* 用户端问答 */
+html.dark .theme-fab {
+  background: #1b2537;
+  border-color: #2a3446;
+  color: #c0c4cc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+html.dark .theme-fab:hover {
+  background: #22304a;
+  color: #ffffff;
+}
+
+html.dark .conversation-panel,
+html.dark .chat-toolbar,
+html.dark .chat-input,
+html.dark .detail-panel {
+  background: #151d2e;
+  border-color: #24304a;
+}
+
+html.dark .conversation-header {
+  border-bottom-color: #24304a;
+}
+
+html.dark .conversation-item:hover {
+  background: #1b2537;
+}
+
+html.dark .conversation-item.active {
+  background: #172f47;
+  color: #7cb3e8;
+}
+
+html.dark .chat-main {
+  background: #0f1522;
+}
+
+html.dark .message-role {
+  color: #8a94a8;
+}
+
+html.dark .bubble {
+  background: #1b2537;
+  color: #e2e8f2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+html.dark .message.user .bubble {
+  background: #1f6fd0;
+  color: #ffffff;
+}
+
+html.dark .answer-body {
+  color: #d6ddea;
+}
+
+html.dark .answer-body h1,
+html.dark .answer-body h2,
+html.dark .answer-body h3,
+html.dark .answer-body h4,
+html.dark .answer-body strong {
+  color: #e8edf6;
+}
+
+html.dark .answer-body code {
+  background: #232f44;
+  color: #f08da0;
+}
+
+html.dark .answer-body pre {
+  background: #182134;
+}
+
+html.dark .answer-body pre code {
+  color: #d6ddea;
+}
+
+html.dark .answer-body blockquote {
+  background: #1b2537;
+  border-left-color: #3b5a7d;
+  color: #aab3c2;
+}
+
+html.dark .answer-body th,
+html.dark .answer-body td {
+  border-color: #2a3446;
+}
+
+html.dark .answer-body th {
+  background: #182134;
+}
+
+html.dark .answer-body hr {
+  border-top-color: #24304a;
+}
+
+html.dark .citation-card {
+  background: #1b2537;
+  color: #aab3c2;
+  border-left-color: #3b6aa0;
+}
+
+html.dark .citation-card.citation-active {
+  background: #1d3450;
+}
+
+html.dark .citation-head {
+  color: #d6ddea;
+}
+
+html.dark .citation-page {
+  color: #8a94a8;
+}
+
+html.dark .cite-ref:hover {
+  background: #1d3450;
+}
+
+html.dark .empty-hint {
+  color: #7f8a9d;
+}
+
+html.dark .detail-head {
+  border-bottom-color: #24304a;
+}
+
+/* 移动端 */
+html.dark .mobile-shell {
+  background: #0f1522;
+}
+
+html.dark .mobile-tabbar {
+  background: #151d2e;
+  border-top-color: #24304a;
+}
+
+html.dark .tab-link {
+  color: #9aa4b5;
+}
+
+html.dark .tab-link.router-link-active {
+  color: #5aa2e8;
+}
+
+html.dark .offline-bar {
+  background: #2a2413;
+  border-bottom-color: #3a3016;
+  color: #d8b46a;
+}
+
+html.dark .notification-item {
+  background: #1b2537;
+}
+
+html.dark .notification-item.unread {
+  background: #172f47;
+}
+
+html.dark .notification-content {
+  color: #aab3c2;
+}
