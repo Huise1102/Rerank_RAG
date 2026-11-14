@@ -110,7 +110,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onActivated, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { adminKbList } from '../../api/knowledge'
@@ -219,7 +219,7 @@ function categoryLabel(value) {
   }[value] || '未分类'
 }
 
-onMounted(async () => {
+onActivated(async () => {
   try {
     knowledgeBases.value = await adminKbList()
   } catch {
