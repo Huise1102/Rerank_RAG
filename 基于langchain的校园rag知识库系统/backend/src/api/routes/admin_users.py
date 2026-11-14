@@ -2,12 +2,12 @@ import secrets
 import string
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import client_ip, require_admin
 from src.core.security import hash_password
-from src.db.models import AuditLog, Department, User, utcnow
+from src.db.models import AuditLog, Department, Document, Feedback, KnowledgeBase, User, utcnow
 from src.db.session import get_db
 from src.schemas.user import (
     ResetPasswordRequest,
@@ -216,5 +216,49 @@ async def disable_user(
     target.updated_at = utcnow()
     await revoke_all_sessions(db, target.id)
     _audit(db, admin, "disable_user", target.id, "禁用账号", client_ip(request))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/{user_id}/close")
+async def close_user(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    target = await db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="用户不存在")
+    if target.id == admin.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="不能注销自己")
+    if target.role == "admin" and await _count_active_admins(db, exclude_id=target.id) == 0:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="不能注销最后一个管理员")
+
+    feedback_total = int(
+        (
+            await db.execute(select(func.count(Feedback.id)).where(Feedback.user_id == target.id))
+        ).scalar_one()
+    )
+    if feedback_total:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=f"该用户有 {feedback_total} 条反馈工单，只能禁用，不能注销",
+        )
+
+    await db.execute(
+        update(KnowledgeBase).where(KnowledgeBase.owner_user_id == target.id).values(owner_user_id=None)
+    )
+    await db.execute(
+        update(KnowledgeBase).where(KnowledgeBase.created_by == target.id).values(created_by=None)
+    )
+    await db.execute(
+        update(Document).where(Document.owner_user_id == target.id).values(owner_user_id=None)
+    )
+    await db.execute(
+        update(Document).where(Document.uploaded_by == target.id).values(uploaded_by=None)
+    )
+    _audit(db, admin, "close_user", target.id, f"注销账号 {target.username}", client_ip(request))
+    await db.delete(target)
     await db.commit()
     return {"ok": True}
