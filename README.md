@@ -47,11 +47,11 @@ Agentic 版共五个页面：**智能问答 / 知识库 / 检索策略 / 模型�
 <table>
   <tr>
     <td align="center"><b>运营看板 · 管理端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-dashboard.png" width="100%" /></td>
-    <td align="center"><b>问答与引用 · 用户端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/user-chat.png" width="100%" /></td>
+    <td align="center"><b>问答与引用 · 管理端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-chat.png" width="100%" /></td>
   </tr>
   <tr>
     <td align="center"><b>知识库与文档版本</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-knowledge.png" width="100%" /></td>
-    <td align="center"><b>移动端 H5 · 问答</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/mobile-chat.png" width="100%" style="max-width: 300px" /></td>
+    <td align="center"><b>系统日志 · 管理端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-logs.png" width="100%" /></td>
   </tr>
 </table>
 
