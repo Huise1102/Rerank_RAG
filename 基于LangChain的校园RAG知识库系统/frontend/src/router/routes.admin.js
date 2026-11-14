@@ -26,9 +26,9 @@ const routes = [
       { path: 'knowledge', name: 'admin-knowledge', component: Knowledge, meta: { title: '知识库' } },
       { path: 'strategy', name: 'admin-strategy', component: Strategy, meta: { title: '检索策略' } },
       { path: 'model', name: 'admin-model', component: ModelConfig, meta: { title: '模型配置' } },
-      { path: 'logs', name: 'admin-logs', component: Logs, meta: { title: '日志' } },
+      { path: 'logs', name: 'admin-logs', component: Logs, meta: { title: '系统日志' } },
       { path: 'feedback', name: 'admin-feedback', component: FeedbackAdmin, meta: { title: '反馈处理' } },
-      { path: 'users', name: 'admin-users', component: Users, meta: { title: '用户与权限' } },
+      { path: 'users', name: 'admin-users', component: Users, meta: { title: '用户权限' } },
       {
         path: 'departments',
         name: 'admin-departments',
