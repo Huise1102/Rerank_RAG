@@ -158,7 +158,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onActivated, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   closeUser as closeUserApi,
@@ -342,7 +342,7 @@ async function close(row) {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   departments.value = await listDepartments()
   await load()
 })
