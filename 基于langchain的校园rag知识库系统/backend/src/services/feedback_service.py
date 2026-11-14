@@ -379,6 +379,8 @@ async def feedback_stats(db: AsyncSession, department_id: int | None = None) -> 
         "pending": await count(Feedback.status == "pending"),
         "processing": await count(Feedback.status == "processing"),
         "replied": await count(Feedback.status == "replied"),
+        "resolved": await count(Feedback.status == "resolved"),
+        "rejected": await count(Feedback.status == "rejected"),
         "today_new": await count(Feedback.created_at >= today_start),
         "today_resolved": today_resolved,
         "total": total,
