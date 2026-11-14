@@ -284,7 +284,7 @@ async def lookup_cached_answer(
             strategy_id,
             scope,
             question,
-            float(settings.get("semantic_threshold", 0.95)),
+            float(settings.get("semantic_threshold", 0.85)),
         )
         if entry is None or entry_key is None:
             return None
