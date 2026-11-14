@@ -4,17 +4,18 @@
 >
 > 核心思路：**稠密向量检索（BGE）+ BM25 稀疏检索的混合召回 → RRF 融合 → 交叉编码器精排 → LLM 生成带引用溯源的答案**。
 > 针对「用户不会用规章制度的措辞提问」这一真实痛点，重点解决**口语化提问下的召回**与**答案可溯源**两个问题。
-> 在此基础上，第三版进一步把「何时检索、怎么检索」交给 LLM 逐轮决策，探索 Agentic RAG 相对固定管道的差异。
+> 在此基础上，第三版（Agentic 版）进一步把「何时检索、怎么检索」交给 LLM 逐轮决策，探索 Agentic RAG 相对固定管道的差异；校园落地版则把固定管道推向真实校园治理场景。
 
-本仓库包含同一套检索链路的三种形态：
+本仓库包含同一套检索链路的四种形态：
 
 | 形态 | 目录 | 定位 | 技术形态 |
 | --- | --- | --- | --- |
 | **验证版（Demo）** | [`demo/`](demo/) | 聚焦验证混合检索 + Rerank 的核心链路与效果，附带完整评估体系与实验报告 | Streamlit 前端 + FastAPI 服务 |
 | **产品级系统** | [`product/`](product/) | 把验证版链路产品化：多知识库管理、文档上传入库、多轮对话、日志与可观测、深色模式 | Vue 3 + Element Plus 前端 + FastAPI 后端 |
 | **Agentic 版** | [`agent/`](agent/) | 把「怎么检索」交给 LLM 逐轮决策：意图路由、改写 query、选策略、判断证据是否足够，最多 3 轮收敛 | React 18 + Vite 前端 + FastAPI 后端 |
+| **校园落地版** | [`基于LangChain的校园RAG知识库系统/`](基于LangChain的校园RAG知识库系统/) | 面向校园制度问答的完整落地：管理端 / PC 用户端 / 移动端三端、企业微信登录、文档 ACL 与版本治理、反馈转办、缓存与运营闭环 | Vue 3 + Element Plus 前端 + FastAPI + LangChain 后端 |
 
-各形态的索引、数据与配置相互独立，检索链路本身完全一致；差异只在**由谁决定检索**——前两版跑固定管道，Agentic 版由 LLM 逐轮调度。决策模型可在「云端 DeepSeek / 任意 OpenAI 兼容接口」与「本地 Ollama 中的 Qwen3」之间**热切换**（见 `agent/` 的模型配置页，无需重启）。
+各形态的索引、数据与配置相互独立，检索链路本身完全一致；差异只在**由谁决定检索**——前两版跑固定管道，Agentic 版由 LLM 逐轮调度，校园落地版在固定管道之上补充多部门权限、文档生命周期、缓存与人工闭环。决策模型可在「云端 DeepSeek / 任意 OpenAI 兼容接口」与「本地 Ollama 中的 Qwen3」之间**热切换**（见 `agent/` 的模型配置页与校园落地版的管理端「模型配置」页，无需重启）。
 
 ---
 
@@ -41,6 +42,19 @@ Agentic 版共五个页面：**智能问答 / 知识库 / 检索策略 / 模型�
 
 > 产品级系统（`product/`）沿用同一套视觉主题，页面对应固定为 **问答 / 知识库 / 检索策略 / 日志**，问答页右侧为检索详情面板，其界面截图见 [`docs/images/product/`](docs/images/product/)。
 
+> 校园落地版（`基于LangChain的校园RAG知识库系统/`）在此基础上扩展为三端与治理闭环，完整 12 张页面截图见[项目 README](基于LangChain的校园RAG知识库系统/README.md#二界面预览)：
+
+<table>
+  <tr>
+    <td align="center"><b>运营看板 · 管理端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-dashboard.png" width="100%" /></td>
+    <td align="center"><b>问答与引用 · 用户端</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/user-chat.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>知识库与文档版本</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/admin-knowledge.png" width="100%" /></td>
+    <td align="center"><b>移动端 H5 · 问答</b><br /><img src="基于LangChain的校园RAG知识库系统/docs/images/screenshots/mobile-chat.png" width="100%" style="max-width: 300px" /></td>
+  </tr>
+</table>
+
 ---
 
 ## 一、要解决的问题
@@ -54,7 +68,7 @@ Agentic 版共五个页面：**智能问答 / 知识库 / 检索策略 / 模型�
 
 ---
 
-## 二、核心检索链路（三版一致）
+## 二、核心检索链路（四版一致）
 
 一次问答默认走完整链路，参数固定为已验证的确定性配置：
 
@@ -78,11 +92,13 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 第 3 轮：无论证据是否充分，直接输出最终答案
 ```
 
+校园落地版用 LangChain 的 `EnsembleRetriever`（Chroma 向量 + BM25）与 `CrossEncoderReranker` 复现同一链路，并在召回前增加「角色 + 部门 + 文档版本 + 生效日期」的范围过滤，保证不同角色只能检索到有权查看且当前有效的文档。
+
 ---
 
 ## 三、技术栈
 
-### 检索与模型（三版共用）
+### 检索与模型（验证版 / 产品级 / Agentic 共用）
 
 - 稠密召回：`BAAI/bge-large-zh-v1.5`（transformers 直连推理，本地离线，维度 1024）
 - 稀疏召回：`BM25Okapi` + `jieba` 中文分词
@@ -112,6 +128,15 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 - 前端：React 18 + React Router 6 + Zustand 4 + Vite，沿用 `theme.css` 主题，手写组件（不引入 UI 组件库）
 - 轨迹：SSE 推送 `meta → agent_step×N → delta → done`，轨迹随消息落库（`latency.agent_trace`）
 
+### 校园落地版（`基于LangChain的校园RAG知识库系统/`）
+
+- 后端：FastAPI + Uvicorn、SQLAlchemy 2.0（async）+ aiomysql + Alembic（MySQL 8），Redis 可选
+- 检索：LangChain `EnsembleRetriever`（Chroma 向量 + BM25）+ `CrossEncoderReranker`，条款级结构化分块与父块回溯
+- 生成：LCEL 链 + `ChatOpenAI`，在线 API 与本地 Ollama 可在管理端热切换
+- 前端：Vue 3 + Element Plus + Pinia + Vue Router，同一工程按 `VITE_APP_MODE` 构建管理端 / PC 用户端 / 移动端
+- 治理：账号与企业微信登录、文档 ACL 与版本生命周期、反馈转办、精确/语义缓存、三轮深度问答、站内通知、运营看板、知识缺口与到期复核
+- 质量：后端 73 项单元测试，覆盖权限矩阵、版本状态、条款切分、缓存隔离、深度问答轮数与看板口径
+
 ---
 
 ## 四、目录结构
@@ -132,6 +157,11 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── backend/          FastAPI 服务 + src/agent 调度层（loop / state / tools / prompts）
 │   ├── frontend/         React 18 五页应用（智能问答 / 知识库 / 检索策略 / 模型配置 / 日志）
 │   └── README.md         Agentic 版详细文档
+├── 基于LangChain的校园RAG知识库系统/   校园落地版（Vue 3 + FastAPI + LangChain）
+│   ├── backend/          FastAPI 服务、LangChain 检索、迁移、脚本与测试
+│   ├── frontend/         Vue 3 三端应用（管理端 / PC 用户端 / 移动端）
+│   ├── docs/             需求、阶段文档、评估、部署与界面截图
+│   └── README.md         校园落地版详细文档
 ├── docs/                 项目规格、任务清单与界面截图（docs/images/ 为 Agentic 版，docs/images/product/ 为产品级）
 │   ├── spec.md           第三版执行规格
 │   └── tasks.md          第三版任务清单
@@ -144,7 +174,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 ## 五、快速开始
 
 > 各种形态的索引、数据、配置相互独立，可按需单独运行。详细步骤见各自的 README。
-> 三版端口全部错开，可同时启动：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173。
+> 四种形态端口全部错开，可同时启动：`demo/` 8001 / 5171、`product/` 8002 / 5172、`agent/` 8003 / 5173、校园落地版 8004 / 5174、5175、5176。
 
 ### 验证版（`demo/`）
 
@@ -207,9 +237,35 @@ npm run dev                        # http://localhost:5173/agent
 
 详见 [agent/README.md](agent/README.md)。
 
+### 校园落地版（`基于LangChain的校园RAG知识库系统/`）
+
+```powershell
+cd 基于LangChain的校园RAG知识库系统
+Copy-Item .env.example .env        # 编辑 .env，填写 LLM_API_KEY、MYSQL_PASSWORD、SECRET_KEY
+
+# 后端
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts\init_db.py
+
+# 启动后端（http://127.0.0.1:8004）
+cd ..
+.\backend\.venv\Scripts\python.exe -m uvicorn src.main:app --app-dir backend --host 127.0.0.1 --port 8004
+
+# 三端前端（另开一个终端）
+cd frontend
+npm install
+npm run dev:admin    # http://127.0.0.1:5174
+npm run dev:user     # http://127.0.0.1:5175
+npm run dev:mobile   # http://127.0.0.1:5176
+```
+
+也可在项目根执行 `python start_all.py` 一键启动 Redis、后端与三端前端（MySQL 需提前启动）。详见 [校园落地版 README](基于LangChain的校园RAG知识库系统/README.md)。
+
 ### 启动本地模型（Ollama，可选）
 
-Agentic 版已内置本地模型能力，只需本机常驻 `ollama serve` 并确保已 `ollama pull qwen3:8b`，然后在前端「模型配置」页切换到「本地模型」即可，无需单独部署另一套项目。
+Agentic 版与校园落地版均已内置本地模型能力，只需本机常驻 `ollama serve` 并确保已 `ollama pull qwen3:8b`，然后在前端「模型配置」页切换到「本地模型」即可，无需单独部署另一套项目。
 
 ---
 
@@ -245,7 +301,7 @@ Agentic 版已内置本地模型能力，只需本机常驻 `ollama serve` 并�
 
 > **关于评测产物**：完整报告、逐题 CSV 与对比图由验证版评测流水线在本地生成（`demo/data/eval/results/`），出于体积与标注公开性的考虑**不入仓库**（见 [demo/.gitignore](demo/.gitignore#L22-L27)）；测试集（`data/testset.json`）及其构建脚本同样未公开。因此本页只呈现结论指标，不提供产物链接——如需复跑，需自备领域语料并自行构建测试集。
 
-> 说明：**产品级系统与 Agentic 版均不包含评估代码**；验证版的完整评估体系保留在 `demo/`，Agentic 版的评估口径（80 条分层测试集、路由/轮数等程序化指标、`task_completion` 裁判提示词）见 [docs/spec.md](docs/spec.md) 的「范围与三大硬约束」。
+> 说明：**产品级系统与 Agentic 版均不包含评估代码**；验证版的完整评估体系保留在 `demo/`，校园落地版在管理端内置「评估回归」并可调用 `src.evaluation.cli`，Agentic 版的评估口径（80 条分层测试集、路由/轮数等程序化指标、`task_completion` 裁判提示词）见 [docs/spec.md](docs/spec.md) 的「范围与三大硬约束」。
 
 ---
 
@@ -253,9 +309,10 @@ Agentic 版已内置本地模型能力，只需本机常驻 `ollama serve` 并�
 
 - **许可证**：本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，**禁止任何商业用途**——允许个人学习、研究、教学、实验及非商业主体使用，禁止任何以商业获利为目的的使用。完整条款见 [LICENSE](LICENSE)。
 - **产品级系统与 Agentic 版均为单用户无认证系统**：无登录页、无用户体系、无鉴权中间件。
+- **校园落地版提供完整账号体系**：本地账号 + 企业微信网页授权、四级角色、部门隔离、文档级 ACL 与服务端可撤销会话；企业微信未配置时仅使用本地账号。
 - **Agentic 版的检索决策由 LLM 完成**：每轮只调一个工具，单问题最多 3 轮且第 3 轮强制作答；检索次数用尽或工具名非法时立即强制收敛，不依赖 LLM 自觉。
 - **Agentic 版的多模态未接入**：接口保留 `image` 字段，但决策仅使用文本问题。
-- **模型缓存**：三版首次运行均需联网或已具备本地模型缓存（bge-large-zh-v1.5 与 bge-reranker-v2-m3）。
+- **模型缓存**：各版首次运行均需联网或已具备本地模型缓存（bge-large-zh-v1.5 与 bge-reranker-v2-m3）。
 - **密钥安全**：真实密钥与数据库口令请自行填写到各自的 `.env`，不要提交到仓库（仓库 `.gitignore` 已忽略相关文件）。
 
 ---
