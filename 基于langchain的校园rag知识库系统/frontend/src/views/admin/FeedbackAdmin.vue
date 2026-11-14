@@ -207,7 +207,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Bell,
@@ -448,7 +448,7 @@ async function submitAction() {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   departments.value = await listDepartments()
   await load()
 })
