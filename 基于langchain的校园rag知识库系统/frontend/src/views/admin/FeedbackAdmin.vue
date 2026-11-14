@@ -1,50 +1,72 @@
 <template>
-  <div class="page">
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="muted">待处理</div>
-        <div class="stat-value">{{ stats.pending }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="muted">处理中</div>
-        <div class="stat-value">{{ stats.processing }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="muted">已回复</div>
-        <div class="stat-value">{{ stats.replied }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="muted">转办待受理</div>
-        <div class="stat-value">{{ stats.transfer_pending }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="muted">超时工单</div>
-        <div class="stat-value" :style="{ color: stats.overdue ? '#f56c6c' : '#303133' }">{{ stats.overdue }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="muted">今日新增</div>
-        <div class="stat-value">{{ stats.today_new }}</div>
+  <div class="page feedback-page">
+    <div class="metric-grid">
+      <div v-for="item in metrics" :key="item.label" class="metric-card">
+        <div class="metric-top">
+          <span class="metric-icon" :style="{ color: item.color, backgroundColor: item.color + '14' }">
+            <el-icon><component :is="item.icon" /></el-icon>
+          </span>
+          <span>{{ item.label }}</span>
+        </div>
+        <div class="metric-value" :style="item.warn ? { color: item.color } : null">
+          {{ item.value }}
+        </div>
+        <div class="metric-sub">{{ item.sub }}</div>
       </div>
     </div>
 
-    <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap">
-      <el-select v-model="filters.kind" placeholder="工单来源" clearable style="width: 130px" @change="search">
-        <el-option label="用户反馈" value="feedback" />
-        <el-option label="转人工" value="transfer" />
-      </el-select>
-      <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
-        <el-option v-for="(label, value) in statusLabels" :key="value" :label="label" :value="value" />
-      </el-select>
-      <el-select v-model="filters.feedback_type" placeholder="类型" clearable style="width: 170px" @change="search">
-        <el-option v-for="item in types" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-input v-model="filters.submitter" placeholder="提交人" clearable style="width: 140px" @keyup.enter="search" />
-      <el-input v-model="filters.keyword" placeholder="工单号或关键词" clearable style="width: 220px" @keyup.enter="search" />
-      <el-button type="primary" @click="search">查询</el-button>
-      <el-button @click="reset">重置</el-button>
-    </div>
+    <section class="panel status-panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          工单状态构成
+          <span class="count">共 {{ stats.total }} 件</span>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span
+          v-for="item in statusItems"
+          v-show="item.value"
+          :key="item.name"
+          :style="{ width: item.width + '%', background: item.color }"
+          :title="`${item.name} ${item.value} 件`"
+        />
+      </div>
+      <div class="status-legend">
+        <div v-for="item in statusItems" :key="item.name" class="status-legend-item">
+          <i :style="{ background: item.color }" />
+          <span>{{ item.name }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
+      </div>
+    </section>
 
-    <el-table :data="items" size="small" border @row-click="openDetail">
+    <section class="panel list-panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          工单列表
+          <span class="count">共 {{ total }} 条</span>
+        </div>
+        <el-button size="small" @click="load">刷新</el-button>
+      </div>
+
+      <div class="filter-bar">
+        <el-select v-model="filters.kind" placeholder="工单来源" clearable style="width: 130px" @change="search">
+          <el-option label="用户反馈" value="feedback" />
+          <el-option label="转人工" value="transfer" />
+        </el-select>
+        <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
+          <el-option v-for="(label, value) in statusLabels" :key="value" :label="label" :value="value" />
+        </el-select>
+        <el-select v-model="filters.feedback_type" placeholder="类型" clearable style="width: 170px" @change="search">
+          <el-option v-for="item in types" :key="item" :label="item" :value="item" />
+        </el-select>
+        <el-input v-model="filters.submitter" placeholder="提交人" clearable style="width: 140px" @keyup.enter="search" />
+        <el-input v-model="filters.keyword" placeholder="工单号或关键词" clearable style="width: 220px" @keyup.enter="search" />
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="reset">重置</el-button>
+      </div>
+
+      <el-table :data="items" size="small" border max-height="430" @row-click="openDetail">
       <el-table-column prop="ticket_no" label="工单号" width="180" />
       <el-table-column label="来源" width="90">
         <template #default="{ row }">
@@ -79,6 +101,7 @@
       style="margin-top: 12px"
       @current-change="load"
     />
+    </section>
 
     <el-drawer v-model="drawer" title="反馈详情" size="620px">
       <div v-if="detail">
@@ -187,6 +210,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
+  Bell,
+  Calendar,
+  ChatDotRound,
+  Loading,
+  Switch,
+  Warning
+} from '@element-plus/icons-vue'
+import {
   adminFeedbackDetail,
   adminFeedbackList,
   adminFeedbackStats,
@@ -208,6 +239,9 @@ const stats = reactive({
   pending: 0,
   processing: 0,
   replied: 0,
+  resolved: 0,
+  rejected: 0,
+  total: 0,
   today_new: 0,
   today_resolved: 0,
   transfer_pending: 0,
@@ -242,6 +276,67 @@ const actionTitle = computed(
       note: '内部备注'
     })[actionForm.action] || '处理反馈'
 )
+
+const metrics = computed(() => [
+  {
+    label: '待处理',
+    value: stats.pending,
+    sub: '等待受理',
+    icon: Bell,
+    color: '#f59e0b'
+  },
+  {
+    label: '处理中',
+    value: stats.processing,
+    sub: '已受理，处理中',
+    icon: Loading,
+    color: '#3b82f6'
+  },
+  {
+    label: '已回复',
+    value: stats.replied,
+    sub: '等待用户确认',
+    icon: ChatDotRound,
+    color: '#0f9d8f'
+  },
+  {
+    label: '转办待受理',
+    value: stats.transfer_pending,
+    sub: '需部门接单',
+    icon: Switch,
+    color: '#6366f1'
+  },
+  {
+    label: '超时工单',
+    value: stats.overdue,
+    sub: '超过响应时限',
+    icon: Warning,
+    color: '#ef4444',
+    warn: true
+  },
+  {
+    label: '今日新增',
+    value: stats.today_new,
+    sub: `今日已解决 ${stats.today_resolved}`,
+    icon: Calendar,
+    color: '#06b6d4'
+  }
+])
+
+const statusItems = computed(() => {
+  const rows = [
+    { name: '待处理', value: stats.pending, color: '#f59e0b' },
+    { name: '处理中', value: stats.processing, color: '#3b82f6' },
+    { name: '已回复', value: stats.replied, color: '#0f9d8f' },
+    { name: '已解决', value: stats.resolved, color: '#22c55e' },
+    { name: '已驳回', value: stats.rejected, color: '#ef4444' }
+  ]
+  const total = rows.reduce((sum, item) => sum + Number(item.value || 0), 0)
+  return rows.map((item) => ({
+    ...item,
+    width: total ? (Number(item.value || 0) / total) * 100 : 0
+  }))
+})
 
 function statusType(status) {
   return {
@@ -360,6 +455,146 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.feedback-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.metric-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.metric-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.metric-value {
+  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.metric-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.status-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.status-bar span {
+  display: block;
+  height: 100%;
+}
+
+.status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.status-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-legend-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-legend-item strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 .block {
   background: #f7f8fa;
   border-radius: 6px;
@@ -367,5 +602,17 @@ onMounted(async () => {
   white-space: pre-wrap;
   line-height: 1.7;
   font-size: 13px;
+}
+
+@media (max-width: 1280px) {
+  .metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>
