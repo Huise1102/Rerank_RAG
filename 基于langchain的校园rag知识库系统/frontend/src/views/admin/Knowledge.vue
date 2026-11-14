@@ -329,7 +329,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listDepartments } from '../../api/admin'
 import { adminKbList, createKb, deleteKb, rebuildKb, updateKb } from '../../api/knowledge'
@@ -769,7 +769,7 @@ async function rebuild() {
   }
 }
 
-onMounted(loadBase)
+onActivated(loadBase)
 </script>
 
 <style scoped>
