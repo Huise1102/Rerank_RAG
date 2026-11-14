@@ -113,7 +113,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onActivated, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   getModelConfig,
@@ -238,7 +238,7 @@ async function test() {
   }
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
