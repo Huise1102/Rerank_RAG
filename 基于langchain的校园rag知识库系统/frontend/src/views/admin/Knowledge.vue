@@ -1,6 +1,6 @@
 <template>
-  <div style="display: flex; height: 100%">
-    <div style="width: 300px; border-right: 1px solid #e4e7ed; padding: 16px; overflow-y: auto">
+  <div class="knowledge-layout">
+    <div class="kb-sidebar">
       <div class="page-header" style="justify-content: flex-end">
         <el-button type="primary" size="small" @click="openKbDialog()">新建</el-button>
       </div>
@@ -24,11 +24,11 @@
       <div v-if="kbList.length === 0" class="muted">暂无知识库</div>
     </div>
 
-    <div style="flex: 1; padding: 16px; overflow-y: auto">
+    <div class="kb-main">
       <template v-if="activeKb">
         <div class="page-header">
           <div>
-            <div class="page-title">{{ activeKb.name }}</div>
+            <div class="kb-name">{{ activeKb.name }}</div>
             <div class="muted">文档需先解析生成索引，再发布；发布后旧版本自动废止，问答只召回当前有效版本</div>
           </div>
           <div>
@@ -55,7 +55,7 @@
           <el-button type="primary" @click="loadDocuments">查询</el-button>
         </div>
 
-        <el-table :data="documents" size="small" border>
+        <el-table :data="documents" size="small" border max-height="520">
           <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
           <el-table-column prop="doc_no" label="文号" width="140" show-overflow-tooltip />
           <el-table-column label="可见性" width="100">
@@ -773,6 +773,30 @@ onMounted(loadBase)
 </script>
 
 <style scoped>
+.knowledge-layout {
+  display: flex;
+  height: 100%;
+}
+
+.kb-sidebar {
+  width: 300px;
+  flex: none;
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid #e4e7ed;
+}
+
+.kb-main {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.kb-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2d3d;
+}
 .kb-item {
   padding: 12px;
   border-radius: 8px;
