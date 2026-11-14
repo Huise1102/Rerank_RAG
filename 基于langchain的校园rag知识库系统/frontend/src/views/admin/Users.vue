@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page users-page">
     <div class="page-header">
       <div>
         <div class="muted">角色分为系统管理员、部门管理员、教职工和学生，禁用后已登录会话立即失效</div>
@@ -7,30 +7,38 @@
       <el-button type="primary" @click="openCreate">新建用户</el-button>
     </div>
 
-    <div style="display: flex; gap: 8px; margin-bottom: 12px">
-      <el-input v-model="filters.keyword" placeholder="用户名或姓名" clearable style="width: 200px" @keyup.enter="search" />
-      <el-select v-model="filters.role" placeholder="角色" clearable style="width: 150px" @change="search">
-        <el-option v-for="(label, value) in roleLabels" :key="value" :label="label" :value="value" />
-      </el-select>
-      <el-select v-model="filters.department_id" placeholder="部门" clearable style="width: 150px" @change="search">
-        <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
-      </el-select>
-      <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
-        <el-option label="启用" value="active" />
-        <el-option label="禁用" value="disabled" />
-      </el-select>
-      <el-button type="primary" @click="search">查询</el-button>
-    </div>
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          用户列表
+          <span class="count">共 {{ total }} 人</span>
+        </div>
+      </div>
 
-    <el-table :data="items" size="small" border>
-      <el-table-column prop="username" label="用户名" width="140" />
-      <el-table-column prop="display_name" label="姓名" width="130" />
+      <div class="filter-bar">
+        <el-input v-model="filters.keyword" placeholder="用户名或姓名" clearable style="width: 200px" @keyup.enter="search" />
+        <el-select v-model="filters.role" placeholder="角色" clearable style="width: 150px" @change="search">
+          <el-option v-for="(label, value) in roleLabels" :key="value" :label="label" :value="value" />
+        </el-select>
+        <el-select v-model="filters.department_id" placeholder="部门" clearable style="width: 150px" @change="search">
+          <el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" />
+        </el-select>
+        <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px" @change="search">
+          <el-option label="启用" value="active" />
+          <el-option label="禁用" value="disabled" />
+        </el-select>
+        <el-button type="primary" @click="search">查询</el-button>
+      </div>
+
+      <el-table :data="items" size="small" border max-height="480">
+      <el-table-column prop="username" label="用户名" min-width="150" />
+      <el-table-column prop="display_name" label="姓名" min-width="140" />
       <el-table-column label="角色" width="110">
         <template #default="{ row }">
           <el-tag size="small" :type="roleType(row.role)">{{ roleLabels[row.role] || row.role }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="部门" width="140">
+      <el-table-column label="部门" min-width="160">
         <template #default="{ row }">{{ departmentName(row) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="90">
@@ -43,7 +51,7 @@
       <el-table-column label="最近登录" width="170">
         <template #default="{ row }">{{ formatTime(row.last_login_at) || '从未登录' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="220">
+      <el-table-column label="操作" width="250">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" size="small" @click="openReset(row)">重置密码</el-button>
@@ -56,6 +64,15 @@
           >
             禁用
           </el-button>
+          <el-button
+            v-if="row.id !== auth.user?.id"
+            link
+            type="danger"
+            size="small"
+            @click="close(row)"
+          >
+            注销
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -67,6 +84,7 @@
       style="margin-top: 12px"
       @current-change="load"
     />
+    </section>
 
     <el-dialog v-model="createDialog" title="新建用户" width="480px">
       <el-form :model="createForm" label-position="top">
@@ -143,6 +161,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  closeUser as closeUserApi,
   createUser,
   disableUser,
   listDepartments,
@@ -301,8 +320,82 @@ async function disable(row) {
   await load()
 }
 
+async function close(row) {
+  try {
+    await ElMessageBox.confirm(
+      `注销后「${row.username}」的账号、会话与通知将被永久删除且无法恢复，确认注销？`,
+      '注销用户',
+      { type: 'warning', confirmButtonText: '确认注销' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await closeUserApi(row.id)
+    ElMessage.success('用户已注销')
+    if (items.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    }
+    await load()
+  } catch {
+    // 失败原因由请求拦截器统一提示
+  }
+}
+
 onMounted(async () => {
   departments.value = await listDepartments()
   await load()
 })
 </script>
+
+<style scoped>
+.users-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+</style>
