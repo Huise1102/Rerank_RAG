@@ -23,7 +23,7 @@ class CacheSettingsRequest(BaseModel):
     enabled: bool | None = None
     semantic_enabled: bool | None = None
     ttl_days: int | None = Field(default=None, ge=1, le=30)
-    semantic_threshold: float | None = Field(default=None, ge=0.9, le=1.0)
+    semantic_threshold: float | None = Field(default=None, ge=0.75, le=1.0)
 
 
 class CacheClearRequest(BaseModel):
