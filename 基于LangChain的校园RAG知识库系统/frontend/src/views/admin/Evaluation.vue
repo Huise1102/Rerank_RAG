@@ -2,7 +2,6 @@
   <div class="page" style="height: 100%; overflow-y: auto">
     <div class="page-header">
       <div>
-        <div class="page-title">评估回归</div>
         <div class="muted">使用黄金测试集检查检索与生成质量，评估请求会按所选角色执行 ACL 过滤</div>
       </div>
       <el-button @click="loadReports">刷新</el-button>
@@ -53,16 +52,21 @@
       </el-alert>
     </el-card>
 
-    <el-row v-if="current" :gutter="12" style="margin-bottom: 16px">
-      <el-col v-for="item in summaryCards" :key="item.label" :span="4">
-        <el-card shadow="never">
-          <div class="muted">{{ item.label }}</div>
-          <div class="stat-value">{{ item.value }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div v-if="current" class="summary-grid">
+      <div v-for="item in summaryCards" :key="item.label" class="summary-card">
+        <div class="summary-label">{{ item.label }}</div>
+        <div class="summary-value">{{ item.value }}</div>
+      </div>
+    </div>
 
-    <el-table :data="reports" size="small" border>
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          评估报告
+          <span class="count">共 {{ reports.length }} 份</span>
+        </div>
+      </div>
+      <el-table :data="reports" size="small" border max-height="420">
       <el-table-column prop="id" label="编号" width="80" />
       <el-table-column prop="name" label="名称" min-width="180" show-overflow-tooltip />
       <el-table-column prop="kind" label="类型" width="100">
@@ -81,6 +85,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </section>
 
     <el-dialog v-model="reportVisible" title="评估报告" width="860px">
       <div v-if="current">
@@ -211,5 +216,68 @@ onMounted(async () => {
   padding: 14px;
   max-height: 520px;
   overflow-y: auto;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.summary-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.summary-value {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
 }
 </style>
