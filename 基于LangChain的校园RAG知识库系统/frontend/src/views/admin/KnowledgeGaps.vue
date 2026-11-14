@@ -1,7 +1,6 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h2>知识缺口</h2>
       <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
         <el-select v-model="filters.status" clearable placeholder="全部状态" style="width: 140px" @change="load">
           <el-option label="待处理" value="open" />
@@ -31,7 +30,15 @@
       style="margin-bottom: 12px"
     />
 
-    <el-table :data="items" size="small">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          知识缺口
+          <span class="count">共 {{ total }} 条</span>
+        </div>
+      </div>
+
+      <el-table :data="items" size="small" max-height="480">
       <el-table-column prop="question" label="问题" min-width="280" />
       <el-table-column prop="kb_name" label="知识库" width="150" />
       <el-table-column prop="occurrences" label="出现次数" width="100" />
@@ -58,14 +65,15 @@
       </el-table-column>
     </el-table>
 
-    <el-pagination
-      style="margin-top: 12px"
-      layout="total, prev, pager, next"
-      :total="total"
-      :page-size="filters.page_size"
-      :current-page="filters.page"
-      @current-change="changePage"
-    />
+      <el-pagination
+        style="margin-top: 12px"
+        layout="total, prev, pager, next"
+        :total="total"
+        :page-size="filters.page_size"
+        :current-page="filters.page"
+        @current-change="changePage"
+      />
+    </section>
 
     <el-dialog v-model="dialogVisible" title="处理知识缺口" width="520px">
       <el-form label-width="110px">
@@ -220,3 +228,42 @@ onMounted(async () => {
   await load()
 })
 </script>
+
+<style scoped>
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+</style>
