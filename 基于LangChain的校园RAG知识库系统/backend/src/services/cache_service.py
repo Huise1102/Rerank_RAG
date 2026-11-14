@@ -30,7 +30,7 @@ DEFAULT_CACHE_SETTINGS = {
     "enabled": True,
     "semantic_enabled": False,
     "ttl_days": 7,
-    "semantic_threshold": 0.95,
+    "semantic_threshold": 0.85,
     "updated_at": "",
 }
 
@@ -59,7 +59,7 @@ async def update_cache_settings(db: AsyncSession, values: dict) -> dict:
         merged.update(row.value)
     merged.update({key: value for key, value in values.items() if value is not None})
     merged["ttl_days"] = max(1, min(int(merged["ttl_days"]), 30))
-    merged["semantic_threshold"] = max(0.9, min(float(merged["semantic_threshold"]), 1.0))
+    merged["semantic_threshold"] = max(0.75, min(float(merged["semantic_threshold"]), 1.0))
     merged["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     if row is None:
         db.add(SystemSetting(key=CACHE_SETTINGS_KEY, value=merged))
