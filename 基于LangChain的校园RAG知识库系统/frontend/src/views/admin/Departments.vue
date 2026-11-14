@@ -7,7 +7,15 @@
       <el-button type="primary" @click="openCreate">新建部门</el-button>
     </div>
 
-    <el-table :data="items" size="small" border>
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          部门列表
+          <span class="count">共 {{ items.length }} 个</span>
+        </div>
+      </div>
+
+      <el-table :data="items" size="small" border max-height="480">
       <el-table-column prop="name" label="部门名称" min-width="180" />
       <el-table-column prop="code" label="编码" width="120" />
       <el-table-column label="上级部门" width="160">
@@ -39,6 +47,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </section>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑部门' : '新建部门'" width="480px">
       <el-form :model="form" label-position="top">
@@ -206,3 +215,42 @@ async function toggleStatus(row) {
   await load()
 }
 </script>
+
+<style scoped>
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+</style>
