@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onActivated, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getAgentSettings, updateAgentSettings } from '../../api/agent'
 
@@ -107,7 +107,7 @@ async function save() {
   }
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
