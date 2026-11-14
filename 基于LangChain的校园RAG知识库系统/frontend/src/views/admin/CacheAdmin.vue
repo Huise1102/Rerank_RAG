@@ -135,7 +135,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound,
@@ -291,7 +291,7 @@ async function flagSample(row) {
   }
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
