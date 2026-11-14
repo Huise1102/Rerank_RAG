@@ -175,9 +175,6 @@ stateDiagram-v2
 │   │   └── utils/           限流、脱敏
 │   └── tests/
 ├── frontend/                三端前端，同一工程按 VITE_APP_MODE 构建管理端、用户端与移动端
-├── resource/                预置语料：法律领域参考与示例
-│   ├── 法律领域/
-│   └── 示例/
 ├── 测试集.pdf               内部测试语料，已加入 .gitignore
 ├── docs/                    需求、阶段文档、评估与部署说明
 │   └── images/screenshots/  README 界面截图
