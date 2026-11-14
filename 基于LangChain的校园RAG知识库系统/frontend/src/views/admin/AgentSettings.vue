@@ -1,7 +1,6 @@
 <template>
   <div class="page">
     <div class="page-head">
-      <h2>深度问答</h2>
       <el-button @click="load">刷新</el-button>
     </div>
 
@@ -12,8 +11,10 @@
       style="margin-bottom: 12px"
     />
 
-    <el-card>
-      <template #header>开放范围</template>
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">开放范围</div>
+      </div>
       <el-form label-width="150px" style="max-width: 720px">
         <el-form-item label="总开关">
           <el-switch v-model="form.enabled" />
@@ -45,16 +46,18 @@
           <el-button type="primary" :loading="saving" @click="save">保存设置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </section>
 
-    <el-card style="margin-top: 12px">
-      <template #header>运行说明</template>
+    <section class="panel" style="margin-top: 12px">
+      <div class="panel-head">
+        <div class="panel-title">运行说明</div>
+      </div>
       <ul class="muted" style="line-height: 1.9; margin: 0; padding-left: 20px">
         <li>深度问答不进入热点缓存，回答与轨迹单独落库。</li>
         <li>模型不可用、超时或循环异常时自动回退快速问答，引用口径保持一致。</li>
         <li>用户端只在当前知识库开放且角色命中白名单时显示深度问答开关。</li>
       </ul>
-    </el-card>
+    </section>
   </div>
 </template>
 
@@ -106,3 +109,36 @@ async function save() {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.panel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #0f9d8f;
+}
+</style>
