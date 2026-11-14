@@ -1,10 +1,147 @@
 # 基于 LangChain 的校园 RAG 知识库系统
 
-面向校园制度问答的独立系统。检索与生成链路基于 LangChain 构建，包含管理端、PC 用户端与移动端三个前端入口、统一身份认证、角色权限、知识库管理、混合检索问答、引用溯源与反馈闭环。移动端是普通用户的主入口，也是企业微信登录的落地页面。阶段二在此基础上补充文档级权限、版本生命周期、条款级结构化分块、评估回归与人工转办。
+面向校园制度问答的独立系统。检索与生成链路基于 LangChain 构建，包含管理端、PC 用户端与移动端三个前端入口、账号体系与企业微信登录、角色权限、知识库管理、混合检索问答、引用溯源与反馈闭环。移动端是普通用户的主入口，也是企业微信登录的落地页面。阶段二在此基础上补充文档级权限、版本生命周期、条款级结构化分块、评估回归与人工转办；阶段三补齐多部门治理、精确与语义缓存、三轮深度问答、站内通知、运营看板、知识缺口与到期复核。
 
 测试语料为项目根目录的 `测试集.pdf`，属于《普通高等学校学生管理规定》等教育规章汇编，仅用于内部测试，已加入 `.gitignore`，不随仓库分发。
 
-## 一、技术栈
+## 一、系统架构
+
+### 1.1 总体架构
+
+```mermaid
+flowchart TB
+    subgraph 入口层
+        A1["管理端 5174<br/>运营看板 · 知识治理 · 系统设置"]
+        A2["PC 用户端 5175<br/>问答 · 引用溯源 · 我的反馈"]
+        A3["移动端 5176<br/>H5 · PWA · 企业微信工作台"]
+    end
+
+    subgraph 接入层
+        B1["Vite 开发代理 / 同域反向代理"]
+        B2["身份认证<br/>本地账号 + 企业微信网页授权"]
+        B3["会话与角色<br/>JWT + 可撤销会话表"]
+    end
+
+    subgraph 服务层
+        C1["FastAPI 8004<br/>路由 · 权限依赖 · 限流"]
+        C2["问答编排<br/>快速问答 / 三轮深度问答"]
+        C3["治理服务<br/>知识库 · 文档版本 · 部门 · 用户"]
+        C4["运营服务<br/>反馈转办 · 通知 · 看板 · 缺口 · 复核"]
+    end
+
+    subgraph 检索层
+        D1["检索范围解析<br/>角色 + 部门 + 版本 + 生效日期"]
+        D2["Chroma 向量召回 Top-50"]
+        D3["BM25 关键词召回 Top-50"]
+        D4["RRF 融合 → 候选池 20"]
+        D5["CrossEncoder 精排 → Top-5"]
+    end
+
+    subgraph 生成层
+        E1["LCEL 链<br/>提示词 · 引用约束 · 拒答规则"]
+        E2["在线 OpenAI 兼容 API<br/>或本地 Ollama"]
+    end
+
+    subgraph 存储层
+        F1[("MySQL 8<br/>业务数据 · 权限 · 日志")]
+        F2[("Chroma + BM25 索引")]
+        F3[("Redis<br/>限流 · 缓存 · state")]
+        F4["本地 storage<br/>原始文档与预览"]
+    end
+
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    B1 --> B2 --> B3 --> C1
+    C1 --> C2
+    C1 --> C3
+    C1 --> C4
+    C2 --> D1
+    D1 --> D2
+    D1 --> D3
+    D2 --> D4
+    D3 --> D4
+    D4 --> D5
+    D5 --> E1 --> E2
+    C1 --> F1
+    D1 --> F2
+    C2 --> F3
+    C3 --> F4
+    C4 --> F1
+```
+
+### 1.2 问答链路
+
+```mermaid
+flowchart LR
+    Q["用户提问"] --> R{"快速 / 深度"}
+    R -- 快速 --> S["解析检索范围<br/>角色 · 部门 · 版本 · 生效日期"]
+    S --> C{"缓存命中?"}
+    C -- 是 --> H["复核权限 / 文档版本 / 生效日期"]
+    H -- 通过 --> A["返回缓存答案与引用"]
+    H -- 不通过 --> T["双路召回 → RRF 融合 → 精排"]
+    C -- 否 --> T
+    T --> L["LLM 生成带引用答案"]
+    R -- 深度 --> Y["最多 3 轮决策<br/>检索 / 澄清 / 作答"]
+    Y --> L
+    L --> V{"引用校验"}
+    V -- 有有效引用 --> W["写入会话 · 缓存 · 检索日志"]
+    V -- 无有效引用 --> X["明确拒答 + 转人工入口"]
+```
+
+### 1.3 文档生命周期
+
+```mermaid
+stateDiagram-v2
+    state "草稿" as Draft
+    state "已发布" as Published
+    state "已废止" as Repealed
+    state "已归档" as Archived
+
+    [*] --> Draft: 上传文档
+    Draft --> Published: 解析通过后发布
+    Published --> Repealed: 新版本发布 / 手动废止
+    Repealed --> Published: 回滚到该版本
+    Published --> Archived: 文档归档
+    Repealed --> Archived: 文档归档
+```
+
+只有 `published` 且处于生效期内的版本参与召回；旧版本、未来生效版本、已废止与已归档文档不进入检索范围。
+
+## 二、界面预览
+
+> 以下截图取自本地真实运行的实例：管理端 10 个页面、PC 用户端问答页与移动端问答页，问答内容为实际检索与生成结果。
+
+<table>
+  <tr>
+    <td align="center"><b>运营看板</b><br /><img src="docs/images/screenshots/admin-dashboard.png" width="100%" /></td>
+    <td align="center"><b>问答 · 快速问答</b><br /><img src="docs/images/screenshots/admin-chat.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>知识库与文档版本</b><br /><img src="docs/images/screenshots/admin-knowledge.png" width="100%" /></td>
+    <td align="center"><b>检索策略</b><br /><img src="docs/images/screenshots/admin-strategy.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>模型配置</b><br /><img src="docs/images/screenshots/admin-model.png" width="100%" /></td>
+    <td align="center"><b>热点缓存</b><br /><img src="docs/images/screenshots/admin-cache.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>用户权限</b><br /><img src="docs/images/screenshots/admin-users.png" width="100%" /></td>
+    <td align="center"><b>部门管理</b><br /><img src="docs/images/screenshots/admin-departments.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>深度问答设置</b><br /><img src="docs/images/screenshots/admin-agent.png" width="100%" /></td>
+    <td align="center"><b>评估回归</b><br /><img src="docs/images/screenshots/admin-evaluation.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>PC 用户端 · 回答与引用卡片</b><br /><img src="docs/images/screenshots/user-chat.png" width="100%" /></td>
+    <td align="center"><b>移动端 H5 · 问答</b><br /><img src="docs/images/screenshots/mobile-chat.png" width="100%" style="max-width: 300px" /></td>
+  </tr>
+</table>
+
+管理端共 13 个页面：问答、知识库、检索策略、模型配置、反馈处理、运营看板、知识缺口、评估回归、热点缓存、深度问答、用户权限、部门管理、系统日志。用户端与移动端共用问答与我的反馈页面，移动端另外提供通知抽屉、引用底部抽屉与 PWA 安装能力。
+
+## 三、技术栈
 
 | 层次 | 组件 |
 | --- | --- |
@@ -15,9 +152,10 @@
 | 检索 | LangChain、Chroma、BM25（jieba + rank_bm25）、EnsembleRetriever、CrossEncoderReranker |
 | 生成 | LCEL 链、ChatOpenAI（兼容 DeepSeek 等 OpenAI 协议服务） |
 | 限流 | Redis，不可用时退化为进程内计数 |
-| 前端 | Vue 3、Vite、Element Plus、Pinia、Vue Router |
+| 定时任务 | 进程内 asyncio 日调度：文档复核提醒、缓存清理，`SCHEDULER_ENABLED` 控制开关 |
+| 前端 | Vue 3、Vite、Element Plus、Pinia、Vue Router；三端同工程构建，路由 keep-alive + `onActivated` 静默刷新，支持深色模式 |
 
-## 二、目录结构
+## 四、目录结构
 
 ```text
 .
@@ -37,21 +175,25 @@
 │   │   └── utils/           限流、脱敏
 │   └── tests/
 ├── frontend/                三端前端，同一工程按 VITE_APP_MODE 构建管理端、用户端与移动端
-├── resource/法律领域/        参考资料
+├── resource/                预置语料：法律领域参考与示例
+│   ├── 法律领域/
+│   └── 示例/
 ├── 测试集.pdf               内部测试语料，已加入 .gitignore
 ├── docs/                    需求、阶段文档、评估与部署说明
+│   └── images/screenshots/  README 界面截图
 ├── scripts/dev.ps1          本地启动脚本
 ├── .env.example             配置模板
 └── README.md
 ```
 
-## 三、环境要求
+## 五、环境要求
 
 - Windows 10 及以上，PowerShell 5.1 及以上
 - Python 3.11
 - Node.js 18 及以上
 - MySQL 8.0
 - Redis 可选，未启动时限流使用进程内计数
+- 定时任务默认开启：后端启动 30 秒后执行一次文档复核提醒与缓存清理，之后每 24 小时一次；`SCHEDULER_ENABLED=false` 可关闭
 - 首次索引会下载嵌入模型与精排模型，默认通过 `HF_ENDPOINT=https://hf-mirror.com` 镜像下载，模型缓存放在项目内 `.hf-cache/`
 
 端口与库名默认值：
@@ -65,7 +207,7 @@
 | 数据库 | rag_campus |
 | Redis 库号 | 4 |
 
-## 四、从零启动
+## 六、从零启动
 
 ### 1. 准备数据库
 
@@ -148,7 +290,7 @@ npm run dev:mobile
 
 前端通过 Vite 代理访问后端 `/api`，无需额外配置跨域。
 
-也可以在项目根目录执行 `python start_all.py` 一键启动 Redis、后端与三个前端，MySQL 需提前启动。脚本会检查数据库、虚拟环境与依赖，跳过已占用端口，日志写入 `.run/logs`；使用 `--dry-run` 只检查环境，使用 `--only backend mobile` 可只启动指定服务。
+也可以使用 `scripts/dev.ps1` 按服务启动：`.\scripts\dev.ps1 init` 创建虚拟环境、安装依赖并初始化数据库；`.\scripts\dev.ps1 backend`、`admin`、`user`、`mobile` 分别启动后端或单个前端。MySQL 与 Redis 需提前启动。
 
 生产构建：
 
@@ -158,7 +300,7 @@ npm run build
 
 产物分别位于 `frontend/dist/admin`、`frontend/dist/user` 与 `frontend/dist/mobile`。
 
-## 五、首次使用路径
+## 七、首次使用路径
 
 1. 管理员登录管理端，按提示修改初始密码。
 2. 进入「部门管理」维护部门层级、联系人、排序与启用状态，再进入「用户权限」创建用户，设置角色（系统管理员、部门管理员、教职工、学生）与所属部门。
@@ -169,11 +311,18 @@ npm run build
 7. 无依据或拒答时可点击「转人工」，生成 `TR-YYYYMMDD-0001` 转办单并自动分配到知识库归属部门。
 8. 部门管理员在「反馈处理」受理、回复、办结或退回；用户在「我的反馈」查看处理进度、首次响应时间与回复，并在通知中接收状态变更。
 9. 管理员在「评估回归」校验测试集、运行检索或生成评估并查看报告。
-10. 管理员在「热点缓存」查看命中率、调整有效期、开启精确或语义缓存、清理缓存与标记疑似误答；在「深度问答」按知识库与角色开启三轮决策。
+10. 管理员在「热点缓存」查看命中率、调整有效期、开关精确与语义缓存、清理缓存与标记疑似误答；在「深度问答」按知识库与角色开启三轮决策。
 11. 管理员与部门管理员在「运营看板」查看提问量、零引用率、转办率、缓存命中率、P95、部门对比与文档到期复核；在「知识缺口」汇总零引用、拒答、负反馈与转办问题并导出 CSV。
 12. 配置企业微信后，用户在企业微信工作台打开移动端，登录页显示「企业微信登录」，静默授权后按企业微信成员账号匹配同名站内用户名并自动绑定；未匹配到账号时提示联系管理员开通。
 
 角色可见范围：学生只看公开知识库；教职工与部门管理员可访问公开知识库与本部门知识库；系统管理员可管理全部知识库，但正常问答仍只返回当前有效、已发布的文档。「仅管理员」文档不进入任何角色的问答结果，只能在管理端预览。知识库停用或归属部门停用后不再对用户展示，既有会话可读但新问答不可用。
+
+### 界面与交互
+
+- 深色模式：管理端左下角月亮按钮、PC 用户端左下角月亮按钮、移动端顶部通知左侧月亮图标；主题写入本地存储，三端刷新后保持。
+- 三端路由对页面启用 keep-alive；从其他页面返回时通过 `onActivated` 静默刷新数据，不重复整页加载，也不打断正在输入的问答内容。
+- 通知每 60 秒刷新未读数；反馈与转办状态变更、文档到期提醒统一写入站内通知，通知失败不影响业务提交。
+- 管理端「系统日志」支持按类型查看检索日志、审计日志与系统日志，并提供日志清理；「用户权限」支持禁用、重置密码与注销账号。
 
 ### 移动端适配
 
@@ -186,7 +335,7 @@ npm run build
 - PC 用户端登录页展示移动端二维码，地址优先读取 `VITE_MOBILE_URL`，未配置时用当前主机加 5176；Vite 开发服务监听所有网卡，手机连同一局域网即可扫码访问。
 - 移动端构建带 Manifest 与 Service Worker，可添加到主屏幕；首次访问后离线可打开应用外壳，顶部提示离线状态，问答接口不做缓存。
 
-## 六、接口概览
+## 八、接口概览
 
 所有接口以 `/api/v1` 为前缀，除登录、企业微信登录与健康检查外均需登录。
 
@@ -202,21 +351,21 @@ npm run build
 | 部门 | `/admin/departments` | 管理员可写，管理员与部门管理员可读；支持层级、排序与停用，管理端「部门管理」页面维护 |
 | 策略 | `/strategies`、`/admin/strategies` | 用户只能读取已开放策略 |
 | 反馈 | `/feedback`、`/feedback/transfer`、`/feedback/mine`、`/admin/feedback` | 用户提交、转人工与查看本人记录，管理员处理 |
-| 通知 | `/notifications`、`/notifications/read-all` | 反馈与转办状态变更、文档复核提醒的站内通知 |
-| 缓存 | `/admin/cache/settings`、`/admin/cache/stats`、`/admin/cache/clear`、`/admin/cache/samples` | 仅管理员；精确与语义缓存设置、命中统计、清理与误答标记 |
+| 通知 | `/notifications`、`/notifications/{id}`、`/notifications/read-all` | 反馈与转办状态变更、文档复核提醒的站内通知 |
+| 缓存 | `/admin/cache/settings`、`/admin/cache/stats`、`/admin/cache/clear`、`/admin/cache/samples`、`/admin/cache/samples/flag` | 仅管理员；精确与语义缓存设置、命中统计、清理与误答标记 |
 | 深度问答 | `/admin/agent/settings` | 仅管理员；按知识库与角色开放，最多三轮决策 |
 | 运营看板 | `/admin/dashboard/summary`、`/trends`、`/departments` | 管理员看全部，部门管理员看本部门 |
-| 知识缺口 | `/admin/gaps`、`/admin/gaps/scan`、`/admin/gaps/export` | 汇总零引用、拒答、负反馈与转办问题 |
+| 知识缺口 | `/admin/gaps`、`/admin/gaps/scan`、`/admin/gaps/{id}`、`/admin/gaps/export` | 汇总零引用、拒答、负反馈与转办问题，支持状态更新与导出 |
 | 文档复核 | `/admin/review/due`、`/admin/review/{id}/action`、`/admin/review/notify` | 到期清单、继续有效、发起修订、废止与站内提醒 |
 | 评估 | `/admin/evaluation/reports`、`/validate`、`/run` | 管理员运行，管理员与部门管理员查看 |
-| 用户 | `/admin/users` | 管理员创建、改角色与部门、禁用、重置密码 |
-| 日志 | `/admin/logs/retrieval`、`/admin/logs/audit` | 仅管理员 |
+| 用户 | `/admin/users`、`/admin/users/{id}/close` | 管理员创建、改角色与部门、禁用、重置密码与注销账号 |
+| 日志 | `/admin/logs/retrieval`、`/admin/logs/audit`、`/admin/logs/system`、`/admin/logs/clear` | 仅管理员；查看与清理日志 |
 | 模型 | `/admin/model-config`、`/admin/model-config/ollama-models`、`/admin/model-config/test` | 仅管理员；在线 API 与本地 Ollama 双模式切换，密钥只从环境变量读取 |
 | 健康检查 | `/health` | 不在 `/api/v1` 前缀下；含数据库与索引一致性 |
 
 错误语义：未登录 401，无权限 403，资源不存在或不属于当前用户 404，版本冲突或重复上传 409，参数不合法 422，触发限流 429，索引未就绪 503。
 
-## 七、验收与测试
+## 九、验收与测试
 
 后端单元测试：
 
@@ -267,7 +416,7 @@ cd backend
 
 阶段二实施细节、验证记录与未完成项见 [docs/阶段二实施记录.md](docs/阶段二实施记录.md)；阶段三实施细节与验证记录见 [docs/阶段三实施记录.md](docs/阶段三实施记录.md)；评估口径与回归流程见 [docs/evaluation/regression_v2.md](docs/evaluation/regression_v2.md)；备份恢复见 [docs/deployment/backup.md](docs/deployment/backup.md)。
 
-## 八、常见问题
+## 十、常见问题
 
 **问答接口返回 503**
 
@@ -299,7 +448,7 @@ cd backend
 
 **语义缓存没有命中**
 
-语义缓存默认关闭，先在「热点缓存」开启并确认阈值，默认 0.95。只有问题表述不同但语义接近时才走语义匹配；检索详情会显示「语义相似」百分比，精确命中的显示为「精确命中」。阈值过高容易不命中，过低可能引入误答，建议用真实问题抽样后再调低。
+语义缓存默认关闭，先在「热点缓存」开启并确认阈值，默认 0.85，可调范围 0.75 到 1.0。只有问题表述不同但语义接近时才走语义匹配；检索详情会显示「语义相似」百分比，精确命中的显示为「精确命中」。阈值过高容易不命中，过低可能引入误答，建议用真实问题抽样后再调整。
 
 **MySQL 连接失败**
 
@@ -309,9 +458,9 @@ cd backend
 
 检查后端是否正常、令牌是否过期。前端把登录态存放在 `sessionStorage`，关闭标签页后需要重新登录。
 
-## 九、当前阶段边界
+## 十一、当前阶段边界
 
-- 已实现阶段一：认证、双前端、角色权限、问答、引用、会话归属、反馈闭环、审计与限流。
+- 已实现阶段一：认证、三端前端、角色权限、问答、引用、会话归属、反馈闭环、审计与限流。
 - 已实现阶段二：文档级 ACL、文档版本与生效日期、条款级结构化分块与父子块、引用版本化、黄金测试集评估模块、人工转办、索引一致性检查与备份脚本。
 - 已实现阶段三：多部门治理与知识库归属、独立移动端前端、精确与语义热点缓存、独立部门管理页面、三轮深度问答、站内通知、运营看板、知识缺口与到期复核、企业微信登录接口、移动端二维码入口与 PWA 离线能力。
 - 尚未完成：真实 300 至 500 条黄金测试集与正式基线、多部门真实数据与跨部门联合检索、企业微信真实凭证联调、GPU 精排压测、备份恢复演练、邮件短信通知、真机与多设备浏览器验收。上述内容需在学校服务器与真实凭证就绪后完成。
