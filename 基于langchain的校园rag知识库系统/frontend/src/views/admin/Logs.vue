@@ -141,7 +141,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { clearLogs, listAuditLogs, listRetrievalLogs, listSystemLogs } from '../../api/admin'
 
@@ -268,7 +268,7 @@ async function confirmClear() {
   }
 }
 
-onMounted(load)
+onActivated(load)
 </script>
 
 <style scoped>
