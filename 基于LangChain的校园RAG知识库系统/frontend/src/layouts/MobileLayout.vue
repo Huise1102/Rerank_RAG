@@ -33,7 +33,11 @@
     <div v-if="offline" class="offline-bar">当前处于离线状态，页面可浏览，问答需联网后重试</div>
 
     <main class="mobile-content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive>
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
     </main>
 
     <nav class="mobile-tabbar">
