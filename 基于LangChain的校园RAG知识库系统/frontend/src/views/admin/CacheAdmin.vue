@@ -61,7 +61,7 @@
           <el-form-item label="相似度阈值">
             <el-input-number
               v-model="form.semantic_threshold"
-              :min="0.9"
+              :min="0.75"
               :max="1"
               :step="0.01"
               :disabled="!form.semantic_enabled"
@@ -164,7 +164,7 @@ const form = reactive({
   enabled: true,
   ttl_days: 7,
   semantic_enabled: false,
-  semantic_threshold: 0.95
+  semantic_threshold: 0.85
 })
 
 const hitRate = computed(() => `${(((stats.value.hit_rate || 0) * 100).toFixed(1))}%`)
@@ -239,7 +239,7 @@ async function load() {
       enabled: Boolean(settingsData.enabled),
       ttl_days: Number(settingsData.ttl_days || 7),
       semantic_enabled: Boolean(settingsData.semantic_enabled),
-      semantic_threshold: Number(settingsData.semantic_threshold || 0.95)
+      semantic_threshold: Number(settingsData.semantic_threshold || 0.85)
     })
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '缓存数据加载失败')
