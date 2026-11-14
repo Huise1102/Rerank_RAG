@@ -64,7 +64,7 @@
 | --- | --- |
 | `product/backend/` | `基于LangChain的校园RAG知识库系统/backend/` |
 | `product/frontend/` | `基于LangChain的校园RAG知识库系统/frontend/` |
-| `product/resource/` | `基于LangChain的校园RAG知识库系统/resource/`，只复制实际需要的语料 |
+| `product/resource/` | 不迁移；本项目不预置语料，测试语料由管理员在后台上传 |
 | `product/backend/.env` | `基于LangChain的校园RAG知识库系统/.env` |
 | `product/backend/src/core/config.py` | `基于LangChain的校园RAG知识库系统/backend/src/core/config.py` |
 
@@ -105,7 +105,7 @@
 ### H3 项目必须能脱离主文件夹独立运行
 
 1. 项目要有自己的 `.env`、`.env.example`、后端依赖清单、前端依赖清单与锁文件、全局配置、数据库迁移、启动脚本、健康检查、测试和 README。
-2. 运行时不得读取父目录的 `.env`、`.venv`、`node_modules`、`.hf-cache`、`.uv-cache`、`resource/` 或任何父级配置。
+2. 运行时不得读取父目录的 `.env`、`.venv`、`node_modules`、`.hf-cache`、`.uv-cache` 或任何父级配置。
 3. 不得出现 `../product`、`../demo`、`../agent`、`..\\product` 等跨项目引用。
 4. 不得出现个人电脑绝对路径，例如 `C:\Users\...`、`D:\...`；所有路径必须由项目根目录推导或来自环境变量。
 5. 把 `基于LangChain的校园RAG知识库系统/` 单独复制到仓库外的目录后，按 README 重新安装依赖、准备 `.env`、初始化数据库，即可启动。验收时必须实际验证或如实说明未验证项。
@@ -211,7 +211,6 @@
 │   ├── vite.config.js
 │   └── node_modules/               项目内依赖，不入库
 │
-├── resource/                       示例或正式语料，按知识库分目录
 ├── data/                           运行数据，不入库
 ├── indexes/                        向量与 BM25 索引，不入库
 ├── storage/                        上传文档，不入库
@@ -256,7 +255,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 1. 所有路径默认值必须相对项目根推导，或来自环境变量。
 2. 禁止硬编码 `C:\Users\...`、桌面路径、父目录路径、旧项目目录名。
-3. `RAG_RESOURCE_DIR` 默认指向本项目 `resource/`。
+3. 项目不设预置语料目录；如需本地测试语料，放在项目根目录并由管理员在知识库后台上传，且不得提交到仓库。
 4. 上传目录、索引目录、日志目录、模型缓存目录全部位于本项目内。
 5. 配置中不得出现 `product`、`demo`、`agent` 作为运行依赖；品牌文案可以改为“校园 RAG 知识库系统”。
 
@@ -341,7 +340,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 1. 本项目使用独立数据库，默认不迁移 `product/` 的历史会话数据；阶段一文档中的历史数据兼容要求，仅在被要求导入旧数据时执行。
 2. 不得编造学校正式制度内容作为真实知识库数据。
-3. 如需示例语料，放在 `resource/示例/`，文件名和正文明确标注“示例文档，非正式制度”。
+3. 如需示例语料，由管理员在知识库后台上传，文件名和正文明确标注“示例文档，非正式制度”，不放入仓库。
 4. 初始化脚本可以创建空知识库或示例知识库，但不得把示例数据伪装成教务处正式文件。
 5. 管理员创建的账号、反馈、会话等运行数据不得提交到仓库。
 
@@ -627,7 +626,7 @@ JSDoc 的 `@param`、`@returns` 标签保留，标签后的说明文字必须改
 | `product/backend/alembic/` | `backend/alembic/` | 重新编写阶段一迁移，不复用旧版本 |
 | `product/backend/scripts/` | `backend/scripts/` | 重写为项目内路径与独立库 |
 | `product/frontend/src/` | `frontend/src/` | 参考页面结构，用 Vue 3 + Element Plus 重建并支持双模式 |
-| `product/resource/` | `resource/` | 只复制需要的语料，改为示例或校园语料 |
+| `product/resource/` | 不迁移 | 本项目不预置语料，测试语料由管理员后台上传 |
 | `product/backend/.env.example` | `.env.example` | 重写为独立配置模板 |
 | `product/backend/docker-compose.yml` | `docker-compose.yml` | 改项目名、端口、卷路径，去掉父目录依赖 |
 | `product/README.md` | `README.md` | 重写为从零启动文档 |
