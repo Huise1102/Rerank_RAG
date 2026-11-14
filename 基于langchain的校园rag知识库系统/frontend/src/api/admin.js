@@ -20,6 +20,10 @@ export function disableUser(id) {
   return request.delete(`/admin/users/${id}`)
 }
 
+export function closeUser(id) {
+  return request.post(`/admin/users/${id}/close`)
+}
+
 export function listDepartments() {
   return request.get('/admin/departments')
 }
@@ -42,4 +46,8 @@ export function listAuditLogs(params) {
 
 export function listSystemLogs(params) {
   return request.get('/admin/logs/system', { params })
+}
+
+export function clearLogs(payload) {
+  return request.post('/admin/logs/clear', payload)
 }
