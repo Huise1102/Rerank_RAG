@@ -9,6 +9,7 @@ from src.api.router import api_router
 from src.api.routes.health import router as health_router
 from src.core.config import settings
 from src.core.logging import configure_logging, request_id_var
+from src.services.scheduler import start_scheduler, stop_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,11 @@ def create_app() -> FastAPI:
             path.mkdir(parents=True, exist_ok=True)
         logger.info("服务启动，配置加载完成")
         asyncio.create_task(asyncio.to_thread(_preload_models))
+        start_scheduler()
+
+    @app.on_event("shutdown")
+    async def shutdown_scheduler() -> None:
+        await stop_scheduler()
 
     app.include_router(health_router)
     app.include_router(api_router, prefix=settings.api_prefix)
