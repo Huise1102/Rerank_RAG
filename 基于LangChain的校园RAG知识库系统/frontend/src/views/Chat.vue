@@ -430,6 +430,7 @@ async function openConversation(id) {
     role: item.role,
     content: item.content,
     citations: item.citations || [],
+    trace: item.agent_trace || [],
     showCitations: false,
     strategy: item.role === 'assistant' ? strategies.value.find((preset) => preset.id === item.strategy_id)?.name : ''
   }))
@@ -472,7 +473,7 @@ async function removeConversation(item) {
   ElMessage.success('会话已删除')
 }
 
-function handleEnter(event: KeyboardEvent) {
+function handleEnter(event) {
   /* 输入法组合状态下的回车用于确认候选词，不触发发送 */
   if (event.isComposing || event.shiftKey) return
   event.preventDefault()
