@@ -16,7 +16,7 @@ from src.schemas.chat import (
 from src.services.agent_service import stream_deep_answer
 from src.services.agent_settings import deep_allowed, get_agent_settings
 from src.services.cache_service import get_cache_settings
-from src.services.chat_service import prepare_chat, prepare_deep_chat, stream_answer
+from src.services.chat_service import _sse, prepare_chat, prepare_deep_chat, stream_answer
 
 router = APIRouter(tags=["问答"])
 
@@ -46,14 +46,8 @@ async def chat_stream(
 ):
     if payload.app_key == "admin" and user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="无权限访问")
-    if payload.mode == "deep":
-        context = await prepare_deep_chat(db, user, payload)
-        generator = stream_deep_answer(context, user)
-    else:
-        context = await prepare_chat(db, user, payload)
-        generator = stream_answer(context, user)
     return StreamingResponse(
-        generator,
+        _stream_events(payload, user, db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -61,6 +55,24 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _stream_events(payload: ChatRequest, user: User, db: AsyncSession):
+    """先推送状态事件，再执行检索与生成，避免检索期间前端长时间空白。"""
+    yield _sse("status", {"stage": "retrieve", "text": "正在检索知识库…"})
+    try:
+        if payload.mode == "deep":
+            context = await prepare_deep_chat(db, user, payload)
+            inner = stream_deep_answer(context, user)
+        else:
+            context = await prepare_chat(db, user, payload)
+            inner = stream_answer(context, user)
+    except HTTPException as exc:
+        yield _sse("error", {"detail": exc.detail})
+        yield _sse("done", {"message_id": None, "citations": [], "disclaimer": ""})
+        return
+    async for chunk in inner:
+        yield chunk
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
