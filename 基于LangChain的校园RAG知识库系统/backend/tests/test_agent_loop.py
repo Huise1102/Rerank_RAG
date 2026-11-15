@@ -37,6 +37,9 @@ class FakeModel:
     def bind_tools(self, tools):
         return self
 
+    def bind(self, **kwargs):
+        return self
+
     async def ainvoke(self, messages):
         self.calls += 1
         if self.responses:
@@ -75,7 +78,10 @@ def collect(state: AgentState, model: FakeModel, monkeypatch) -> list[dict]:
 
 def test_agent_stops_at_three_rounds(monkeypatch):
     state = AgentState(question="学生证怎么补办", kb_id=1, scope=make_scope())
-    model = FakeModel([AIMessage(content="", tool_calls=[retrieve_call()]) for _ in range(5)])
+    model = FakeModel(
+        [AIMessage(content="KB")]
+        + [AIMessage(content="", tool_calls=[retrieve_call()]) for _ in range(5)]
+    )
     events = collect(state, model, monkeypatch)
     assert state.rounds == 3
     assert state.retrievals <= 3
@@ -86,17 +92,29 @@ def test_agent_stops_at_three_rounds(monkeypatch):
 
 def test_agent_requires_retrieval_before_answer(monkeypatch):
     state = AgentState(question="随便回答", kb_id=1, scope=make_scope())
-    model = FakeModel([AIMessage(content="直接回答") for _ in range(4)])
+    model = FakeModel([AIMessage(content="KB")] + [AIMessage(content="直接回答") for _ in range(4)])
     collect(state, model, monkeypatch)
+    assert state.intent == "kb"
+    assert state.retrievals == 1
+    assert state.final_answer
+
+
+def test_chat_intent_answers_without_retrieval(monkeypatch):
+    state = AgentState(question="你好", kb_id=1, scope=make_scope())
+    model = FakeModel([AIMessage(content="CHAT"), AIMessage(content="你好，有什么可以帮你？")])
+    collect(state, model, monkeypatch)
+    assert state.intent == "chat"
     assert state.retrievals == 0
     assert state.evidence == []
-    assert state.final_answer
+    assert state.final_answer == "你好，有什么可以帮你？"
+    assert state.trace[0]["action"] == "intent"
 
 
 def test_agent_answer_after_retrieval(monkeypatch):
     state = AgentState(question="学生证怎么补办", kb_id=1, scope=make_scope())
     model = FakeModel(
         [
+            AIMessage(content="KB"),
             AIMessage(content="", tool_calls=[retrieve_call()]),
             AIMessage(content="携带身份证到教务处办理 [1]。"),
         ]
@@ -111,6 +129,7 @@ def test_agent_can_ask_clarification(monkeypatch):
     state = AgentState(question="怎么办", kb_id=1, scope=make_scope())
     model = FakeModel(
         [
+            AIMessage(content="KB"),
             AIMessage(
                 content="",
                 tool_calls=[
@@ -121,7 +140,7 @@ def test_agent_can_ask_clarification(monkeypatch):
                         "type": "tool_call",
                     }
                 ],
-            )
+            ),
         ]
     )
     collect(state, model, monkeypatch)
