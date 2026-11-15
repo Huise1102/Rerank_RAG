@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <div class="muted">在在线 API 与本地模型之间切换，保存后下一次提问立即生效，无需重启后端</div>
+      <div class="muted">在在线 API、vLLM 与本地模型之间切换，保存后下一次提问立即生效，无需重启后端</div>
       <div>
         <el-button @click="load">刷新</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存并应用</el-button>
@@ -13,7 +13,7 @@
       type="success"
       :closable="false"
       style="margin-bottom: 12px"
-      :title="`当前生效：${current.provider === 'ollama' ? '本地模型' : '在线 API'} · ${current.active_model}`"
+      :title="`当前生效：${providerLabel(current.provider)} · ${current.active_model}`"
       :description="`接口地址 ${current.active_base_url}${current.updated_at ? `，更新于 ${current.updated_at}` : ''}`"
     />
 
@@ -60,6 +60,26 @@
           <el-form-item label="模型名称">
             <el-input v-model="form.api_model" placeholder="deepseek-chat" />
           </el-form-item>
+        </template>
+
+        <template v-else-if="form.provider === 'vllm'">
+          <el-form-item label="服务地址">
+            <el-input v-model="form.vllm_base_url" placeholder="http://127.0.0.1:8001/v1" />
+            <span class="muted form-hint">填 vLLM 服务的 OpenAI 兼容地址，通常以 /v1 结尾</span>
+          </el-form-item>
+
+          <el-form-item label="模型名称">
+            <el-input v-model="form.vllm_model" placeholder="qwen3-14b" />
+            <span class="muted form-hint">与 vLLM 启动参数 --served-model-name 保持一致</span>
+          </el-form-item>
+
+          <el-alert
+            type="info"
+            :closable="false"
+            style="margin-bottom: 12px"
+            title="vLLM 与 Ollama 共用同一张显卡时只能启用其中一个"
+            description="两者都会预占显存，同时运行会显存不足。切换来源后需要先在管理端保存再测试连接。"
+          />
         </template>
 
         <template v-else>
@@ -131,6 +151,13 @@ const modes = [
     glyph: '云'
   },
   {
+    key: 'vllm',
+    title: 'vLLM 服务',
+    sub: 'GPU 推理服务',
+    desc: 'OpenAI 兼容接口，适合校内多人并发',
+    glyph: '卡'
+  },
+  {
     key: 'ollama',
     title: '本地模型',
     sub: 'Ollama 本地推理',
@@ -138,6 +165,12 @@ const modes = [
     glyph: '地'
   }
 ]
+
+const PROVIDER_LABELS = { api: '在线 API', vllm: 'vLLM 服务', ollama: '本地模型' }
+
+function providerLabel(provider) {
+  return PROVIDER_LABELS[provider] || '在线 API'
+}
 
 const PRESETS = {
   deepseek: { base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -187,6 +220,8 @@ function buildPayload() {
     api_model: form.value.api_model,
     ollama_base_url: form.value.ollama_base_url,
     ollama_model: form.value.ollama_model,
+    vllm_base_url: form.value.vllm_base_url,
+    vllm_model: form.value.vllm_model,
     temperature: form.value.temperature,
     max_tokens: form.value.max_tokens
   }
@@ -217,7 +252,7 @@ async function save() {
     const data = await saveModelConfig(buildPayload())
     current.value = data
     form.value = { ...data }
-    ElMessage.success(`模型配置已保存，当前使用${data.provider === 'ollama' ? '本地模型' : '在线 API'}`)
+    ElMessage.success(`模型配置已保存，当前使用${providerLabel(data.provider)}`)
   } finally {
     saving.value = false
   }
@@ -244,7 +279,7 @@ onActivated(load)
 <style scoped>
 .mode-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
