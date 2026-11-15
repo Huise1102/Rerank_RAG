@@ -11,6 +11,7 @@ CHAPTER_RE = re.compile(r"^\s*(第[一二三四五六七八九十百千0-9]+章)
 SECTION_RE = re.compile(r"^\s*(第[一二三四五六七八九十百千0-9]+节)\s*(.*)$")
 ARTICLE_RE = re.compile(r"^\s*(第[一二三四五六七八九十百千0-9]+条)\s*(.*)$")
 SENTENCE_RE = re.compile(r"(?<=[。；！？])")
+PAGE_MARK_RE = re.compile(r"^\[\[PAGE:(\d+)\]\]$")
 
 
 def _hash(text: str, length: int = 40) -> str:
@@ -28,11 +29,28 @@ def _recursive_chunks(documents: list[Document]) -> list[Document]:
     return splitter.split_documents(documents)
 
 
+def _strip_page_marks(text: str) -> str:
+    return "\n".join(
+        line for line in text.splitlines() if not PAGE_MARK_RE.match(line.strip())
+    )
+
+
 def _split_table(document: Document, meta: dict) -> list[Document]:
     lines = [line for line in document.page_content.splitlines() if line.strip()]
     max_rows = max(settings.table_max_rows, 2)
+    prefix_parts = [meta.get("section_title"), meta.get("table_caption")]
+    prefix = " · ".join(str(part) for part in prefix_parts if part)
+
+    def wrap(content: str) -> str:
+        return f"{prefix}\n{content}" if prefix else content
+
     if len(lines) <= max_rows + 2:
-        return [Document(page_content=document.page_content, metadata=dict(meta, chunk_type="table"))]
+        return [
+            Document(
+                page_content=wrap(document.page_content),
+                metadata=dict(meta, chunk_type="table"),
+            )
+        ]
     header = lines[:2]
     body = lines[2:]
     chunks: list[Document] = []
@@ -41,7 +59,7 @@ def _split_table(document: Document, meta: dict) -> list[Document]:
         part = header + body[start : start + step]
         chunks.append(
             Document(
-                page_content="\n".join(part),
+                page_content=wrap("\n".join(part)),
                 metadata=dict(
                     meta,
                     chunk_type="table",
@@ -77,19 +95,31 @@ def _clause_chunks(document: Document, meta: dict) -> list[Document]:
     lines = [line.strip() for line in document.page_content.splitlines() if line.strip()]
     chapters: list[str] = []
     sections: list[str] = []
-    blocks: list[tuple[str, str, str]] = []
+    blocks: list[tuple[str, str, int | None, int | None]] = []
     current_article: str | None = None
+    try:
+        current_page: int | None = int(meta.get("page"))
+    except (TypeError, ValueError):
+        current_page = None
     buffer: list[str] = []
+    buffer_start_page: int | None = None
+    buffer_end_page: int | None = None
 
     def flush_article() -> None:
-        nonlocal current_article, buffer
+        nonlocal current_article, buffer, buffer_start_page, buffer_end_page
         if buffer:
             text = "\n".join(buffer).strip()
             if text:
-                blocks.append((current_article or "", text, ""))
+                blocks.append((current_article or "", text, buffer_start_page, buffer_end_page))
         buffer = []
+        buffer_start_page = None
+        buffer_end_page = None
 
     for line in lines:
+        page_mark = PAGE_MARK_RE.match(line)
+        if page_mark:
+            current_page = int(page_mark.group(1))
+            continue
         chapter = CHAPTER_RE.match(line)
         if chapter:
             flush_article()
@@ -106,21 +136,37 @@ def _clause_chunks(document: Document, meta: dict) -> list[Document]:
             flush_article()
             current_article = article.group(1)
             buffer = [line]
+            buffer_start_page = current_page
+            buffer_end_page = current_page
             continue
+        if buffer_start_page is None:
+            buffer_start_page = current_page
+        if current_page is not None:
+            buffer_end_page = current_page
         buffer.append(line)
     flush_article()
 
-    if not any(article_no for article_no, _, _ in blocks):
+    if not any(article_no for article_no, _, _, _ in blocks):
         return []
 
-    parent_context = "\n".join(chapters + sections)
+    context_parts = [
+        meta.get("section_title"),
+        meta.get("section_doc_no") or meta.get("doc_no"),
+        *chapters,
+        *sections,
+    ]
+    parent_context = "\n".join(str(part) for part in context_parts if part)
     chunks: list[Document] = []
-    for article_no, text, _ in blocks:
+    for article_no, text, start_page, end_page in blocks:
         full_text = text
         if article_no and not text.startswith(article_no):
             full_text = f"{article_no} {text}"
-        article_parent = "\n".join(part for part in (parent_context, full_text[: settings.parent_text_max_chars]) if part)
-        parent_chunk_id = _hash(f"{meta.get('version_id')}:{article_no}:{full_text}")
+        article_parent = "\n".join(
+            part for part in (parent_context, full_text[: settings.parent_text_max_chars]) if part
+        )
+        parent_chunk_id = _hash(
+            f"{meta.get('section_index')}:{meta.get('version_id')}:{article_no}:{full_text}"
+        )
         article_type = "clause" if article_no else "text"
         for piece in _split_long_article(full_text, article_no, article_parent, meta):
             chunks.append(
@@ -132,6 +178,8 @@ def _clause_chunks(document: Document, meta: dict) -> list[Document]:
                         article_no=article_no or None,
                         parent_chunk_id=parent_chunk_id,
                         parent_text=article_parent[: settings.parent_text_max_chars],
+                        page=start_page or meta.get("page", "unknown"),
+                        page_end=end_page or meta.get("page_end", meta.get("page", "unknown")),
                     ),
                 )
             )
@@ -193,11 +241,18 @@ def split_documents(
             if clause_chunks:
                 chunks.extend(clause_chunks)
             else:
-                fallback = _recursive_chunks([document])
+                clean = Document(
+                    page_content=_strip_page_marks(document.page_content),
+                    metadata=document.metadata,
+                )
+                fallback = _recursive_chunks([clean])
                 for item in fallback:
                     item.metadata.update(document.metadata, chunk_type="text")
                 chunks.extend(fallback)
     elif strategy == "fixed":
+        for document in prepared:
+            if document.metadata.get("chunk_type") != "table":
+                document.page_content = _strip_page_marks(document.page_content)
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -207,7 +262,12 @@ def split_documents(
         chunks = splitter.split_documents(prepared)
     else:
         text_documents = [
-            item for item in prepared if item.metadata.get("chunk_type") != "table"
+            Document(
+                page_content=_strip_page_marks(item.page_content),
+                metadata=item.metadata,
+            )
+            for item in prepared
+            if item.metadata.get("chunk_type") != "table"
         ]
         tables = [item for item in prepared if item.metadata.get("chunk_type") == "table"]
         chunks = _recursive_chunks(text_documents) + tables
