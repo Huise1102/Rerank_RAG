@@ -15,11 +15,15 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "检索关键词或完整问题"},
+                    "query": {"type": "string", "description": "改写后的检索查询，使用规范的制度术语。"},
                     "strategy": {
                         "type": "string",
                         "enum": ["hybrid_rerank", "hybrid", "vector", "bm25"],
-                        "description": "检索策略，默认混合加精排",
+                        "description": (
+                            "vector=纯语义（概念、释义、口语化描述）；bm25=纯关键词（精确文号、条款号、专有名词）；"
+                            "hybrid=向量与关键词 RRF 融合；hybrid_rerank=融合后再精排（最准最慢）。"
+                            "精确条文用 bm25，综合语义用 hybrid_rerank。"
+                        ),
                     },
                     "top_k": {
                         "type": "integer",
@@ -28,7 +32,7 @@ TOOL_SCHEMAS = [
                         "description": "返回证据条数，默认 4",
                     },
                 },
-                "required": ["query"],
+                "required": ["query", "strategy"],
             },
         },
     },
