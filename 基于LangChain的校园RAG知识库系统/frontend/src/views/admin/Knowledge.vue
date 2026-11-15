@@ -81,8 +81,9 @@
             </template>
           </el-table-column>
           <el-table-column prop="chunk_count" label="分块" width="80" />
-          <el-table-column label="操作" width="180">
+          <el-table-column label="操作" width="210">
             <template #default="{ row }">
+              <el-button v-if="row.file_type === 'pdf'" link type="primary" size="small" @click="openPreview(row)">预览</el-button>
               <el-button link type="primary" size="small" @click="openDetail(row)">版本</el-button>
               <el-button link type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
               <el-button link type="danger" size="small" @click="removeDocument(row)">删除</el-button>
@@ -325,6 +326,19 @@
         <el-button type="primary" :loading="versionUploading" @click="submitVersion">上传</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="previewVisible"
+      :title="previewTitle"
+      width="78%"
+      top="5vh"
+      destroy-on-close
+      @closed="closePreview"
+    >
+      <div v-if="previewLoading" class="empty-hint">正在加载原文…</div>
+      <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-frame" title="PDF 预览" />
+      <div v-else class="empty-hint">暂无可预览的内容</div>
+    </el-dialog>
   </div>
 </template>
 
@@ -358,6 +372,10 @@ const documents = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewUrl = ref('')
+const previewTitle = ref('')
 const activeKbId = ref(null)
 const filters = reactive({ keyword: '', visibility: '', lifecycle: '' })
 const kbDialog = ref(false)
@@ -599,6 +617,29 @@ async function openDetail(row) {
   detailVisible.value = true
 }
 
+async function openPreview(row) {
+  previewTitle.value = row.title
+  previewUrl.value = ''
+  previewLoading.value = true
+  previewVisible.value = true
+  try {
+    const blob = await previewDocumentBlob(row.id)
+    previewUrl.value = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+  } catch {
+    ElMessage.error('预览失败，可能无权限或文件不存在')
+    previewVisible.value = false
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function closePreview() {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+}
+
 async function refreshDetail() {
   if (detail.value) {
     detail.value = await getAdminDocument(detail.value.id)
@@ -817,5 +858,10 @@ onActivated(loadBase)
   padding: 10px 12px;
   white-space: pre-wrap;
   font-size: 13px;
+}
+.preview-frame {
+  width: 100%;
+  height: 72vh;
+  border: none;
 }
 </style>
