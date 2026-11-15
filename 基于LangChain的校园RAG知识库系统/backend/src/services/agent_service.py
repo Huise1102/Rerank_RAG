@@ -144,6 +144,7 @@ async def stream_deep_answer(context: ChatContext, user) -> AsyncIterator[str]:
     context.detail.update(
         {
             "mode": "deep",
+            "agent_intent": state.intent,
             "agent_rounds": state.rounds,
             "agent_retrievals": state.retrievals,
             "agent_trace": state.trace,
@@ -173,6 +174,7 @@ async def stream_deep_answer(context: ChatContext, user) -> AsyncIterator[str]:
             "transfer_required": transfer_required,
             "cached": False,
             "mode": "deep",
+            "agent_intent": state.intent,
             "agent_trace": state.trace,
             "agent_rounds": state.rounds,
             "clarification": clarification,
