@@ -230,8 +230,8 @@ Copy-Item .env.example .env
 - `LLM_API_KEY`：在线 API 来源使用；未配置时调用在线 API 返回 503，vLLM 与 Ollama 来源不受影响
 - `ADMIN_INITIAL_PASSWORD`：可留空，留空时由初始化脚本随机生成并只显示一次
 - `HF_ENDPOINT`：模型下载地址，默认使用 `https://hf-mirror.com`，能直连模型仓库时可改为 `https://huggingface.co`
-- `EMBEDDING_MODEL`、`RERANKER_MODEL`：嵌入与精排模型，默认 `BAAI/bge-small-zh-v1.5` 与 `BAAI/bge-reranker-base`
-- `RERANK_INPUT_K`：送入精排的候选条数，默认 20。实测降到 12 后，单次检索由 21.1 秒缩短到 12.4 秒（CPU、`bge-reranker-v2-m3`），引用仍是 Top-5、答案要点不变；再往下调需要复测准确率，不建议低于 8
+- `EMBEDDING_MODEL`、`RERANKER_MODEL`：嵌入与精排模型。代码默认 `BAAI/bge-small-zh-v1.5` 与 `BAAI/bge-reranker-base`；当前 `.env` 与 `.env.example` 的精排模型为 `BAAI/bge-reranker-v2-m3`（精度更高、推理更慢）
+- `RERANK_INPUT_K`：送入精排的候选条数。代码默认 20，**本项目已调为 12**：单次检索由 21.1 秒缩短到 12.4 秒（CPU、`bge-reranker-v2-m3`），引用仍是 Top-5、答案要点不变；不建议低于 8，再往下调需复测准确率
 - `VECTOR_TOP_K`、`BM25_TOP_K`：无检索策略预设时的召回条数。管理端「检索策略」选中预设后以预设值为准，此时改 `.env` 不生效；实测召回 50 与 20 的检索耗时几乎相同（相差 0.2 秒），不必为提速缩小召回
 - `CORS_ORIGINS`：开发环境用 Vite 代理可保持默认；三端分别部署时需包含 5174、5175、5176 或对应的正式域名
 - `WECOM_ENABLED` 与企业微信配置：`WECOM_CORP_ID`、`WECOM_AGENT_ID`、`WECOM_SECRET`、`WECOM_REDIRECT_URI` 齐全且开关为 `true` 时，移动端登录页展示企业微信登录；`WECOM_REDIRECT_URI` 需与企业微信后台的网页授权回调域名一致，指向移动端 `/wecom/callback`
