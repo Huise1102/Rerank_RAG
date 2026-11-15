@@ -96,7 +96,7 @@ def _index_version_sync(
     department_name: str,
 ) -> dict:
     path = Path(version_data["file_path"])
-    documents, warnings = load_document_with_report(
+    documents, warnings, load_stats = load_document_with_report(
         path,
         document_data["kb_id"],
         document_data["id"],
@@ -146,8 +146,12 @@ def _index_version_sync(
 
     report = {
         "files": 1,
+        "pages": int(load_stats.get("pages", 1)),
+        "sections": int(load_stats.get("sections", 1)),
         "chunks": len(chunks),
         "tables": sum(1 for item in chunks if item.metadata.get("chunk_type") == "table"),
+        "source_tables": int(load_stats.get("source_tables", 0)),
+        "merged_tables": int(load_stats.get("merged_tables", 0)),
         "clauses": sum(
             1 for item in chunks if item.metadata.get("chunk_type") == "clause"
         ),
@@ -311,7 +315,7 @@ def _rebuild_kb_sync(kb_id: int, entries: list[dict], strategy: str) -> dict:
     results: dict[int, dict] = {}
     for entry in entries:
         try:
-            documents, warnings = load_document_with_report(
+            documents, warnings, load_stats = load_document_with_report(
                 Path(entry["file_path"]), kb_id, entry["document_id"], entry["filename"]
             )
             doc_meta = {
@@ -352,10 +356,14 @@ def _rebuild_kb_sync(kb_id: int, entries: list[dict], strategy: str) -> dict:
                 )
                 chunk.metadata = _sanitize_metadata(chunk.metadata)
             results[entry["version_id"]] = {
+                "pages": int(load_stats.get("pages", 1)),
+                "sections": int(load_stats.get("sections", 1)),
                 "chunks": len(chunks),
                 "tables": sum(
                     1 for item in chunks if item.metadata.get("chunk_type") == "table"
                 ),
+                "source_tables": int(load_stats.get("source_tables", 0)),
+                "merged_tables": int(load_stats.get("merged_tables", 0)),
                 "clauses": sum(
                     1 for item in chunks if item.metadata.get("chunk_type") == "clause"
                 ),
