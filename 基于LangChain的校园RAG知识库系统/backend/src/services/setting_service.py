@@ -6,7 +6,7 @@ from src.core.config import settings
 from src.db.models import SystemSetting
 
 MODEL_CONFIG_KEY = "model_config"
-PROVIDERS = ("api", "ollama")
+PROVIDERS = ("api", "ollama", "vllm")
 
 
 def default_model_config() -> dict:
@@ -18,6 +18,8 @@ def default_model_config() -> dict:
         "api_model": settings.llm_model,
         "ollama_base_url": settings.ollama_base_url.rstrip("/"),
         "ollama_model": settings.ollama_model,
+        "vllm_base_url": settings.vllm_base_url.rstrip("/"),
+        "vllm_model": settings.vllm_model,
         "temperature": settings.llm_temperature,
         "max_tokens": settings.llm_max_tokens,
         "updated_at": "",
@@ -33,13 +35,17 @@ async def get_model_config(db: AsyncSession) -> dict:
         config["provider"] = "api"
     config["api_base_url"] = str(config["api_base_url"]).rstrip("/")
     config["ollama_base_url"] = str(config["ollama_base_url"]).rstrip("/")
+    config["vllm_base_url"] = str(config.get("vllm_base_url") or settings.vllm_base_url).rstrip("/")
     return config
 
 
 def active_endpoint(config: dict) -> tuple[str, str]:
     """当前生效的接口地址与模型名。"""
-    if config.get("provider") == "ollama":
+    provider = config.get("provider")
+    if provider == "ollama":
         return config["ollama_base_url"].rstrip("/"), config["ollama_model"]
+    if provider == "vllm":
+        return config["vllm_base_url"].rstrip("/"), config["vllm_model"]
     return config["api_base_url"].rstrip("/"), config["api_model"]
 
 
