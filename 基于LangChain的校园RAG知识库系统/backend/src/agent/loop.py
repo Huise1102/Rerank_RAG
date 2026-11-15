@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 
@@ -20,6 +21,15 @@ MAX_EVIDENCE = 12
 DEFAULT_STRATEGY = "hybrid_rerank"
 INTENT_HISTORY_MESSAGES = 4
 INTENT_TIMEOUT_SECONDS = 15
+INTENT_MAX_TOKENS = 32
+
+logger = logging.getLogger(__name__)
+
+
+def _no_think_suffix(model) -> str:
+    """qwen3 系列模型追加 /no_think 关闭思考链，避免思考内容占满输出预算。"""
+    name = str(getattr(model, "model_name", "") or "").lower()
+    return "\n/no_think" if name.startswith("qwen3") else ""
 
 
 def _format_evidence(state: AgentState, documents: list) -> str:
@@ -50,25 +60,39 @@ async def _stream_text(text: str) -> AsyncIterator[dict]:
         yield {"type": "delta", "content": text[index : index + 48]}
 
 
-async def _classify_intent(model, question: str, history: list | None) -> tuple[str, int]:
-    """判断本轮是正常交流还是知识库问答，失败时回落到知识库问答。"""
+async def _classify_intent(model, question: str, history: list | None) -> tuple[str, int, str]:
+    """判断本轮是正常交流还是知识库问答，返回意图、耗时与判定来源。"""
     messages = [SystemMessage(content=INTENT_SYSTEM_PROMPT)]
     for message in (history or [])[-INTENT_HISTORY_MESSAGES:]:
         content = str(getattr(message, "content", "") or "")[:300]
         if content:
             messages.append(type(message)(content=content))
-    messages.append(HumanMessage(content=question))
+    messages.append(HumanMessage(content=question + _no_think_suffix(model)))
     started = time.perf_counter()
+    source = "model"
     try:
-        bound = model.bind(max_tokens=16, temperature=0) if hasattr(model, "bind") else model
+        bound = (
+            model.bind(max_tokens=INTENT_MAX_TOKENS, temperature=0)
+            if hasattr(model, "bind")
+            else model
+        )
         response = await asyncio.wait_for(
             bound.ainvoke(messages), timeout=INTENT_TIMEOUT_SECONDS
         )
         label = str(getattr(response, "content", "") or "").strip().upper()
-        intent = "chat" if label.startswith("CHAT") else "kb"
-    except Exception:  # noqa: BLE001 —— 分类失败不应阻断问答
+        if not label:
+            logger.warning("意图识别返回空内容，回落为知识库问答")
+            source = "fallback"
+            intent = "kb"
+        elif label.startswith("CHAT") or label.startswith("正常交流") or label.startswith("闲聊"):
+            intent = "chat"
+        else:
+            intent = "kb"
+    except Exception as exc:  # noqa: BLE001 —— 分类失败不应阻断问答
+        logger.warning("意图识别失败，回落为知识库问答：%s", exc)
+        source = "fallback"
         intent = "kb"
-    return intent, int((time.perf_counter() - started) * 1000)
+    return intent, int((time.perf_counter() - started) * 1000), source
 
 
 async def _execute_retrieval(
@@ -152,12 +176,13 @@ async def run_agent(
     timeout_seconds: int = 90,
 ) -> AsyncIterator[dict]:
     """执行深度问答决策循环，逐条产出轨迹与回答片段。"""
-    intent, intent_ms = await _classify_intent(model, state.question, history)
+    intent, intent_ms, intent_source = await _classify_intent(model, state.question, history)
     state.intent = intent
     intent_step = {
         "round": 0,
         "action": "intent",
         "intent": intent,
+        "intent_source": intent_source,
         "duration_ms": intent_ms,
         "note": "正常交流，可直接作答" if intent == "chat" else "知识库问答，需先检索",
     }
@@ -169,7 +194,7 @@ async def run_agent(
     if history:
         messages.extend(history)
     messages.append(SystemMessage(content=intent_instruction(intent)))
-    messages.append(HumanMessage(content=state.question))
+    messages.append(HumanMessage(content=state.question + _no_think_suffix(model)))
     state.messages = messages
 
     for round_no in range(1, max_rounds + 1):
