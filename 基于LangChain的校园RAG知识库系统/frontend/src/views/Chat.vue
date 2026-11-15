@@ -140,9 +140,9 @@
           :rows="3"
           maxlength="2000"
           show-word-limit
-          placeholder="请输入问题，按 Ctrl 加 Enter 发送"
+          placeholder="请输入问题，Enter 发送，Shift 加 Enter 换行"
           :disabled="sending"
-          @keydown.ctrl.enter.prevent="send"
+          @keydown.enter="handleEnter"
         />
         <div class="chat-input-actions">
           <span class="muted">回答仅依据知识库内容，未覆盖时会明确说明</span>
@@ -470,6 +470,13 @@ async function removeConversation(item) {
   }
   await loadConversations()
   ElMessage.success('会话已删除')
+}
+
+function handleEnter(event: KeyboardEvent) {
+  /* 输入法组合状态下的回车用于确认候选词，不触发发送 */
+  if (event.isComposing || event.shiftKey) return
+  event.preventDefault()
+  send()
 }
 
 async function send() {
