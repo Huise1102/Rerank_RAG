@@ -144,9 +144,15 @@ async def conversation_messages(
         select(Message).where(Message.conversation_id == conversation.id).order_by(Message.id)
     )
     messages = result.scalars().all()
+    items = []
+    for item in messages:
+        out = MessageOut.model_validate(item)
+        detail = item.retrieval_detail if isinstance(item.retrieval_detail, dict) else {}
+        out.agent_trace = detail.get("agent_trace") or []
+        items.append(out)
     return ConversationDetail(
         conversation=ConversationOut.model_validate(conversation),
-        messages=[MessageOut.model_validate(item) for item in messages],
+        messages=items,
     )
 
 
