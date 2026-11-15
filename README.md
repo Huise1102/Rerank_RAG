@@ -165,7 +165,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 ├── docs/                 项目规格、任务清单与界面截图（docs/images/ 为 Agentic 版，docs/images/product/ 为产品级）
 │   ├── spec.md           第三版执行规格
 │   └── tasks.md          第三版任务清单
-├── LICENSE               PolyForm Noncommercial License 1.0.0
+├── LICENSE               MIT License
 └── README.md             本文件
 ```
 
@@ -319,7 +319,7 @@ vLLM 相关代码、前端入口、连接测试与部署文档均已就绪，只
 
 ## 七、说明与限制
 
-- **许可证**：本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，**禁止任何商业用途**——允许个人学习、研究、教学、实验及非商业主体使用，禁止任何以商业获利为目的的使用。完整条款见 [LICENSE](LICENSE)。
+- **许可证**：本项目采用 [MIT License](https://opensource.org/licenses/MIT)，允许个人与商业用途——可自由使用、复制、修改、合并、发布、分发、再许可与销售，仅需在分发时保留版权声明与许可声明。完整条款见 [LICENSE](LICENSE)。
 - **产品级系统与 Agentic 版均为单用户无认证系统**：无登录页、无用户体系、无鉴权中间件。
 - **校园落地版提供完整账号体系**：本地账号 + 企业微信网页授权、四级角色、部门隔离、文档级 ACL 与服务端可撤销会话；企业微信未配置时仅使用本地账号。
 - **Agentic 版的检索决策由 LLM 完成**：每轮只调一个工具，单问题最多 3 轮且第 3 轮强制作答；检索次数用尽或工具名非法时立即强制收敛，不依赖 LLM 自觉。
