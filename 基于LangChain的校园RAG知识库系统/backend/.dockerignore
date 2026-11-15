@@ -1,0 +1,8 @@
+# 构建时不需要的东西，避免把本机虚拟环境与缓存打进镜像
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+backups/
+evaluation_data/
+.env
