@@ -11,7 +11,7 @@ from src.generation.chain import (
     build_citations,
     format_context,
 )
-from src.generation.llm import build_chat_model
+from src.generation.llm import active_model_name, build_chat_model
 from src.retrieval.retrievers import build_retriever
 from src.services.chat_service import ChatContext, _persist_answer, _sse
 
@@ -52,8 +52,7 @@ async def _fallback_fast(context: ChatContext) -> AsyncIterator[dict]:
         return
     yield {"type": "citations", "citations": context.citations}
     config = context.model_config
-    model_name = str(config.get("ollama_model", "") if config.get("provider") == "ollama" else "")
-    no_think = model_name.lower().startswith("qwen3")
+    no_think = active_model_name(config).lower().startswith("qwen3")
     chain = build_chain(build_chat_model(config), no_think=no_think)
     parts: list[str] = []
     try:
