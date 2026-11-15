@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 120
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:8b"
+    vllm_base_url: str = "http://127.0.0.1:8001/v1"
+    vllm_model: str = "qwen3-14b"
+    vllm_api_key: str = ""
 
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
     embedding_device: str = "cpu"
