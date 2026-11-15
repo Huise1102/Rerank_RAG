@@ -110,21 +110,25 @@ class StrategyUpdateRequest(BaseModel):
 
 
 class ModelConfigRequest(BaseModel):
-    provider: Literal["api", "ollama"]
+    provider: Literal["api", "ollama", "vllm"]
     api_base_url: str = Field(min_length=1, max_length=300)
     api_model: str = Field(min_length=1, max_length=100)
     ollama_base_url: str = Field(min_length=1, max_length=300)
     ollama_model: str = Field(min_length=1, max_length=100)
+    vllm_base_url: str = Field(default="http://127.0.0.1:8001/v1", min_length=1, max_length=300)
+    vllm_model: str = Field(default="qwen3-14b", min_length=1, max_length=100)
     temperature: float = Field(ge=0, le=2)
     max_tokens: int = Field(ge=64, le=8192)
 
 
 class ModelConfigOut(BaseModel):
-    provider: Literal["api", "ollama"]
+    provider: Literal["api", "ollama", "vllm"]
     api_base_url: str
     api_model: str
     ollama_base_url: str
     ollama_model: str
+    vllm_base_url: str
+    vllm_model: str
     temperature: float
     max_tokens: int
     api_key_configured: bool
