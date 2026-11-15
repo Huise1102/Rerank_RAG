@@ -1,0 +1,28 @@
+[Unit]
+Description=Campus RAG Backend
+Documentation=file:/opt/campus-rag/current/README.md
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=campus
+Group=campus
+WorkingDirectory=/opt/campus-rag/current/backend
+
+# 模型缓存固定放在项目内，便于整体迁移与备份
+Environment=HF_HOME=/opt/campus-rag/current/.hf-cache
+Environment=SENTENCE_TRANSFORMERS_HOME=/opt/campus-rag/current/.hf-cache
+Environment=HF_ENDPOINT=https://hf-mirror.com
+Environment=PYTHONUNBUFFERED=1
+
+# 必须单 worker：Chroma 的本地索引同一时间只能被一个进程打开
+ExecStart=/opt/campus-rag/current/backend/.venv/bin/python -m uvicorn src.main:app --host 127.0.0.1 --port 8004
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
