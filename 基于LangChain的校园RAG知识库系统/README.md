@@ -33,7 +33,7 @@ flowchart TB
         D1["检索范围解析<br/>角色 + 部门 + 版本 + 生效日期"]
         D2["Chroma 向量召回 Top-50"]
         D3["BM25 关键词召回 Top-50"]
-        D4["RRF 融合 → 候选池 20"]
+        D4["RRF 融合（k=60）→ 候选池 12"]
         D5["CrossEncoder 精排 → Top-5"]
     end
 
