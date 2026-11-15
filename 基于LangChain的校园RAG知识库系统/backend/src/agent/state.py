@@ -20,5 +20,7 @@ class AgentState:
     rounds: int = 0
     retrievals: int = 0
     clarifications: int = 0
+    intent: str = "kb"
+    nudged: bool = False
     final_answer: str = ""
     failed: str | None = None
