@@ -588,6 +588,8 @@ function handleEvent(payload, assistant) {
     assistant.strategy = payload.strategy
     assistant.mode = payload.mode || assistant.mode
     assistant.transfer_required = Boolean(payload.transfer_required)
+  } else if (payload.event === 'status') {
+    assistant.agentStatus = payload.text || ''
   } else if (payload.event === 'delta') {
     assistant.content += payload.content
   } else if (payload.event === 'citations') {
