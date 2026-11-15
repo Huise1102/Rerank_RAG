@@ -43,6 +43,7 @@ class MessageOut(BaseModel):
     kb_id: int | None = None
     strategy_id: int | None = None
     citations: list | None = None
+    agent_trace: list | None = None
     created_at: datetime
 
 
