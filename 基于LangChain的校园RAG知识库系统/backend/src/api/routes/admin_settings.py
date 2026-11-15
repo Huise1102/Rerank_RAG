@@ -19,6 +19,9 @@ from src.services.setting_service import (
 router = APIRouter(prefix="/admin/model-config", tags=["模型配置"])
 
 
+PROVIDER_LABELS = {"api": "在线 API", "ollama": "本地模型", "vllm": "vLLM 服务"}
+
+
 def _to_out(config: dict) -> ModelConfigOut:
     base_url, model = active_endpoint(config)
     return ModelConfigOut(
@@ -27,6 +30,8 @@ def _to_out(config: dict) -> ModelConfigOut:
         api_model=config["api_model"],
         ollama_base_url=config["ollama_base_url"],
         ollama_model=config["ollama_model"],
+        vllm_base_url=config["vllm_base_url"],
+        vllm_model=config["vllm_model"],
         temperature=float(config["temperature"]),
         max_tokens=int(config["max_tokens"]),
         api_key_configured=bool(settings.llm_api_key),
@@ -40,6 +45,12 @@ def _fetch_ollama_models(base_url: str, timeout: float = 8.0) -> list[str]:
     resp = httpx.get(f"{base_url.rstrip('/')}/api/tags", timeout=timeout)
     resp.raise_for_status()
     return [item.get("name", "") for item in resp.json().get("models", []) if item.get("name")]
+
+
+def _fetch_vllm_models(base_url: str, timeout: float = 8.0) -> list[str]:
+    resp = httpx.get(f"{base_url.rstrip('/')}/models", timeout=timeout)
+    resp.raise_for_status()
+    return [item.get("id", "") for item in resp.json().get("data", []) if item.get("id")]
 
 
 @router.get("", response_model=ModelConfigOut)
@@ -58,7 +69,7 @@ async def write_model_config(
 ):
     config = await update_model_config(db, payload.model_dump())
     base_url, model = active_endpoint(config)
-    source = "本地模型" if config["provider"] == "ollama" else "在线 API"
+    source = PROVIDER_LABELS.get(config["provider"], "在线 API")
     db.add(
         AuditLog(
             user_id=admin.id,
@@ -112,13 +123,23 @@ async def test_model_connection(
                 "ok": False,
                 "message": f"本地未安装模型 {model}（已安装：{', '.join(installed) or '无'}）",
             }
+    elif config["provider"] == "vllm":
+        try:
+            served = await asyncio.to_thread(_fetch_vllm_models, base_url)
+        except Exception as exc:
+            return {"ok": False, "message": f"无法连接 vLLM 服务（{base_url}）：{exc}"}
+        if served and model not in served:
+            return {
+                "ok": False,
+                "message": f"vLLM 未提供模型 {model}（当前服务：{', '.join(served)}）",
+            }
     elif not settings.llm_api_key:
         return {"ok": False, "message": "尚未配置 LLM_API_KEY，无法测试在线 API"}
 
     try:
         chat = build_chat_model(config, streaming=False)
         reply = await chat.ainvoke("请只回复：连接正常")
-        source = "本地模型" if config["provider"] == "ollama" else "在线 API"
+        source = PROVIDER_LABELS.get(config["provider"], "在线 API")
         return {
             "ok": True,
             "message": f"{source}可用：{model}",
