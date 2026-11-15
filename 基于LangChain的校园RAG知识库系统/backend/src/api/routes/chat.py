@@ -58,8 +58,11 @@ async def chat_stream(
 
 
 async def _stream_events(payload: ChatRequest, user: User, db: AsyncSession):
-    """先推送状态事件，再执行检索与生成，避免检索期间前端长时间空白。"""
-    yield _sse("status", {"stage": "retrieve", "text": "正在检索知识库…"})
+    """先推送状态事件，再执行意图识别与检索生成，避免前端长时间空白。"""
+    if payload.mode == "deep":
+        yield _sse("status", {"stage": "intent", "text": "正在识别意图…"})
+    else:
+        yield _sse("status", {"stage": "retrieve", "text": "正在检索知识库…"})
     try:
         if payload.mode == "deep":
             context = await prepare_deep_chat(db, user, payload)
