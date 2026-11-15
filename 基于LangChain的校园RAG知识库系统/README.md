@@ -2,7 +2,7 @@
 
 面向校园制度问答的独立系统。检索与生成链路基于 LangChain 构建，包含管理端、PC 用户端与移动端三个前端入口、账号体系与企业微信登录、角色权限、知识库管理、混合检索问答、引用溯源与反馈闭环。移动端是普通用户的主入口，也是企业微信登录的落地页面。阶段二在此基础上补充文档级权限、版本生命周期、条款级结构化分块、评估回归与人工转办；阶段三补齐多部门治理、精确与语义缓存、三轮深度问答、站内通知、运营看板、知识缺口与到期复核。
 
-测试语料为项目根目录的 `测试集.pdf`，属于《普通高等学校学生管理规定》等教育规章汇编，仅用于内部测试，已加入 `.gitignore`，不随仓库分发。
+测试语料统一放在项目根目录的 `测试语料/` 下，包含 `测试集.pdf`、`1.pdf` 与 `2.pdf`；其中 `测试集.pdf` 属于《普通高等学校学生管理规定》等教育规章汇编。三份文件仅用于内部测试，整个目录已加入 `.gitignore`，不随仓库分发。
 
 ## 一、系统架构
 
@@ -39,7 +39,7 @@ flowchart TB
 
     subgraph 生成层
         E1["LCEL 链<br/>提示词 · 引用约束 · 拒答规则"]
-        E2["在线 OpenAI 兼容 API<br/>或本地 Ollama"]
+        E2["在线 OpenAI 兼容 API<br/>或 vLLM / 本地 Ollama"]
     end
 
     subgraph 存储层
@@ -175,7 +175,7 @@ stateDiagram-v2
 │   │   └── utils/           限流、脱敏
 │   └── tests/
 ├── frontend/                三端前端，同一工程按 VITE_APP_MODE 构建管理端、用户端与移动端
-├── 测试集.pdf               内部测试语料，已加入 .gitignore
+├── 测试语料/                内部测试语料（测试集.pdf、1.pdf、2.pdf），已加入 .gitignore
 ├── docs/                    需求、阶段文档、评估与部署说明
 │   └── images/screenshots/  README 界面截图
 ├── scripts/dev.ps1          本地启动脚本
@@ -190,6 +190,7 @@ stateDiagram-v2
 - Node.js 18 及以上
 - MySQL 8.0
 - Redis 可选，未启动时限流使用进程内计数
+- GPU 可选：正式上线建议 Linux + NVIDIA 显卡并部署 vLLM；开发调试用 CPU + Ollama 即可
 - 定时任务默认开启：后端启动 30 秒后执行一次文档复核提醒与缓存清理，之后每 24 小时一次；`SCHEDULER_ENABLED=false` 可关闭
 - 首次索引会下载嵌入模型与精排模型，默认通过 `HF_ENDPOINT=https://hf-mirror.com` 镜像下载，模型缓存放在项目内 `.hf-cache/`
 
@@ -226,18 +227,62 @@ Copy-Item .env.example .env
 
 - `SECRET_KEY`：随机长字符串
 - `MYSQL_PASSWORD`：数据库口令
-- `LLM_API_KEY`：大模型密钥，未配置时问答接口返回 503
+- `LLM_API_KEY`：在线 API 来源使用；未配置时调用在线 API 返回 503，vLLM 与 Ollama 来源不受影响
 - `ADMIN_INITIAL_PASSWORD`：可留空，留空时由初始化脚本随机生成并只显示一次
 - `HF_ENDPOINT`：模型下载地址，默认使用 `https://hf-mirror.com`，能直连模型仓库时可改为 `https://huggingface.co`
 - `EMBEDDING_MODEL`、`RERANKER_MODEL`：嵌入与精排模型，默认 `BAAI/bge-small-zh-v1.5` 与 `BAAI/bge-reranker-base`
+- `RERANK_INPUT_K`：送入精排的候选条数，默认 20。实测降到 12 后，单次检索由 21.1 秒缩短到 12.4 秒（CPU、`bge-reranker-v2-m3`），引用仍是 Top-5、答案要点不变；再往下调需要复测准确率，不建议低于 8
+- `VECTOR_TOP_K`、`BM25_TOP_K`：无检索策略预设时的召回条数。管理端「检索策略」选中预设后以预设值为准，此时改 `.env` 不生效；实测召回 50 与 20 的检索耗时几乎相同（相差 0.2 秒），不必为提速缩小召回
 - `CORS_ORIGINS`：开发环境用 Vite 代理可保持默认；三端分别部署时需包含 5174、5175、5176 或对应的正式域名
 - `WECOM_ENABLED` 与企业微信配置：`WECOM_CORP_ID`、`WECOM_AGENT_ID`、`WECOM_SECRET`、`WECOM_REDIRECT_URI` 齐全且开关为 `true` 时，移动端登录页展示企业微信登录；`WECOM_REDIRECT_URI` 需与企业微信后台的网页授权回调域名一致，指向移动端 `/wecom/callback`
+
+### 2.1 模型服务选型（vLLM 接口已就绪，暂不部署）
+
+系统支持三种模型来源，在管理端「模型配置」页切换，保存后下一次提问立即生效，无需重启后端：
+
+| 来源 | 定位 | 当前状态 |
+| --- | --- | --- |
+| 在线 API | 原有调用方式，保持默认 | 已可用，需配置 `LLM_API_KEY` |
+| 本地 Ollama | 开发调试与本地演示 | 已可用 |
+| vLLM 服务 | 上线预留，对接 GPU 服务器，低延迟、高并发 | 接口与配置已内置，**尚未部署服务** |
+
+**开发调试：Ollama**
+
+```powershell
+ollama serve
+ollama pull qwen3:8b
+```
+
+管理端「模型配置」选「本地模型」，服务地址填 `http://127.0.0.1:11434`，模型填 `qwen3:8b`。CPU 环境下 8B 模型首个增量约需三十秒，只适合功能验证与演示，不建议承载正式流量。
+
+**上线预留：vLLM（待 GPU 服务器到位）**
+
+当前环境无需部署 vLLM：相关代码、前端入口、连接测试与配置项均已就绪，等 GPU 服务器到位后按下列步骤启用即可，不需要再改代码。
+
+在 Linux GPU 服务器（CUDA 12.1+，Python 3.10/3.11）执行：
+
+```bash
+pip install vllm
+
+vllm serve Qwen/Qwen2.5-14B-Instruct-AWQ \
+  --served-model-name qwen2.5-14b \
+  --host 0.0.0.0 --port 8001 \
+  --max-model-len 8192 \
+  --gpu-memory-utilization 0.75 \
+  --max-num-seqs 24
+```
+
+管理端「模型配置」选「vLLM 服务」，服务地址填 `http://GPU服务器IP:8001/v1`，模型名与 `--served-model-name` 保持一致。`.env` 中的 `VLLM_BASE_URL`、`VLLM_MODEL` 作为默认值，管理端保存后以数据库为准；只有 vLLM 用 `--api-key` 开启鉴权时才需要填 `VLLM_API_KEY`。
+
+三点注意：
+
+- 本机 8GB 显存只能跑 7B 量化模型，达不到上线要求，因此不在开发机部署；
+- 检索用的嵌入与精排模型仍由后端进程加载，想让它们也走 GPU，设 `EMBEDDING_DEVICE=cuda`；
+- 显存估算、并发容量、systemd 自启与验收指标见 [GPU 加速部署方案](docs/deployment/GPU加速部署方案.md)。
 
 `.env` 已被 `.gitignore` 忽略，不要提交真实密钥。
 
 模型缓存说明：后端启动时把 `HF_HOME` 与 `SENTENCE_TRANSFORMERS_HOME` 指向项目内 `.hf-cache/`。已下载过模型时，把对应模型目录复制到 `.hf-cache/hub/` 下即可离线复用，不必重复下载。例如复用本机已有的 `BAAI/bge-reranker-v2-m3` 时，把 `.env` 中的 `RERANKER_MODEL` 改为该模型名并保证缓存目录存在。
-
-本地大模型测试：系统走 OpenAI 兼容协议，可直接接 Ollama。先执行 `ollama serve`，在管理端「模型配置」页切到「本地模型」，填写服务地址并把模型改为本机已安装的模型名，保存后下一次提问立即生效，无需重启后端。`.env` 中的 `LLM_PROVIDER`、`OLLAMA_BASE_URL`、`OLLAMA_MODEL` 只作为默认值，页面保存后以数据库配置为准。CPU 环境下 8B 模型首个增量约需三十秒，属正常现象。
 
 ### 3. 初始化后端
 
@@ -303,7 +348,7 @@ npm run build
 2. 进入「部门管理」维护部门层级、联系人、排序与启用状态，再进入「用户权限」创建用户，设置角色（系统管理员、部门管理员、教职工、学生）与所属部门。
 3. 进入「知识库」，新建知识库并选择可见性、归属部门、责任人与复核周期。全校公开库仅系统管理员可建；部门管理员只能建本部门内部库。分块策略建议制度类文档使用 `clause`，即条款级切分。
 4. 上传文档，填写标题、文号、版本号、可见性、生效日期与复核日期；可见性为「部门内部」时必须选择归属部门。
-5. 在版本抽屉中执行「解析」，查看分块统计与一致性检查结果；处理完成后再「发布」，旧版本自动废止。
+5. 在版本抽屉中执行「解析」，查看分块统计与一致性检查结果；解析会自动清洗页眉页脚与目录页、剔除表格区域避免正文重复、合并跨页表格、按目录或附件标题识别多文件分节，并显示页数、分节数、表格数与分块统计。原始 PDF 可直接上传，无需先人工拆分或转换。处理完成后再「发布」，旧版本自动废止。
 6. 管理端「问答」验证引用与检索详情；用户端登录后先选择知识库，再提问。学生只能选择公开库，教职工与部门管理员可选公开库与本部门库。
 7. 无依据或拒答时可点击「转人工」，生成 `TR-YYYYMMDD-0001` 转办单并自动分配到知识库归属部门。
 8. 部门管理员在「反馈处理」受理、回复、办结或退回；用户在「我的反馈」查看处理进度、首次响应时间与回复，并在通知中接收状态变更。
@@ -357,7 +402,7 @@ npm run build
 | 评估 | `/admin/evaluation/reports`、`/validate`、`/run` | 管理员运行，管理员与部门管理员查看 |
 | 用户 | `/admin/users`、`/admin/users/{id}/close` | 管理员创建、改角色与部门、禁用、重置密码与注销账号 |
 | 日志 | `/admin/logs/retrieval`、`/admin/logs/audit`、`/admin/logs/system`、`/admin/logs/clear` | 仅管理员；查看与清理日志 |
-| 模型 | `/admin/model-config`、`/admin/model-config/ollama-models`、`/admin/model-config/test` | 仅管理员；在线 API 与本地 Ollama 双模式切换，密钥只从环境变量读取 |
+| 模型 | `/admin/model-config`、`/admin/model-config/ollama-models`、`/admin/model-config/test` | 仅管理员；在线 API、vLLM 服务与本地 Ollama 三模式切换，密钥只从环境变量读取 |
 | 健康检查 | `/health` | 不在 `/api/v1` 前缀下；含数据库与索引一致性 |
 
 错误语义：未登录 401，无权限 403，资源不存在或不属于当前用户 404，版本冲突或重复上传 409，参数不合法 422，触发限流 429，索引未就绪 503。
@@ -417,7 +462,11 @@ cd backend
 
 **问答接口返回 503**
 
-`.env` 未配置 `LLM_API_KEY`，补齐后重启后端。
+模型来源为「在线 API」且 `.env` 未配置 `LLM_API_KEY` 时会出现；补齐密钥后重启后端，或切到 vLLM / 本地模型来源。
+
+**切换到 vLLM 后连接测试失败**
+
+先确认 vLLM 服务已启动，且能访问 `http://GPU服务器IP:8001/v1/models`；再核对「模型名称」与启动参数 `--served-model-name` 是否完全一致。若 vLLM 用 `--api-key` 开了鉴权，需在 `.env` 的 `VLLM_API_KEY` 填写同一个值。
 
 **索引重建失败**
 
