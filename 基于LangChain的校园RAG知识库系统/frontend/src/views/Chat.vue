@@ -383,6 +383,9 @@ function openTrace(message) {
 }
 
 function agentStatusText(step) {
+  if (step.action === 'intent') {
+    return step.intent === 'chat' ? '识别为日常交流，直接回答' : '识别为制度问答，准备检索'
+  }
   if (step.action === 'retrieve') {
     return `第 ${step.round} 轮检索：${step.query || ''}`
   }
