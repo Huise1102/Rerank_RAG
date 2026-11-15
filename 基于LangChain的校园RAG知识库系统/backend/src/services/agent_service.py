@@ -148,7 +148,7 @@ async def stream_deep_answer(context: ChatContext, user) -> AsyncIterator[str]:
             "agent_rounds": state.rounds,
             "agent_retrievals": state.retrievals,
             "agent_trace": state.trace,
-            "agent_failed": failed,
+            "agent_failed": failed or state.failed,
             "agent_clarification": clarification,
             "vector_hits": sum(int(item.get("hits", 0)) for item in retrieval_steps),
             "fused_hits": sum(int(item.get("hits", 0)) for item in retrieval_steps),
