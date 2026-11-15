@@ -7,10 +7,11 @@
       <el-timeline-item
         v-for="(step, index) in trace"
         :key="index"
-        :timestamp="step.round ? `第 ${step.round} 轮` : '兜底'"
+        :timestamp="step.action === 'intent' ? '检索前' : step.round ? `第 ${step.round} 轮` : '兜底'"
         :type="stepType(step.action)"
       >
         <div class="trace-title">{{ actionLabel(step.action) }}</div>
+        <div v-if="step.intent" class="trace-row">识别结果：{{ intentLabel(step.intent) }}</div>
         <div v-if="step.query" class="trace-row">检索词：{{ step.query }}</div>
         <div v-if="step.strategy" class="trace-row">检索策略：{{ step.strategy }}</div>
         <div v-if="step.hits !== undefined" class="trace-row">
@@ -34,11 +35,16 @@ defineProps({
 
 function actionLabel(action) {
   return {
+    intent: '意图识别',
     retrieve: '检索制度原文',
     answer: '生成回答',
     clarify: '请求补充信息',
     fallback: '回退快速问答'
   }[action] || action
+}
+
+function intentLabel(intent) {
+  return { chat: '正常交流（不检索）', kb: '知识库问答（需检索）' }[intent] || intent
 }
 
 function stepType(action) {
