@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -410,6 +411,7 @@ async def stream_answer(context: ChatContext, user: User) -> AsyncIterator[str]:
         answer = context.cached_answer
         for index in range(0, len(answer), 48):
             yield _sse("delta", {"content": answer[index : index + 48]})
+            await asyncio.sleep(0.02)
         message_id = await _persist_answer(context, user.id, answer, None)
         yield _sse(
             "done",
@@ -441,6 +443,7 @@ async def stream_answer(context: ChatContext, user: User) -> AsyncIterator[str]:
     config = context.model_config
     no_think = active_model_name(config).lower().startswith("qwen3")
     chain = build_chain(build_chat_model(config), no_think=no_think)
+    yield _sse("status", {"stage": "generate", "text": "正在生成回答…"})
     parts: list[str] = []
     failure: str | None = None
     try:
