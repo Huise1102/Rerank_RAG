@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -189,7 +190,8 @@ async def run_agent(
     state.trace.append(intent_step)
     yield {"type": "step", "step": intent_step}
 
-    bound = model.bind_tools(TOOL_SCHEMAS) if hasattr(model, "bind_tools") else model
+    tool_ready = intent == "kb" and hasattr(model, "bind_tools")
+    bound = model.bind_tools(TOOL_SCHEMAS) if tool_ready else model
     messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT)]
     if history:
         messages.extend(history)
@@ -202,18 +204,61 @@ async def run_agent(
         forced = round_no >= max_rounds or state.retrievals >= max_retrievals
         if forced:
             state.messages.append(SystemMessage(content=FORCE_ANSWER_PROMPT))
-        try:
-            response = await asyncio.wait_for(
-                bound.ainvoke(state.messages), timeout=max(timeout_seconds, 5)
-            )
-        except asyncio.TimeoutError:
-            state.failed = "深度问答超时"
-            break
-        except Exception as exc:
-            state.failed = str(exc)
-            break
+        use_stream = forced or intent == "chat" or bool(state.evidence)
+        streamed = False
+        response = None
+        if use_stream:
+            text_parts: list[str] = []
+            pending_calls: dict[int, dict[str, str]] = {}
+            try:
+                async with asyncio.timeout(max(timeout_seconds, 5)):
+                    async for chunk in bound.astream(state.messages):
+                        piece = str(getattr(chunk, "content", "") or "")
+                        if piece:
+                            text_parts.append(piece)
+                            yield {"type": "delta", "content": piece}
+                        for index, item in enumerate(
+                            getattr(chunk, "tool_call_chunks", None) or []
+                        ):
+                            slot = pending_calls.setdefault(
+                                int(item.get("index") or index),
+                                {"id": "", "name": "", "args": ""},
+                            )
+                            slot["id"] = item.get("id") or slot["id"]
+                            slot["name"] += item.get("name") or ""
+                            raw_args = item.get("args")
+                            if isinstance(raw_args, str):
+                                slot["args"] += raw_args
+            except asyncio.TimeoutError:
+                state.failed = "深度问答超时"
+                break
+            except Exception as exc:  # noqa: BLE001 —— 单轮模型调用失败交由外层兜底
+                state.failed = str(exc)
+                break
+            tool_calls = []
+            for slot in pending_calls.values():
+                try:
+                    args = json.loads(slot["args"] or "{}")
+                except ValueError:
+                    args = {}
+                tool_calls.append(
+                    {"id": slot["id"] or slot["name"], "name": slot["name"], "args": args}
+                )
+            response = AIMessage(content="".join(text_parts), tool_calls=tool_calls)
+            streamed = bool(text_parts)
+        else:
+            try:
+                response = await asyncio.wait_for(
+                    bound.ainvoke(state.messages), timeout=max(timeout_seconds, 5)
+                )
+            except asyncio.TimeoutError:
+                state.failed = "深度问答超时"
+                break
+            except Exception as exc:
+                state.failed = str(exc)
+                break
+            tool_calls = list(getattr(response, "tool_calls", None) or [])
         state.messages.append(response)
-        tool_calls = list(getattr(response, "tool_calls", None) or [])
 
         if not tool_calls or forced:
             content = str(getattr(response, "content", "") or "").strip()
@@ -253,8 +298,9 @@ async def run_agent(
             }
             state.trace.append(step)
             yield {"type": "step", "step": step}
-            async for event in _stream_text(state.final_answer):
-                yield event
+            if not streamed:
+                async for event in _stream_text(state.final_answer):
+                    yield event
             return
 
         for call in tool_calls:
