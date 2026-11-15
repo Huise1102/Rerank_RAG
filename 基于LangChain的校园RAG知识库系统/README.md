@@ -342,6 +342,15 @@ npm run build
 
 产物分别位于 `frontend/dist/admin`、`frontend/dist/user` 与 `frontend/dist/mobile`。
 
+### 6. Linux 服务器部署
+
+以上为 Windows 本地开发流程。部署到学校服务器（Ubuntu）请直接使用 [Linux 部署手册](docs/deployment/Linux部署手册.md)，其中提供：
+
+- systemd 单元：[campus-rag-backend.service](docs/deployment/systemd/campus-rag-backend.service)（单 worker，随机器自启）
+- Nginx 三端配置：[campus-rag.conf](docs/deployment/nginx/campus-rag.conf)（静态托管 + `/api` 反代 + SSE）
+- 后端镜像：[backend/Dockerfile](backend/Dockerfile)（可选，单实例运行）
+- MySQL/Redis 初始化、目录权限、升级回滚与排障清单
+
 ## 七、首次使用路径
 
 1. 管理员登录管理端，按提示修改初始密码。
