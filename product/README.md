@@ -286,9 +286,9 @@ npm run dev
 
 ## 许可证
 
-本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，**禁止任何商业用途**。
+本项目采用 [MIT License](https://opensource.org/licenses/MIT)，允许个人与商业用途。
 
-- 允许：个人学习、研究、教学、实验、业余项目，以及慈善机构、教育院校、公共研究组织等非商业主体使用，可复制、修改与分发（须保留许可证与版权声明）。
-- 禁止：任何以商业获利为目的的使用，包括但不限于商业产品集成、付费服务、对外销售或以此提供商业支持。
+- 允许：自由使用、复制、修改、合并、发布、分发、再许可与销售，包括商业产品集成、付费服务与对外销售。
+- 条件：分发时需保留版权声明与许可声明。
 
 完整条款见仓库根目录 [LICENSE](../LICENSE)。
