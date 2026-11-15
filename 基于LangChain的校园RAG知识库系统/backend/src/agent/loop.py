@@ -2,15 +2,24 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from src.agent.prompts import AGENT_SYSTEM_PROMPT, FORCE_ANSWER_PROMPT, NO_EVIDENCE_PROMPT
+from src.agent.prompts import (
+    AGENT_SYSTEM_PROMPT,
+    FORCE_ANSWER_PROMPT,
+    INTENT_SYSTEM_PROMPT,
+    RETRIEVE_FIRST_PROMPT,
+    intent_instruction,
+)
 from src.agent.state import AgentState
 from src.agent.tools import TOOL_SCHEMAS, chunk_identity, retrieve_documents
 from src.db.models import StrategyPreset
 from src.generation.chain import REFUSAL, _citation_label
 
 MAX_EVIDENCE = 12
+DEFAULT_STRATEGY = "hybrid_rerank"
+INTENT_HISTORY_MESSAGES = 4
+INTENT_TIMEOUT_SECONDS = 15
 
 
 def _format_evidence(state: AgentState, documents: list) -> str:
@@ -41,6 +50,97 @@ async def _stream_text(text: str) -> AsyncIterator[dict]:
         yield {"type": "delta", "content": text[index : index + 48]}
 
 
+async def _classify_intent(model, question: str, history: list | None) -> tuple[str, int]:
+    """判断本轮是正常交流还是知识库问答，失败时回落到知识库问答。"""
+    messages = [SystemMessage(content=INTENT_SYSTEM_PROMPT)]
+    for message in (history or [])[-INTENT_HISTORY_MESSAGES:]:
+        content = str(getattr(message, "content", "") or "")[:300]
+        if content:
+            messages.append(type(message)(content=content))
+    messages.append(HumanMessage(content=question))
+    started = time.perf_counter()
+    try:
+        bound = model.bind(max_tokens=16, temperature=0) if hasattr(model, "bind") else model
+        response = await asyncio.wait_for(
+            bound.ainvoke(messages), timeout=INTENT_TIMEOUT_SECONDS
+        )
+        label = str(getattr(response, "content", "") or "").strip().upper()
+        intent = "chat" if label.startswith("CHAT") else "kb"
+    except Exception:  # noqa: BLE001 —— 分类失败不应阻断问答
+        intent = "kb"
+    return intent, int((time.perf_counter() - started) * 1000)
+
+
+async def _execute_retrieval(
+    state: AgentState,
+    preset: StrategyPreset | None,
+    *,
+    query: str,
+    strategy: str,
+    call_id: str,
+    round_no: int,
+) -> dict:
+    """执行一次检索并把证据回填到对话，返回轨迹步骤。"""
+    started = time.perf_counter()
+    error = ""
+    try:
+        documents = await retrieve_documents(
+            state.kb_id, preset, state.scope, query, strategy, None
+        )
+    except Exception as exc:
+        documents = []
+        error = str(exc)[:200]
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    state.retrievals += 1
+    fresh = []
+    for document in documents:
+        identity = chunk_identity(document)
+        if identity in state.seen_chunks:
+            continue
+        if len(state.evidence) >= MAX_EVIDENCE:
+            break
+        state.seen_chunks.add(identity)
+        state.evidence.append(document)
+        fresh.append(document)
+    state.messages.append(
+        ToolMessage(
+            content=_format_evidence(state, fresh) if not error else f"检索失败：{error}",
+            tool_call_id=call_id,
+        )
+    )
+    step = {
+        "round": round_no,
+        "action": "retrieve",
+        "query": query[:120],
+        "strategy": strategy,
+        "hits": len(documents),
+        "new_evidence": len(fresh),
+        "duration_ms": duration_ms,
+        "note": error,
+    }
+    state.trace.append(step)
+    return step
+
+
+def _forced_retrieve_call(state: AgentState, round_no: int) -> tuple[str, str, str]:
+    """模型拒绝检索时，由系统构造一次兜底检索调用，返回调用编号、检索词与策略。"""
+    call_id = f"forced-retrieve-{round_no}"
+    state.messages.append(
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "retrieve",
+                    "args": {"query": state.question, "strategy": DEFAULT_STRATEGY},
+                    "id": call_id,
+                    "type": "tool_call",
+                }
+            ],
+        )
+    )
+    return call_id, state.question, DEFAULT_STRATEGY
+
+
 async def run_agent(
     state: AgentState,
     model,
@@ -52,10 +152,23 @@ async def run_agent(
     timeout_seconds: int = 90,
 ) -> AsyncIterator[dict]:
     """执行深度问答决策循环，逐条产出轨迹与回答片段。"""
+    intent, intent_ms = await _classify_intent(model, state.question, history)
+    state.intent = intent
+    intent_step = {
+        "round": 0,
+        "action": "intent",
+        "intent": intent,
+        "duration_ms": intent_ms,
+        "note": "正常交流，可直接作答" if intent == "chat" else "知识库问答，需先检索",
+    }
+    state.trace.append(intent_step)
+    yield {"type": "step", "step": intent_step}
+
     bound = model.bind_tools(TOOL_SCHEMAS) if hasattr(model, "bind_tools") else model
     messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT)]
     if history:
         messages.extend(history)
+    messages.append(SystemMessage(content=intent_instruction(intent)))
     messages.append(HumanMessage(content=state.question))
     state.messages = messages
 
@@ -79,15 +192,39 @@ async def run_agent(
 
         if not tool_calls or forced:
             content = str(getattr(response, "content", "") or "").strip()
-            if not state.evidence and state.retrievals < max_retrievals and not forced:
-                state.messages.append(SystemMessage(content=NO_EVIDENCE_PROMPT))
+            if (
+                intent == "kb"
+                and not state.evidence
+                and state.retrievals < max_retrievals
+                and not forced
+            ):
+                if not state.nudged:
+                    state.nudged = True
+                    state.messages.append(SystemMessage(content=RETRIEVE_FIRST_PROMPT))
+                    continue
+                call_id, query, strategy = _forced_retrieve_call(state, round_no)
+                step = await _execute_retrieval(
+                    state,
+                    preset,
+                    query=query,
+                    strategy=strategy,
+                    call_id=call_id,
+                    round_no=round_no,
+                )
+                yield {"type": "step", "step": step}
                 continue
-            state.final_answer = content or (REFUSAL if not state.evidence else _fallback_answer(state))
+            state.final_answer = content or (
+                REFUSAL if not state.evidence else _fallback_answer(state)
+            )
             step = {
                 "round": round_no,
                 "action": "answer",
                 "evidence_count": len(state.evidence),
-                "note": "强制作答" if forced else "模型直接作答",
+                "note": (
+                    "强制作答"
+                    if forced
+                    else ("闲聊直接作答" if intent == "chat" else "模型直接作答")
+                ),
             }
             state.trace.append(step)
             yield {"type": "step", "step": step}
@@ -106,50 +243,15 @@ async def run_agent(
                     )
                     continue
                 query = str(args.get("query") or state.question)
-                strategy = str(args.get("strategy") or "hybrid_rerank")
-                started = time.perf_counter()
-                error = ""
-                try:
-                    documents = await retrieve_documents(
-                        state.kb_id,
-                        preset,
-                        state.scope,
-                        query,
-                        strategy,
-                        args.get("top_k"),
-                    )
-                except Exception as exc:
-                    documents = []
-                    error = str(exc)[:200]
-                duration_ms = int((time.perf_counter() - started) * 1000)
-                state.retrievals += 1
-                fresh = []
-                for document in documents:
-                    identity = chunk_identity(document)
-                    if identity in state.seen_chunks:
-                        continue
-                    if len(state.evidence) >= MAX_EVIDENCE:
-                        break
-                    state.seen_chunks.add(identity)
-                    state.evidence.append(document)
-                    fresh.append(document)
-                state.messages.append(
-                    ToolMessage(
-                        content=_format_evidence(state, fresh) if not error else f"检索失败：{error}",
-                        tool_call_id=call_id,
-                    )
+                strategy = str(args.get("strategy") or DEFAULT_STRATEGY)
+                step = await _execute_retrieval(
+                    state,
+                    preset,
+                    query=query,
+                    strategy=strategy,
+                    call_id=call_id,
+                    round_no=round_no,
                 )
-                step = {
-                    "round": round_no,
-                    "action": "retrieve",
-                    "query": query[:120],
-                    "strategy": strategy,
-                    "hits": len(documents),
-                    "new_evidence": len(fresh),
-                    "duration_ms": duration_ms,
-                    "note": error,
-                }
-                state.trace.append(step)
                 yield {"type": "step", "step": step}
             elif name == "ask_clarification":
                 question = str(args.get("question") or "").strip() or "请补充问题涉及的具体事项或时间范围。"
