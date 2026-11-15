@@ -3,58 +3,11 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
+from src.ingest.pdf_structure import build_pdf_documents, table_to_markdown
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx", ".txt", ".md"}
-
-
-def table_to_markdown(rows: list[list[str | None]]) -> str:
-    cleaned: list[list[str]] = []
-    for row in rows:
-        cells = [str(cell or "").replace("|", "／").replace("\n", " ").strip() for cell in row]
-        if any(cells):
-            cleaned.append(cells)
-    if not cleaned:
-        return ""
-    width = max(len(row) for row in cleaned)
-    normalized = [row + [""] * (width - len(row)) for row in cleaned]
-    header = normalized[0]
-    lines = ["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * width) + " |"]
-    for row in normalized[1:]:
-        lines.append("| " + " | ".join(row) + " |")
-    return "\n".join(lines)
-
-
-def _pdf_documents(path: Path, metadata: dict, warnings: list[str]) -> list[Document]:
-    import pdfplumber
-
-    documents: list[Document] = []
-    with pdfplumber.open(str(path)) as pdf:
-        for page_number, page in enumerate(pdf.pages, start=1):
-            page_meta = dict(metadata, page=page_number, chunk_type="text")
-            text = (page.extract_text() or "").strip()
-            if text:
-                documents.append(Document(page_content=text, metadata=page_meta))
-            try:
-                tables = page.extract_tables()
-            except Exception as exc:
-                warnings.append(f"第 {page_number} 页表格解析失败：{exc}")
-                tables = []
-            for table_index, rows in enumerate(tables, start=1):
-                markdown = table_to_markdown(rows)
-                if not markdown:
-                    continue
-                documents.append(
-                    Document(
-                        page_content=markdown,
-                        metadata=dict(
-                            page_meta,
-                            chunk_type="table",
-                            table_id=f"p{page_number}-t{table_index}",
-                        ),
-                    )
-                )
-    return documents
 
 
 def _docx_documents(path: Path, metadata: dict, warnings: list[str]) -> list[Document]:
@@ -104,7 +57,7 @@ def _docx_documents(path: Path, metadata: dict, warnings: list[str]) -> list[Doc
 
 def load_document_with_report(
     path: Path, kb_id: int, document_id: int, filename: str
-) -> tuple[list[Document], list[str]]:
+) -> tuple[list[Document], list[str], dict]:
     suffix = path.suffix.lower()
     metadata: dict = {
         "kb_id": kb_id,
@@ -113,10 +66,21 @@ def load_document_with_report(
         "filename": filename,
     }
     warnings: list[str] = []
+    stats: dict = {
+        "pages": 1,
+        "sections": 1,
+        "source_tables": 0,
+        "merged_tables": 0,
+        "empty_pages": 0,
+        "ocr_suspected": False,
+    }
     if suffix == ".pdf":
-        documents = _pdf_documents(path, metadata, warnings)
+        documents, warnings, stats = build_pdf_documents(path, metadata)
     elif suffix == ".docx":
         documents = _docx_documents(path, metadata, warnings)
+        stats["source_tables"] = sum(
+            1 for item in documents if item.metadata.get("chunk_type") == "table"
+        )
     elif suffix in {".txt", ".md"}:
         text = path.read_text(encoding="utf-8", errors="ignore").strip()
         documents = (
@@ -138,9 +102,9 @@ def load_document_with_report(
         warnings.append("文档未解析出有效文本")
     for warning in warnings:
         logger.warning("文档解析提示 %s：%s", filename, warning)
-    return cleaned, warnings
+    return cleaned, warnings, stats
 
 
 def load_document(path: Path, kb_id: int, document_id: int, filename: str) -> list[Document]:
-    documents, _ = load_document_with_report(path, kb_id, document_id, filename)
+    documents, _, _ = load_document_with_report(path, kb_id, document_id, filename)
     return documents
