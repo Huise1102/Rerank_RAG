@@ -6,7 +6,7 @@ import httpx
 
 BASE_URL = "http://127.0.0.1:8004"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TEST_DOCUMENT = PROJECT_ROOT / "测试集.pdf"
+TEST_DOCUMENT = PROJECT_ROOT / "测试语料" / "测试集.pdf"
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = sys.argv[1] if len(sys.argv) > 1 else ""
