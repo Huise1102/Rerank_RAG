@@ -239,7 +239,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import {
@@ -496,7 +496,7 @@ async function send() {
   input.value = ''
   sending.value = true
   messages.value.push({ role: 'user', content: question })
-  const assistant = {
+  const assistant = reactive({
     role: 'assistant',
     content: '',
     citations: [],
@@ -511,7 +511,7 @@ async function send() {
     trace: [],
     rounds: 0,
     agentStatus: deepMode.value ? '正在分析问题' : ''
-  }
+  })
   messages.value.push(assistant)
   stickToBottom.value = true
   scrollToBottom(true)
