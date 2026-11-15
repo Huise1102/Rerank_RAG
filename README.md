@@ -331,12 +331,14 @@ vLLM 相关代码、前端入口、连接测试与部署文档均已就绪，只
 
 ## 八、致谢
 
-本项目的检索与生成链路建立在大量优秀的开源工作上，在此向作者与维护者致谢：
+本项目的检索、生成与工程实现建立在大量优秀的开源工作上，在此向作者与维护者致谢：
 
-- **模型**：北京智源人工智能研究院（BAAI）开源的 [`bge-large-zh-v1.5`](https://huggingface.co/BAAI/bge-large-zh-v1.5) 与 [`bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)，分别承担稠密召回与交叉编码器精排；以及 Ollama 社区的 `qwen3:8b` 本地模型。
-- **推理与检索**：Hugging Face 的 [transformers](https://github.com/huggingface/transformers)、[Chroma](https://github.com/chroma-core/chroma)、[rank_bm25](https://github.com/dorianbrown/rank_bm25)、[jieba](https://github.com/fxsjy/jieba)。
-- **服务与界面**：FastAPI / Uvicorn / Pydantic、Streamlit、Vue 3 + Vite、React + Vite。
-- **生成服务**：DeepSeek 提供的对话模型 API。
+- **模型**：北京智源人工智能研究院（BAAI）开源的 [`bge-large-zh-v1.5`](https://huggingface.co/BAAI/bge-large-zh-v1.5) 与 [`bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3)，分别承担稠密召回与交叉编码器精排；阿里云通义千问团队开源的 Qwen 系列模型（本地经 Ollama 运行 `qwen3:8b`）。
+- **模型推理与检索框架**：Hugging Face 的 [transformers](https://github.com/huggingface/transformers) 与 [sentence-transformers](https://github.com/UKPLab/sentence-transformers)，[LangChain](https://github.com/langchain-ai/langchain) 及其 `langchain-community`、`langchain-chroma`、`langchain-huggingface`、`langchain-openai` 集成，[Chroma](https://github.com/chroma-core/chroma) 向量库，[rank_bm25](https://github.com/dorianbrown/rank_bm25) 与 [jieba](https://github.com/fxsjy/jieba) 中文分词。
+- **文档解析**：PDF 解析依赖 [pdfplumber](https://github.com/jsvine/pdfplumber) 与 [pypdf](https://github.com/py-pdf/pypdf)，DOCX 解析依赖 [python-docx](https://github.com/python-openxml/python-docx)。
+- **服务端基础设施**：FastAPI / Uvicorn / Pydantic、SQLAlchemy / Alembic / aiomysql、Celery、Redis、MinIO、loguru 与 prometheus-client。
+- **前端与界面**：Vue 3 + Vite + Element Plus + Pinia，React 18 + Vite + React Router + Zustand + Ant Design，以及 Streamlit。
+- **生成服务与平台能力**：DeepSeek 提供的对话模型 API，企业微信开放平台提供的网页授权与消息接口，Nginx 与 systemd 提供的部署运行时。
 
 同时感谢开源社区所有提交 issue、修复缺陷与撰写文档的贡献者——没有这些基础设施，本项目无法以如此小的成本把「混合检索 + Rerank」完整跑通。
 
