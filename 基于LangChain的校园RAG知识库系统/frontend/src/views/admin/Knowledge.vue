@@ -397,7 +397,7 @@ const latestReport = computed(() => {
     return '暂无入库报告'
   }
   const report = version.ingest_report
-  return `分块 ${report.chunks || 0}，表格 ${report.tables || 0}，条款 ${report.clauses || 0}，策略 ${report.strategy || '-'}`
+  return `分块 ${report.chunks || 0}，条款 ${report.clauses || 0}，表格 ${report.tables || 0}，识别分节 ${report.sections || 1}，策略 ${report.strategy || '-'}`
 })
 
 const editDialog = ref(false)
