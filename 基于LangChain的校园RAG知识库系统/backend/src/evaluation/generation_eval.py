@@ -3,7 +3,7 @@ from src.evaluation.judge import judge_answer
 from src.evaluation.metrics import aggregate
 from src.evaluation.retrieval_eval import build_eval_scope
 from src.generation.chain import build_chain, format_context
-from src.generation.llm import build_chat_model
+from src.generation.llm import active_model_name, build_chat_model
 from src.retrieval.retrievers import build_retriever
 
 
@@ -40,10 +40,10 @@ async def evaluate_generation(
     selected = items[:limit] if limit else items
     scope = build_eval_scope(role, department_id)
     bundle = build_retriever(kb_id, preset, scope)
-    model_name = str(
-        model_config.get("ollama_model", "") if model_config.get("provider") == "ollama" else ""
+    chain = build_chain(
+        build_chat_model(model_config),
+        no_think=active_model_name(model_config).lower().startswith("qwen3"),
     )
-    chain = build_chain(build_chat_model(model_config), no_think=model_name.lower().startswith("qwen3"))
     rows: list[dict] = []
     for item in selected:
         documents = await bundle.retriever.ainvoke(str(item["question"]))
