@@ -18,7 +18,8 @@ services:
       MYSQL_PASSWORD: rag123456
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      # 本机 MySQL 占用 3306，容器数据库对外映射到 3307
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
