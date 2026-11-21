@@ -169,7 +169,7 @@ Copy-Item .env.example .env
 #   RAG_EMBEDDING__CACHE_DIR  仓库根 .hf-cache 的绝对路径（模板中已写成相对路径，可直接用）
 #   RAG_RESOURCE_DIR      预置语料目录（默认指向 product/resource）
 
-# 3. 启动 MySQL（本机未运行时可用 Docker 只拉起数据库）
+# 3. 启动 MySQL（本机未运行时可用 Docker 只拉起数据库；容器数据库映射到本机 3307）
 docker compose up -d mysql redis minio
 
 # 4. 初始化数据库并灌入预置语料
