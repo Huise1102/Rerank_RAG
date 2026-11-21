@@ -333,3 +333,145 @@ html.dark .notification-item.unread {
 html.dark .notification-content {
   color: #aab3c2;
 }
+
+/* 用户端 / 移动端知识库 */
+html.dark .kb-intro-card {
+  background: linear-gradient(135deg, #16243a 0%, #141c2c 100%);
+  border-color: #263a58;
+}
+
+html.dark .kb-intro-icon {
+  background: #1b2a42;
+  color: #5aa2e8;
+  box-shadow: none;
+}
+
+html.dark .kb-intro-main h2,
+html.dark .kb-list-panel,
+html.dark .kb-detail-title h2,
+html.dark .kb-doc-head h3,
+html.dark .kb-panel-head,
+html.dark .m-kb-title,
+html.dark .m-doc-title,
+html.dark .m-kb-summary-head h2,
+html.dark .m-kb-section-head span {
+  color: #e8edf6;
+}
+
+html.dark .kb-page-sub,
+html.dark .kb-intro-main > p,
+html.dark .kb-detail-desc,
+html.dark .kb-entry-desc,
+html.dark .kb-doc-head span,
+html.dark .kb-doc-note,
+html.dark .m-kb-sub,
+html.dark .m-kb-desc,
+html.dark .m-kb-note,
+html.dark .m-kb-section-head small {
+  color: #8a94a8;
+}
+
+html.dark .kb-intro-point,
+html.dark .kb-stat-card,
+html.dark .m-kb-stat,
+html.dark .m-kb-intro-item {
+  background: #1b2537;
+}
+
+html.dark .kb-intro-point strong,
+html.dark .kb-meta-item strong,
+html.dark .m-kb-meta-row strong {
+  color: #d6ddea;
+}
+
+html.dark .kb-intro-point span,
+html.dark .m-kb-intro-item span,
+html.dark .m-kb-meta-row span,
+html.dark .m-doc-meta,
+html.dark .m-doc-foot,
+html.dark .m-kb-stat span,
+html.dark .m-kb-tab small {
+  color: #8a94a8;
+}
+
+html.dark .kb-list-panel,
+html.dark .kb-detail-panel,
+html.dark .m-kb-summary,
+html.dark .m-doc-card,
+html.dark .m-kb-tab {
+  background: #151d2e;
+  border-color: #26324a;
+  box-shadow: none;
+}
+
+html.dark .kb-detail-head,
+html.dark .m-kb-meta,
+html.dark .m-doc-card {
+  border-color: #24304a;
+}
+
+html.dark .kb-entry {
+  background: #1a2436;
+}
+
+html.dark .kb-entry:hover {
+  background: #1d2c44;
+}
+
+html.dark .kb-entry.active,
+html.dark .m-kb-tab.active {
+  background: #172f47;
+  border-color: #3b6aa0;
+}
+
+html.dark .kb-entry-name {
+  color: #e8edf6;
+}
+
+html.dark .kb-stat-card strong,
+html.dark .m-kb-stat strong,
+html.dark .m-doc-action,
+html.dark .kb-doc-link {
+  color: #5aa2e8;
+}
+
+html.dark .kb-meta-item {
+  border-color: #24304a;
+}
+
+html.dark .m-kb-intro {
+  background: #16243a;
+  border-color: #263a58;
+}
+
+html.dark .m-kb-intro .el-collapse-item__header,
+html.dark .m-kb-intro .el-collapse-item__wrap {
+  background: transparent;
+  border-color: transparent;
+  color: #e8edf6;
+}
+
+html.dark .m-kb-intro p {
+  color: #aab3c2;
+}
+
+html.dark .m-kb-tab {
+  color: #d6ddea;
+}
+
+html.dark .m-kb-tab.active small {
+  color: #5aa2e8;
+}
+
+html.dark .doc-preview-meta {
+  color: #aab3c2;
+}
+
+html.dark .doc-preview-text,
+html.dark .doc-preview-frame {
+  background: #1b2537;
+}
+
+html.dark .doc-preview-state {
+  color: #8a94a8;
+}
