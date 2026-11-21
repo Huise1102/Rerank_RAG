@@ -95,6 +95,21 @@ def test_knowledge_read_routes_require_login() -> None:
     assert require_document_manager in collect_dependencies(documents_route.dependant)
 
 
+def test_user_knowledge_routes_are_read_only() -> None:
+    app = create_app()
+    read_only_routes = [
+        ("/api/v1/knowledge-bases/{kb_id}", "GET"),
+        ("/api/v1/knowledge-bases/{kb_id}/documents", "GET"),
+        ("/api/v1/documents/{document_id}/preview", "GET"),
+    ]
+    for path, method in read_only_routes:
+        route = find_route(app, path, method)
+        assert route is not None, f"{method} {path} 不存在"
+        dependencies = collect_dependencies(route.dependant)
+        assert get_current_user in dependencies, f"{method} {path} 缺少登录鉴权"
+        assert require_document_manager not in dependencies, f"{method} {path} 不应要求管理权限"
+
+
 def test_chat_request_rejects_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         ChatRequest(question="测试", kb_id=1, temperature=0.9)
