@@ -45,6 +45,10 @@
         <el-icon :size="20"><ChatDotRound /></el-icon>
         <span>问答</span>
       </router-link>
+      <router-link to="/knowledge" class="tab-link">
+        <el-icon :size="20"><Collection /></el-icon>
+        <span>知识库</span>
+      </router-link>
       <router-link to="/feedback" class="tab-link">
         <el-icon :size="20"><Document /></el-icon>
         <span>我的反馈</span>
@@ -77,7 +81,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, ChatDotRound, Document, Moon, Setting, Sunny } from '@element-plus/icons-vue'
+import { Bell, ChatDotRound, Collection, Document, Moon, Setting, Sunny } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { logout as logoutApi } from '../api/auth'
 import {
