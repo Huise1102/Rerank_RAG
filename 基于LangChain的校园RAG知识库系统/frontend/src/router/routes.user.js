@@ -1,6 +1,7 @@
 import Login from '../views/Login.vue'
 import WecomCallback from '../views/WecomCallback.vue'
 import Chat from '../views/Chat.vue'
+import Knowledge from '../views/Knowledge.vue'
 import MyFeedback from '../views/MyFeedback.vue'
 import UserLayout from '../layouts/UserLayout.vue'
 
@@ -13,6 +14,12 @@ const routes = [
     redirect: '/chat',
     children: [
       { path: 'chat', name: 'user-chat', component: Chat, meta: { title: '问答' } },
+      {
+        path: 'knowledge',
+        name: 'user-knowledge',
+        component: Knowledge,
+        meta: { title: '知识库' }
+      },
       { path: 'feedback', name: 'user-feedback', component: MyFeedback, meta: { title: '我的反馈' } }
     ]
   },
