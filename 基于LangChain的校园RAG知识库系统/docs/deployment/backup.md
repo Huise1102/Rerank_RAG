@@ -35,7 +35,7 @@ backend\scripts\backup.ps1
 | --- | --- | --- |
 | `-BackupRoot` | `backend/backups` | 备份根目录，每次执行生成时间戳子目录 |
 | `-MysqlHost` | `127.0.0.1` | 数据库地址 |
-| `-MysqlPort` | `3307` | 数据库端口 |
+| `-MysqlPort` | `3306` | 数据库端口 |
 | `-MysqlUser` | `root` | 数据库账号 |
 | `-MysqlDatabase` | `rag_campus` | 数据库名 |
 
@@ -59,7 +59,7 @@ backend\scripts\backup.ps1 -BackupRoot D:\rag-backups -MysqlPort 3306
 
 ```powershell
 $env:MYSQL_PWD = "数据库口令"
-mysql -h 127.0.0.1 -P 3307 -u root rag_campus < backend\backups\20261113-120000\rag_campus.sql
+mysql -h 127.0.0.1 -P 3306 -u root rag_campus < backend\backups\20261113-120000\rag_campus.sql
 Remove-Item Env:MYSQL_PWD
 ```
 
