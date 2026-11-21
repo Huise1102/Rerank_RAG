@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import client_ip, get_current_user, require_document_manager
@@ -25,6 +25,8 @@ from src.retrieval.vector_store import delete_collection
 from src.schemas.knowledge import (
     DocumentOut,
     KbCreateRequest,
+    KbDetailOut,
+    KbDocumentOut,
     KbOut,
     KbUpdateRequest,
 )
@@ -34,6 +36,7 @@ from src.services.document_service import (
     manage_document_condition,
     publish_version,
     remove_document,
+    visible_document_condition,
 )
 from src.services.ingest_service import parse_and_index_version
 from src.services.kb_service import (
@@ -74,12 +77,8 @@ def _bump_index_epoch(kb: KnowledgeBase) -> None:
     kb.index_epoch = int(kb.index_epoch or 1) + 1
 
 
-@router.get("/knowledge-bases", response_model=list[KbOut])
-async def list_visible_knowledge_bases(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """返回当前用户可用于问答的知识库。"""
+def _visible_kb_statement(user: User):
+    """构造「当前用户可查看的已发布知识库」查询。"""
     statement = (
         select(KnowledgeBase)
         .outerjoin(Department, Department.id == KnowledgeBase.department_id)
@@ -108,8 +107,119 @@ async def list_visible_knowledge_bases(
                 ),
             )
         )
-    result = await db.execute(statement.order_by(KnowledgeBase.id))
+    return statement
+
+
+async def _get_visible_kb(db: AsyncSession, kb_id: int, user: User) -> KnowledgeBase:
+    """按用户端可见范围获取知识库，不可见时统一返回 404。"""
+    result = await db.execute(
+        _visible_kb_statement(user).where(KnowledgeBase.id == kb_id)
+    )
+    kb = result.scalar_one_or_none()
+    if kb is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="知识库不存在")
+    return kb
+
+
+@router.get("/knowledge-bases", response_model=list[KbOut])
+async def list_visible_knowledge_bases(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回当前用户可用于问答的知识库。"""
+    result = await db.execute(_visible_kb_statement(user).order_by(KnowledgeBase.id))
     return result.scalars().all()
+
+
+@router.get("/knowledge-bases/{kb_id}", response_model=KbDetailOut)
+async def get_visible_knowledge_base(
+    kb_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户端知识库详细介绍，包含责任部门和收录统计。"""
+    kb = await _get_visible_kb(db, kb_id, user)
+    department = await db.get(Department, kb.department_id) if kb.department_id else None
+    owner = await db.get(User, kb.owner_user_id) if kb.owner_user_id else None
+    stats_conditions = [
+        Document.kb_id == kb.id,
+        Document.doc_status == "active",
+        DocumentVersion.lifecycle_status == "published",
+        DocumentVersion.repealed_at.is_(None),
+        or_(
+            DocumentVersion.effective_date.is_(None),
+            DocumentVersion.effective_date <= date.today(),
+        ),
+    ]
+    scope_condition = visible_document_condition(user)
+    if scope_condition is not None:
+        stats_conditions.append(scope_condition)
+    stats = await db.execute(
+        select(
+            func.count(Document.id),
+            func.coalesce(func.sum(DocumentVersion.chunk_count), 0),
+        )
+        .join(DocumentVersion, DocumentVersion.id == Document.current_version_id)
+        .where(*stats_conditions)
+    )
+    document_count, chunk_count = stats.one()
+    return KbDetailOut(
+        **KbOut.model_validate(kb).model_dump(),
+        department_name=department.name if department else None,
+        owner_name=(owner.display_name or owner.username) if owner else None,
+        document_count=int(document_count or 0),
+        chunk_count=int(chunk_count or 0),
+    )
+
+
+@router.get("/knowledge-bases/{kb_id}/documents", response_model=list[KbDocumentOut])
+async def list_visible_kb_documents(
+    kb_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出知识库中当前用户可见、且处于生效期的当前版本文档。"""
+    await _get_visible_kb(db, kb_id, user)
+    conditions = [
+        Document.kb_id == kb_id,
+        Document.doc_status == "active",
+        DocumentVersion.lifecycle_status == "published",
+        DocumentVersion.repealed_at.is_(None),
+        or_(
+            DocumentVersion.effective_date.is_(None),
+            DocumentVersion.effective_date <= date.today(),
+        ),
+    ]
+    scope_condition = visible_document_condition(user)
+    if scope_condition is not None:
+        conditions.append(scope_condition)
+    rows = await db.execute(
+        select(Document, DocumentVersion, Department.name)
+        .join(DocumentVersion, DocumentVersion.id == Document.current_version_id)
+        .outerjoin(Department, Department.id == Document.department_id)
+        .where(*conditions)
+        .order_by(Document.updated_at.desc(), Document.id.desc())
+    )
+    return [
+        KbDocumentOut(
+            id=document.id,
+            kb_id=document.kb_id,
+            title=document.title,
+            doc_no=document.doc_no,
+            filename=document.filename,
+            file_type=document.file_type,
+            size_bytes=document.size_bytes,
+            visibility=document.visibility,
+            department_id=document.department_id,
+            department_name=department_name,
+            version_label=version.version_label,
+            effective_date=version.effective_date,
+            chunk_count=version.chunk_count,
+            published_at=version.published_at,
+            created_at=document.created_at,
+        )
+        for document, version, department_name in rows
+    ]
 
 
 @router.get("/kb", response_model=list[KbOut])
