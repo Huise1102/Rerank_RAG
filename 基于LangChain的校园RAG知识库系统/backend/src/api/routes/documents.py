@@ -35,6 +35,7 @@ from src.services.document_service import (
     update_document,
 )
 from src.services.ingest_service import check_index_consistency, parse_and_index_version
+from src.services.kb_service import can_access_kb
 
 router = APIRouter(tags=["文档治理"])
 
@@ -397,5 +398,16 @@ async def user_preview(
     db: AsyncSession = Depends(get_db),
 ):
     document = await get_document(db, document_id, user)
+    kb = await db.get(KnowledgeBase, document.kb_id)
+    department = await db.get(Department, kb.department_id) if kb and kb.department_id else None
+    if kb is None or not can_access_kb(
+        user.role,
+        user.department_id,
+        kb.visibility,
+        kb.department_id,
+        kb.status,
+        department.status if department else None,
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文档不存在")
     path = await preview_path(db, user, document, None, client_ip(request))
     return FileResponse(path, filename=document.filename)
