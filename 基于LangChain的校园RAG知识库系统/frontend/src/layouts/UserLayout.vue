@@ -4,6 +4,7 @@
       <div class="brand">校园知识库问答</div>
       <div style="display: flex; align-items: center; gap: 16px">
         <router-link to="/chat" class="nav-item">问答</router-link>
+        <router-link to="/knowledge" class="nav-item">知识库</router-link>
         <router-link to="/feedback" class="nav-item">我的反馈</router-link>
         <el-badge :value="unread" :hidden="unread === 0" :max="99">
           <span class="nav-item" style="cursor: pointer" @click="openNotifications">通知</span>
