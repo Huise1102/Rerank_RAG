@@ -4,6 +4,26 @@ export function adminKbList() {
   return request.get('/kb')
 }
 
+// 用户端：当前账号可查看的已发布知识库
+export function listVisibleKbs() {
+  return request.get('/knowledge-bases')
+}
+
+export function getVisibleKb(id) {
+  return request.get(`/knowledge-bases/${id}`)
+}
+
+export function listVisibleKbDocuments(id) {
+  return request.get(`/knowledge-bases/${id}/documents`)
+}
+
+export function previewVisibleDocument(id) {
+  return request.get(`/documents/${id}/preview`, {
+    responseType: 'blob',
+    timeout: 120000
+  })
+}
+
 export function createKb(payload) {
   return request.post('/kb', payload)
 }
