@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
 
     mysql_host: str = "127.0.0.1"
-    mysql_port: int = 3307
+    mysql_port: int = 3306
     mysql_user: str = "root"
     mysql_password: str = "123456"
     mysql_database: str = "rag_campus"
