@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BackupRoot = "",
     [string]$MysqlHost = "127.0.0.1",
-    [int]$MysqlPort = 3307,
+    [int]$MysqlPort = 3306,
     [string]$MysqlUser = "root",
     [string]$MysqlDatabase = "rag_campus"
 )
