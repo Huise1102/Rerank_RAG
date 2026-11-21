@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,6 +41,35 @@ class KbOut(BaseModel):
     chunk_strategy: str = "clause"
     created_at: datetime
     updated_at: datetime
+
+
+class KbDetailOut(KbOut):
+    """用户端知识库详情：在基础信息上补充部门、责任人与收录统计。"""
+
+    department_name: str | None = None
+    owner_name: str | None = None
+    document_count: int = 0
+    chunk_count: int = 0
+
+
+class KbDocumentOut(BaseModel):
+    """用户端可见文档：只暴露当前生效版本的必要元数据。"""
+
+    id: int
+    kb_id: int
+    title: str
+    doc_no: str | None = None
+    filename: str
+    file_type: str
+    size_bytes: int
+    visibility: str
+    department_id: int | None = None
+    department_name: str | None = None
+    version_label: str | None = None
+    effective_date: date | None = None
+    chunk_count: int = 0
+    published_at: datetime | None = None
+    created_at: datetime
 
 
 class DocumentOut(BaseModel):
