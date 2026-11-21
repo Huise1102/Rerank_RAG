@@ -140,7 +140,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 # 2. 准备配置：复制模板后填写真实 DeepSeek 密钥
 Copy-Item .env.example .env        # 编辑 .env，填写 RAG_LLM__API_KEY
 
-# 3. 启动 MySQL（若本机未运行，可用 Docker 只拉起数据库与可选中间件）
+# 3. 启动 MySQL（若本机未运行，可用 Docker 只拉起数据库与可选中间件；容器数据库映射到本机 3307）
 docker compose up -d mysql redis minio
 
 # 4. 激活环境
