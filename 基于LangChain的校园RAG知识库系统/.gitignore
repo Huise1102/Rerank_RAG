@@ -1,21 +1,36 @@
+# ===== 密钥与本地配置（禁止提交）=====
 .env
+.env.local
+.env.*.local
+
+# ===== Python =====
 backend/.venv/
-backend/.pytest_cache/
-backend/backups/
-backend/evaluation_data/
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+
+# ===== 前端 =====
 frontend/node_modules/
 frontend/dist/
+
+# ===== 模型缓存（体积过大）=====
+.hf-cache/
+*.gguf
+
+# ===== 本地运行时数据 =====
+# storage 存放原始 PDF、indexes 存放全文向量与 BM25 索引，
+# 二者均含文档提供方内部资料，禁止提交
 data/
 storage/
 indexes/
 logs/
-.hf-cache/
+backend/backups/
+backend/evaluation_data/
+
+# ===== 系统文件 =====
 .DS_Store
-测试语料/*
-!测试语料/问答测试_20261123/
-测试语料/问答测试_20261123/*
-!测试语料/问答测试_20261123/Ollama本地模型问答测试报告.md
-!测试语料/问答测试_20261123/评分与模型选型报告.md
-!测试语料/问答测试_20261123/测试总结摘要.md
+Thumbs.db
+
+# ===== 原始 PDF（文档提供方资料，禁止提交）=====
+测试语料/**/*.pdf
