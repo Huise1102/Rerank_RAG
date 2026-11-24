@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from functools import lru_cache
 
 from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriever
-from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -12,7 +11,9 @@ from pydantic import ConfigDict, Field
 
 from src.core.config import settings
 from src.db.models import StrategyPreset
-from src.retrieval import bm25
+from src.retrieval import bm25, canonical
+from src.retrieval.pinpoint import PinpointRetriever
+from src.retrieval.rerank import MetadataBoostReranker
 from src.retrieval.scope import RetrievalScope, build_chroma_filter
 from src.retrieval.vector_store import get_embeddings, get_vector_store
 
@@ -136,9 +137,14 @@ def build_retriever(
     if rerank:
         limit = max(rerank_top_n, settings.rerank_input_k)
         base = LimitRetriever(inner=base, limit=limit)
-        compressor = CrossEncoderReranker(model=get_cross_encoder(), top_n=rerank_top_n)
+        base = canonical.CanonicalizeRetriever(inner=base, kb_id=kb_id)
+        base = PinpointRetriever(inner=base, kb_id=kb_id, scope=scope)
+        compressor = MetadataBoostReranker(model=get_cross_encoder(), top_n=rerank_top_n)
         base = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=base)
         used_rerank = True
+    else:
+        base = canonical.CanonicalizeRetriever(inner=base, kb_id=kb_id)
+        base = PinpointRetriever(inner=base, kb_id=kb_id, scope=scope)
 
     return RetrievalBundle(
         retriever=base,
