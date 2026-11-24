@@ -5,6 +5,7 @@ from src.db.models import User
 
 DEPARTMENT_ROLES = {"staff", "dept_admin", "admin"}
 ALLOWED_VISIBILITIES = {"public", "department"}
+ADMIN_VISIBILITIES = {"public", "department", "admin_only"}
 
 
 def _utcnow() -> datetime:
@@ -75,7 +76,13 @@ def build_chroma_filter(scope: RetrievalScope, kb_id: int) -> dict:
     ]
     if scope.role == "admin":
         conditions.append(
-            {"$or": [{"visibility": {"$eq": "public"}}, {"visibility": {"$eq": "department"}}]}
+            {
+                "$or": [
+                    {"visibility": {"$eq": "public"}},
+                    {"visibility": {"$eq": "department"}},
+                    {"visibility": {"$eq": "admin_only"}},
+                ]
+            }
         )
     elif scope.allow_department and scope.department_id is not None:
         conditions.append(
@@ -117,6 +124,8 @@ def metadata_allowed(metadata: dict, scope: RetrievalScope) -> bool:
             return False
 
     visibility = str(metadata.get("visibility", ""))
+    if scope.role == "admin":
+        return visibility in ADMIN_VISIBILITIES
     if visibility not in ALLOWED_VISIBILITIES:
         return False
     if visibility == "public":
