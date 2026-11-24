@@ -20,7 +20,7 @@ from src.db.models import (
 from src.db.session import get_db
 from src.ingest.loaders import SUPPORTED_SUFFIXES
 from src.ingest.pipeline import rebuild_knowledge_base
-from src.retrieval import bm25
+from src.retrieval import bm25, canonical
 from src.retrieval.vector_store import delete_collection
 from src.schemas.knowledge import (
     DocumentOut,
@@ -356,6 +356,7 @@ async def delete_knowledge_base(
 
     delete_collection(kb_id)
     bm25.invalidate(kb_id)
+    canonical.invalidate(kb_id)
     index_file = bm25.index_file(kb_id)
     if index_file.exists():
         index_file.unlink()
