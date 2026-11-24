@@ -1,0 +1,662 @@
+[
+  {
+    "id": "kb3-hop-001",
+    "kb_id": 3,
+    "category": "多跳推理",
+    "question": "我同学现在办着休学，听说休学期间闲着也是闲着，想顺便申请转专业，学校会批吗？那要是他休学创业回来再转，政策上有没有照顾？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第二十一条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第二十六条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb3-hop-012",
+    "kb_id": 3,
+    "category": "多跳推理",
+    "question": "退学和被开除学籍，学校给的证明和档案去向一样吗？读了两年退学能拿肄业证吗？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第三十条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第五十八条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第三十三条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb3-oral-022",
+    "kb_id": 3,
+    "category": "口语泛化",
+    "question": "被学校处分了，一般要背多久啊？是不是一辈子都消不掉？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第五十七条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第三十六条",
+        "type": "clause"
+      },
+      {
+        "doc": 3,
+        "page": null,
+        "article": "第三十三条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-005",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第四条对自然科学类国家自然科学基金各项目的奖励金额分别是多少？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-006",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第五条对社会科学类国家社科基金项目和国家艺术基金的奖励标准是如何规定的？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第五条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-007",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第三条教学研究类中，国家级教学成果奖、国家级教材奖、省级（国家级储备项目）教学成果奖以及全国教师教学竞赛的奖励标准分别是多少？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-009",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第七条对同一成果符合多项奖励条件以及存在学术不端行为的情形分别规定了什么处理规则？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第七条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十四条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十一条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-010",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第八条规定的成果认定频次和各环节公示期限是怎样的？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第八条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第七条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-formal-013",
+    "kb_id": 4,
+    "category": "规范表述",
+    "question": "《XX学院高质量发展成果专项奖励办法（试行）》第九条对奖励经费的列支渠道、发放上限和管理方式是如何规定的？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第九条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第九条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第七条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-001",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "有位老师拿了国家级教学成果奖一等奖，这个成果既是◆标志性成果又要算教研业绩，奖励和计分到底怎么处理，会不会重复给？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": false,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十八条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十四条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-002",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "学校一项专利以120万元单次转化，科研计分和奖励分别怎么算？两头都能拿吗？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": false,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第九条",
+        "type": "clause"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第九条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-003",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "我们团队入选全国黄大年式教师团队，学校和教研业绩两头各给什么？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-005",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "成果奖励认定和教研业绩认定都要公示，两边公示期各是多少天？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第八条",
+        "type": "clause"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第十条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-007",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "我们学院拿了个省部级教研教改重点项目，立项当年能计多少分？结项时还有吗？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第十六条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十六条",
+        "type": "clause"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-008",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "一位老师指导同一项竞赛，有6个项目都拿了省级B1类第一等级，业绩分怎么算？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十八条",
+        "type": "clause"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第十八条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第八条",
+        "type": "clause"
+      }
+    ]
+  },
+  {
+    "id": "kb4-hop-009",
+    "kb_id": 4,
+    "category": "多跳推理",
+    "question": "一篇一级期刊论文，通讯作者是我校老师，第一作者单位是外校，这篇能计多少分？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第七条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第七条",
+        "type": "clause"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-012",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "我们拿到一个国家社科基金重点项目，学校奖励多少钱？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 5,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-013",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "国家自然科学基金面上项目立项了，学校能奖多少？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-014",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "国家自然科学基金青年项目A类如果中了，学校奖励多少？B类呢？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-015",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "国家级教学成果奖一等奖学校奖多少钱？二等奖呢？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table_row"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-019",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "我们一个横向课题到账100万，学校配套给多少？有没有封顶？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 5,
+        "page": null,
+        "article": "第四条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第四条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": null,
+        "type": "table"
+      }
+    ]
+  },
+  {
+    "id": "kb4-oral-025",
+    "kb_id": 4,
+    "category": "口语泛化",
+    "question": "成果奖励一般什么时候认定？一年几次？",
+    "candidate_count": 100,
+    "final_count": 5,
+    "evidence_in_candidates": true,
+    "evidence_in_final": true,
+    "final_top3": [
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第八条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第十条",
+        "type": "clause"
+      },
+      {
+        "doc": 6,
+        "page": null,
+        "article": "第九条",
+        "type": "clause"
+      }
+    ]
+  }
+]
