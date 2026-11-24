@@ -19,6 +19,7 @@ DOC_NO_RE = re.compile(r"宿院〔\s*(\d{4})\s*〕\s*(\d+)\s*号")
 CHAPTER_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+章")
 ARTICLE_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+条")
 TITLE_SUFFIXES = ("办法", "意见", "方案", "规定", "细则", "规则", "标准", "通知")
+INSTITUTION_RE = re.compile(r"(大学|学院|学校|委员会|办公室|教育厅|教育局)")
 TERMINAL_PUNCT = "。；：！？、）》」】”\"'"
 LIST_MARK_RE = re.compile(
     r"^([（(][一二三四五六七八九十]+[）)]|[一二三四五六七八九十]+[、.．]|\d+[.．、]|"
@@ -331,7 +332,7 @@ def _looks_like_title(text: str) -> bool:
     if text.startswith("附件"):
         return True
     normalized = re.sub(r"[（(][^）)]{1,12}[）)]$", "", text).strip()
-    return "宿迁学院" in normalized and any(
+    return bool(INSTITUTION_RE.search(normalized)) and any(
         normalized.endswith(suffix) for suffix in TITLE_SUFFIXES
     )
 
