@@ -1,0 +1,502 @@
+{
+ "kb3-formal-001": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-002": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-003": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-005": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-006": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-007": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-008": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-009": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-010": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-formal-012": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-001": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "休学期间能否转专业答含糊，未明确‘不得转专业’；创业复学优先答对"
+ },
+ "kb3-hop-002": {
+  "score": 1.0,
+  "type": "correct",
+  "note": "引用依据文件名误为《学业预警管理办法》，实为《转专业管理办法》"
+ },
+ "kb3-hop-003": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-005": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-006": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-007": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-008": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-009": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-010": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-hop-012": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "结论句误称‘证明和档案一致’，实际证明不同(肄业证/学习证明)、档案去向相同"
+ },
+ "kb3-hop-013": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-001": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-002": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-003": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": "引用依据文件名误为《学业预警管理办法》"
+ },
+ "kb3-oral-005": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-006": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-007": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-008": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-009": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-010": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-012": {
+  "score": 1.0,
+  "type": "correct",
+  "note": "超时重跑后正确"
+ },
+ "kb3-oral-013": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-014": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-015": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-016": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-017": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-018": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-019": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-020": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-021": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-022": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "留校察看期限误作‘不少于6个月’，应为12个月；未给出6/9/12个月精确区分"
+ },
+ "kb3-oral-023": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-024": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb3-oral-025": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-001": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-002": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-003": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-005": {
+  "score": 0.0,
+  "type": "refuse",
+  "note": "召回失败：国家自然基金奖励金额(50/30/15/25万)未召回，模型拒答"
+ },
+ "kb4-formal-006": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分分值(7000/4000分)替代奖励金额(40/20/10万)"
+ },
+ "kb4-formal-007": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分分值(15000/10000分)替代奖励金额(200/80/50万)"
+ },
+ "kb4-formal-008": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-009": {
+  "score": 0.0,
+  "type": "refuse",
+  "note": "召回失败：‘全额追回’被PDF换行拆断，第七条未召回，模型拒答"
+ },
+ "kb4-formal-010": {
+  "score": 0.0,
+  "type": "refuse",
+  "note": "召回失败：第八条成果认定频次/公示期限未召回，模型拒答"
+ },
+ "kb4-formal-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-012": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-formal-013": {
+  "score": 0.0,
+  "type": "refuse",
+  "note": "召回失败：第九条‘双上限’条款未召回，模型拒答"
+ },
+ "kb4-hop-001": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "奖励金额200万未答出，计分15000分与不重复规则答对"
+ },
+ "kb4-hop-002": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "计分1200分答对，奖励15.6万未答出，且误答‘可同时获得’"
+ },
+ "kb4-hop-003": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "奖励金额50万未答出，教研业绩6000分答对"
+ },
+ "kb4-hop-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-hop-005": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "教研业绩公示5工作日答对，成果奖励公示期(3/5工作日)未答出"
+ },
+ "kb4-hop-006": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-hop-007": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "分值严重错误：重点项目400分误作20分，200分误作10分"
+ },
+ "kb4-hop-008": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "分值错误：省级B1类第一等级300分误作600分，1500分误作3000分"
+ },
+ "kb4-hop-009": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "分值错误：一级期刊2000分误作1200分，1000分误作600分"
+ },
+ "kb4-hop-010": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-hop-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-hop-012": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-001": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-002": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-003": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-004": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-005": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-006": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-007": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-008": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-009": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-010": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-011": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-012": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分4000分替代奖励金额20万"
+ },
+ "kb4-oral-013": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分分值替代奖励金额25万"
+ },
+ "kb4-oral-014": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分3000/2000分替代奖励金额50万/30万"
+ },
+ "kb4-oral-015": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：用计分15000/10000分替代奖励金额200万/80万"
+ },
+ "kb4-oral-016": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-017": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-018": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-019": {
+  "score": 0.5,
+  "type": "partial",
+  "note": "9万配套算对，但误答‘无封顶’，实际有20万封顶"
+ },
+ "kb4-oral-020": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-021": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-022": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-023": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-024": {
+  "score": 1.0,
+  "type": "correct",
+  "note": ""
+ },
+ "kb4-oral-025": {
+  "score": 0.0,
+  "type": "wrong",
+  "note": "答非所问：未答出‘每年认定一次、年底或次年年初’，误称无明确次数"
+ }
+}
