@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.core.config import settings
+from src.ingest.pdf_structure import merge_wrapped_lines
 
 CHINESE_SEPARATORS = ["\n第", "\n\n", "\n", "。", "；", "，", " ", ""]
 CHAPTER_RE = re.compile(r"^\s*(第[一二三四五六七八九十百千0-9]+章)\s*(.*)$")
@@ -35,22 +36,103 @@ def _strip_page_marks(text: str) -> str:
     )
 
 
+def _context_prefix(meta: dict, article_no: str = "") -> str:
+    """生成写入正文的文档上下文，用于区分不同文件里重复的条号。"""
+    title = str(meta.get("doc_title") or "").strip()
+    section = str(meta.get("section_title") or "").strip()
+    parts: list[str] = []
+    if title:
+        parts.append(f"《{title}》")
+    if section and section not in title:
+        parts.append(section)
+    if article_no:
+        parts.append(article_no)
+    return " · ".join(parts)[:120]
+
+
+def table_prefix(meta: dict) -> str:
+    """表格行文本的上下文前缀：文档 · 章节 · 表名，用于区分同名表格。"""
+    base = _context_prefix(meta)
+    caption = str(meta.get("table_caption") or "").strip()
+    if caption and caption not in base:
+        base = f"{base} · {caption}" if base else caption
+    return base[:160]
+
+
+def _apply_context(chunks: list[Document]) -> list[Document]:
+    for chunk in chunks:
+        if chunk.metadata.get("chunk_type") not in {"table", "table_row"}:
+            chunk.page_content = merge_wrapped_lines(chunk.page_content)
+        prefix = _context_prefix(chunk.metadata, str(chunk.metadata.get("article_no") or ""))
+        if not prefix or chunk.page_content.startswith(prefix):
+            continue
+        chunk.page_content = f"{prefix}\n{chunk.page_content}"
+    return chunks
+
+
+def _table_row_chunks(document: Document, meta: dict) -> list[Document]:
+    """把表格数据行转成“字段：值”文本，提升金额类问题的检索命中率。"""
+    lines = [line.strip() for line in document.page_content.splitlines() if line.strip()]
+    if len(lines) < 3 or not lines[0].startswith("|"):
+        return []
+    header = [cell.strip() for cell in lines[0].strip("|").split("|")]
+    labels = [cell for cell in header if cell]
+    if len(labels) < 2 or len(labels) != len(set(labels)):
+        # 多级表头或合并单元格会导致列名重复，行级文本会误导检索
+        return []
+    body: list[list[str]] = []
+    for line in lines[2:]:
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if any(cells):
+            body.append(cells)
+    if not body:
+        return []
+    prefix = table_prefix(meta)
+    rows_per_chunk = 5
+    chunks: list[Document] = []
+    for start in range(0, len(body), rows_per_chunk):
+        parts: list[str] = []
+        for row in body[start : start + rows_per_chunk]:
+            pairs = [f"{name}：{value}" for name, value in zip(header, row) if name and value]
+            if pairs:
+                parts.append("；".join(pairs))
+        if not parts:
+            continue
+        text = "\n".join(parts)
+        if prefix:
+            text = f"{prefix}\n{text}"
+        chunks.append(
+            Document(
+                page_content=text,
+                metadata=dict(
+                    meta,
+                    chunk_type="table_row",
+                    row_start=start + 1,
+                    row_end=min(start + rows_per_chunk, len(body)),
+                ),
+            )
+        )
+    return chunks
+
+
 def _split_table(document: Document, meta: dict) -> list[Document]:
     lines = [line for line in document.page_content.splitlines() if line.strip()]
     max_rows = max(settings.table_max_rows, 2)
-    prefix_parts = [meta.get("section_title"), meta.get("table_caption")]
-    prefix = " · ".join(str(part) for part in prefix_parts if part)
+    caption = str(meta.get("table_caption") or "").strip()
 
     def wrap(content: str) -> str:
-        return f"{prefix}\n{content}" if prefix else content
+        return f"{caption}\n{content}" if caption else content
 
     if len(lines) <= max_rows + 2:
-        return [
+        chunks = [
             Document(
                 page_content=wrap(document.page_content),
                 metadata=dict(meta, chunk_type="table"),
             )
         ]
+        return chunks + _table_row_chunks(document, meta)
     header = lines[:2]
     body = lines[2:]
     chunks: list[Document] = []
@@ -68,7 +150,7 @@ def _split_table(document: Document, meta: dict) -> list[Document]:
                 ),
             )
         )
-    return chunks
+    return chunks + _table_row_chunks(document, meta)
 
 
 def _split_long_article(
@@ -234,7 +316,7 @@ def split_documents(
     chunks: list[Document] = []
     if strategy == "clause":
         for document in prepared:
-            if document.metadata.get("chunk_type") == "table":
+            if document.metadata.get("chunk_type") in {"table", "table_row"}:
                 chunks.append(document)
                 continue
             clause_chunks = _clause_chunks(document, document.metadata)
@@ -251,7 +333,7 @@ def split_documents(
                 chunks.extend(fallback)
     elif strategy == "fixed":
         for document in prepared:
-            if document.metadata.get("chunk_type") != "table":
+            if document.metadata.get("chunk_type") not in {"table", "table_row"}:
                 document.page_content = _strip_page_marks(document.page_content)
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
@@ -259,7 +341,13 @@ def split_documents(
             separators=[""],
             length_function=len,
         )
-        chunks = splitter.split_documents(prepared)
+        fixed_chunks: list[Document] = []
+        for document in prepared:
+            if document.metadata.get("chunk_type") in {"table", "table_row"}:
+                fixed_chunks.append(document)
+            else:
+                fixed_chunks.extend(splitter.split_documents([document]))
+        chunks = fixed_chunks
     else:
         text_documents = [
             Document(
@@ -267,9 +355,13 @@ def split_documents(
                 metadata=item.metadata,
             )
             for item in prepared
-            if item.metadata.get("chunk_type") != "table"
+            if item.metadata.get("chunk_type") not in {"table", "table_row"}
         ]
-        tables = [item for item in prepared if item.metadata.get("chunk_type") == "table"]
+        tables = [
+            item
+            for item in prepared
+            if item.metadata.get("chunk_type") in {"table", "table_row"}
+        ]
         chunks = _recursive_chunks(text_documents) + tables
 
-    return _finalize(chunks, document_id, version_id)
+    return _finalize(_apply_context(chunks), document_id, version_id)
