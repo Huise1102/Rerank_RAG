@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.retrieval import bm25
+from src.retrieval import bm25, canonical
 from src.services.ingest_service import rebuild_kb_with_versions
 
 
@@ -12,3 +12,4 @@ async def rebuild_knowledge_base(db: AsyncSession, kb_id: int) -> dict:
 
 def reload_retrievers(kb_id: int) -> None:
     bm25.invalidate(kb_id)
+    canonical.invalidate(kb_id)
