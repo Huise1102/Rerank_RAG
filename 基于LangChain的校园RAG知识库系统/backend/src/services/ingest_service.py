@@ -11,7 +11,7 @@ from src.core.config import settings
 from src.db.models import Department, Document, DocumentVersion, KnowledgeBase
 from src.ingest.loaders import load_document_with_report
 from src.ingest.splitter import split_documents
-from src.retrieval import bm25
+from src.retrieval import bm25, canonical
 from src.retrieval.vector_store import get_vector_store
 
 logger = logging.getLogger(__name__)
@@ -143,6 +143,7 @@ def _index_version_sync(
     _replace_version_chunks(store, version_data["id"], chunks)
     bm25.save_documents(document_data["kb_id"], _collect_store_documents(store))
     bm25.invalidate(document_data["kb_id"])
+    canonical.invalidate(document_data["kb_id"])
 
     report = {
         "files": 1,
@@ -275,6 +276,7 @@ async def delete_version_chunks(db: AsyncSession, version: DocumentVersion) -> N
             store.delete(ids=ids)
         bm25.save_documents(document.kb_id, _collect_store_documents(store))
         bm25.invalidate(document.kb_id)
+        canonical.invalidate(document.kb_id)
 
     await asyncio.to_thread(_delete)
 
@@ -378,6 +380,7 @@ def _rebuild_kb_sync(kb_id: int, entries: list[dict], strategy: str) -> dict:
         store.add_documents(all_chunks[start : start + BATCH_SIZE])
     bm25.save_documents(kb_id, all_chunks)
     bm25.invalidate(kb_id)
+    canonical.invalidate(kb_id)
     return results
 
 
