@@ -29,12 +29,12 @@ def test_table_to_markdown_fills_header_and_drops_empty_column():
 
 def test_strip_repeated_lines_removes_page_header():
     pages = [
-        _page(1, "宿迁学院文件\n第一条 内容一"),
-        _page(2, "宿迁学院文件\n第二条 内容二"),
-        _page(3, "宿迁学院文件\n第三条 内容三"),
+        _page(1, "示例学院文件\n第一条 内容一"),
+        _page(2, "示例学院文件\n第二条 内容二"),
+        _page(3, "示例学院文件\n第三条 内容三"),
     ]
     _strip_repeated_lines(pages)
-    assert all("宿迁学院文件" not in page.text for page in pages)
+    assert all("示例学院文件" not in page.text for page in pages)
     assert "第一条 内容一" in pages[0].text
 
 
