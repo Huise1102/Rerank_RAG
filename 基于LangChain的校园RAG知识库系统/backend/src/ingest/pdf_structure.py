@@ -19,6 +19,60 @@ DOC_NO_RE = re.compile(r"宿院〔\s*(\d{4})\s*〕\s*(\d+)\s*号")
 CHAPTER_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+章")
 ARTICLE_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+条")
 TITLE_SUFFIXES = ("办法", "意见", "方案", "规定", "细则", "规则", "标准", "通知")
+TERMINAL_PUNCT = "。；：！？、）》」】”\"'"
+LIST_MARK_RE = re.compile(
+    r"^([（(][一二三四五六七八九十]+[）)]|[一二三四五六七八九十]+[、.．]|\d+[.．、]|"
+    r"[（(]\d+[）)]|[①-⑳])"
+)
+DOC_NO_LINE_RE = re.compile(r"^.{0,24}[〔\[]\s*\d{4}\s*[〕\]]\s*\d*\s*号$")
+TITLE_TAIL_RE = re.compile(
+    r"(办法|规定|意见|方案|通知|细则|规则|标准|目录|汇编|章程|守则)(（[^）]{0,10}）)?[》]?$"
+)
+HEADER_WORDS = (
+    "序号", "项目", "类别", "类型", "等级", "级别", "名称", "内容", "标准",
+    "金额", "分值", "指标", "条件", "要求", "比例", "系数", "数量", "单位",
+    "备注", "奖励", "考核", "层次", "档次", "分值", "计分",
+)
+
+
+def _is_structural_line(line: str) -> bool:
+    return bool(
+        PAGE_MARK_RE.match(line)
+        or CHAPTER_RE.match(line)
+        or ARTICLE_RE.match(line)
+        or line.startswith("附件")
+        or LIST_MARK_RE.match(line)
+    )
+
+
+def _looks_like_title_line(line: str) -> bool:
+    if not (4 <= len(line) <= 60):
+        return False
+    if any(mark in line for mark in "。；，！？"):
+        return False
+    return bool(TITLE_TAIL_RE.search(line))
+
+
+def _should_join(prev: str, cur: str) -> bool:
+    """判断当前行是否为上一行的排版折行，可安全拼接。"""
+    if len(prev) < 18:
+        return False
+    if prev[-1] in TERMINAL_PUNCT:
+        return False
+    if _is_structural_line(cur) or _looks_like_title_line(cur):
+        return False
+    if DOC_NO_LINE_RE.match(prev) or _looks_like_title_line(prev):
+        return False
+    return True
+
+
+def _row_looks_like_header(row: list[str]) -> bool:
+    cells = [cell for cell in row if cell]
+    if len(cells) < 2:
+        return False
+    if any(word in cell for cell in cells for word in HEADER_WORDS):
+        return True
+    return all(len(cell) <= 8 and not re.search(r"\d", cell) for cell in cells)
 
 
 @dataclass
@@ -50,7 +104,9 @@ class Section:
 
 def normalize_cell(value: object) -> str:
     text = str(value or "").replace("|", "／").replace("\n", " ")
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    # PDF 表格里数字与单位常被换行拆开，压掉两者之间的空格
+    return re.sub(r"(?<=\d)\s+(?=(?:万元|元|分|人|课时|门|项|个|%|‰))", "", text)
 
 
 def table_to_markdown(rows: list[list[str | None]]) -> str:
@@ -78,6 +134,20 @@ def table_to_markdown(rows: list[list[str | None]]) -> str:
     return "\n".join(lines)
 
 
+def merge_wrapped_lines(text: str) -> str:
+    """合并排版折行，避免关键短语被换行拆断。"""
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if lines and _should_join(lines[-1], line):
+            lines[-1] = lines[-1] + line
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def _clean_text(text: str) -> str:
     lines: list[str] = []
     for raw in text.splitlines():
@@ -87,7 +157,7 @@ def _clean_text(text: str) -> str:
         if TOC_LINE_RE.match(line):
             continue
         lines.append(line)
-    return "\n".join(lines)
+    return merge_wrapped_lines("\n".join(lines))
 
 
 def _text_without_tables(page, bboxes: list[tuple]) -> str:
@@ -359,8 +429,8 @@ def _merge_tables(pages: list[PageInfo]) -> tuple[list[TableData], int]:
                 same_width = len(previous.rows[0]) == len(table.rows[0])
                 if (
                     table.page == previous.page_end + 1
-                    and previous.bbox[3] >= previous.page_height * 0.75
-                    and table.bbox[1] <= table.page_height * 0.25
+                    and previous.bbox[3] >= previous.page_height * 0.55
+                    and table.bbox[1] <= table.page_height * 0.55
                     and same_width
                 ):
                     rows = table.rows
@@ -412,10 +482,17 @@ def build_pdf_documents(
             documents.append(
                 Document(page_content=section_text, metadata=dict(base, chunk_type="text"))
             )
+        last_header: list[str] = []
         for table_index, table in enumerate(
             [item for item in tables if section.start_page <= item.page <= section.end_page], start=1
         ):
-            markdown = table_to_markdown(table.rows)
+            rows = [list(row) for row in table.rows]
+            if rows and _row_looks_like_header(rows[0]):
+                last_header = rows[0]
+            elif rows and last_header and len(rows[0]) == len(last_header):
+                # 跨页续表的首行不是表头时，继承上一张表的表头
+                rows = [list(last_header), *rows]
+            markdown = table_to_markdown(rows)
             if not markdown:
                 continue
             documents.append(
