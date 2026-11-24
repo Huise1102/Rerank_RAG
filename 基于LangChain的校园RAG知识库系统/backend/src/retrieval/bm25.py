@@ -115,7 +115,7 @@ def metadata_mask(arrays: dict[str, np.ndarray], scope: RetrievalScope) -> np.nd
     public_mask = visibility == "public"
     if scope.allow_department:
         if scope.role == "admin":
-            department_mask = visibility == "department"
+            department_mask = (visibility == "department") | (visibility == "admin_only")
         else:
             department_mask = (visibility == "department") & (
                 arrays["department_id"] == int(scope.department_id or -1)
