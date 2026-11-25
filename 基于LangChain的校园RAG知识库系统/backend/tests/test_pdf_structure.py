@@ -5,7 +5,9 @@ from src.ingest.pdf_structure import (
     _detect_sections,
     _strip_repeated_lines,
     _toc_entries,
+    table_columns,
     table_to_markdown,
+    table_to_text,
 )
 from src.ingest.splitter import split_documents
 
@@ -79,7 +81,7 @@ def test_clause_chunks_track_pages_and_section_context():
             metadata={
                 "chunk_type": "text",
                 "section_title": "附件 1 补充意见",
-                "section_doc_no": "宿院〔2026〕25号",
+                "section_doc_no": "示例〔2026〕25号",
                 "section_index": 0,
                 "page": 3,
                 "page_end": 4,
@@ -91,8 +93,24 @@ def test_clause_chunks_track_pages_and_section_context():
     assert by_article["第一条"].metadata["page"] == 3
     assert by_article["第二条"].metadata["page"] == 4
     assert "附件 1 补充意见" in by_article["第一条"].metadata["parent_text"]
-    assert "宿院〔2026〕25号" in by_article["第一条"].metadata["parent_text"]
+    assert "示例〔2026〕25号" in by_article["第一条"].metadata["parent_text"]
     assert all("[[PAGE:" not in chunk.page_content for chunk in chunks)
+
+
+def test_table_to_markdown_fills_merged_cells():
+    rows = [
+        ["项目", "级别", "等级", "分值"],
+        ["教学成果奖", "省级", "特等奖", "5000"],
+        [None, "省级", "一等奖", "2000"],
+    ]
+    markdown = table_to_markdown(rows)
+    assert "| 教学成果奖 | 省级 | 一等奖 | 2000 |" in markdown
+
+
+def test_single_column_table_is_treated_as_text():
+    rows = [["说明"], ["原则上不低"], ["于 32 课时/年"]]
+    assert table_columns(rows) == 1
+    assert "原则上不低" in table_to_text(rows)
 
 
 def test_table_chunks_repeat_header_and_add_context():
@@ -110,7 +128,8 @@ def test_table_chunks_repeat_header_and_add_context():
         )
     ]
     chunks = split_documents(documents, strategy="clause", doc_meta={"document_id": 1, "version_id": 1})
-    assert len(chunks) == 1
+    assert [chunk.metadata.get("chunk_type") for chunk in chunks] == ["table", "table_row"]
     content = chunks[0].page_content
     assert content.startswith("附件 1 补充意见 · 专项津补贴标准表")
     assert "| 项目 | 金额 |" in content
+    assert "项目：A" in chunks[1].page_content
