@@ -61,9 +61,14 @@ def table_prefix(meta: dict) -> str:
 
 def _apply_context(chunks: list[Document]) -> list[Document]:
     for chunk in chunks:
-        if chunk.metadata.get("chunk_type") not in {"table", "table_row"}:
+        is_table = chunk.metadata.get("chunk_type") in {"table", "table_row"}
+        if not is_table:
             chunk.page_content = merge_wrapped_lines(chunk.page_content)
-        prefix = _context_prefix(chunk.metadata, str(chunk.metadata.get("article_no") or ""))
+        prefix = (
+            table_prefix(chunk.metadata)
+            if is_table
+            else _context_prefix(chunk.metadata, str(chunk.metadata.get("article_no") or ""))
+        )
         if not prefix or chunk.page_content.startswith(prefix):
             continue
         chunk.page_content = f"{prefix}\n{chunk.page_content}"
@@ -120,10 +125,10 @@ def _table_row_chunks(document: Document, meta: dict) -> list[Document]:
 def _split_table(document: Document, meta: dict) -> list[Document]:
     lines = [line for line in document.page_content.splitlines() if line.strip()]
     max_rows = max(settings.table_max_rows, 2)
-    caption = str(meta.get("table_caption") or "").strip()
 
     def wrap(content: str) -> str:
-        return f"{caption}\n{content}" if caption else content
+        # 表名由 _apply_context 统一前置，避免与章节前缀重复
+        return content
 
     if len(lines) <= max_rows + 2:
         chunks = [
