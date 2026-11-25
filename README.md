@@ -161,6 +161,7 @@ Agentic 版复用同一链路，但把「调用时机与参数」交给 LLM：�
 │   ├── backend/          FastAPI 服务、LangChain 检索、迁移、脚本与测试
 │   ├── frontend/         Vue 3 三端应用（管理端 / PC 用户端 / 移动端）
 │   ├── docs/             需求、阶段文档、评估、部署与界面截图
+│   ├── 测试语料/         100 题问答评测集、四轮结果、评分明细与评测报告
 │   └── README.md         校园落地版详细文档
 ├── docs/                 项目规格、任务清单与界面截图（docs/images/ 为 Agentic 版，docs/images/product/ 为产品级）
 │   ├── spec.md           第三版执行规格
