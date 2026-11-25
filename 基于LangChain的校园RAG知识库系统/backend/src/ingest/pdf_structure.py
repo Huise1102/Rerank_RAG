@@ -15,7 +15,7 @@ PAGE_NO_RE = re.compile(r"^[\s\-—–_]*\d{1,4}[\s\-—–_]*$")
 DASH_RE = re.compile(r"^[\s\-—–_]{2,}$")
 TOC_LINE_RE = re.compile(r"^(?P<title>.+?)[.…·]{3,}\s*(?P<page>\d{1,4})\s*$")
 TOC_PAGE_RE = re.compile(r"^(?P<title>.{6,}?)\s*(?P<page>\d{1,4})\s*$")
-DOC_NO_RE = re.compile(r"宿院〔\s*(\d{4})\s*〕\s*(\d+)\s*号")
+DOC_NO_RE = re.compile(r"[\u4e00-\u9fa5]{2,6}〔\s*(\d{4})\s*〕\s*(\d+)\s*号")
 CHAPTER_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+章")
 ARTICLE_RE = re.compile(r"^\s*第[一二三四五六七八九十百千0-9]+条")
 TITLE_SUFFIXES = ("办法", "意见", "方案", "规定", "细则", "规则", "标准", "通知")
@@ -110,6 +110,49 @@ def normalize_cell(value: object) -> str:
     return re.sub(r"(?<=\d)\s+(?=(?:万元|元|分|人|课时|门|项|个|%|‰))", "", text)
 
 
+def _forward_fill_merged(rows: list[list[str]], header: list[str]) -> None:
+    """向下填充空单元格，还原 PDF 纵向合并单元格的语义。
+
+    「备注」「说明」列的空值有语义，不参与填充。
+    """
+    if len(rows) < 2:
+        return
+    width = len(rows[0])
+    fillable = [
+        not any(word in header[col] for word in ("备注", "说明"))
+        for col in range(width)
+    ]
+    last = [""] * width
+    for index, row in enumerate(rows):
+        for col in range(width):
+            if row[col]:
+                last[col] = row[col]
+        if index == 0:
+            continue
+        for col in range(width):
+            if fillable[col] and not row[col] and last[col]:
+                row[col] = last[col]
+
+
+def table_columns(rows: list[list[str]]) -> int:
+    """统计表格中实际有值的最大列序号，用于识别单列伪表格。"""
+    return max(
+        (max((index + 1 for index, cell in enumerate(row) if cell), default=0) for row in rows),
+        default=0,
+    )
+
+
+def table_to_text(rows: list[list[str | None]]) -> str:
+    """把单列表格还原成普通段落文本。"""
+    lines: list[str] = []
+    for row in rows:
+        cells = [normalize_cell(value) for value in row]
+        if not any(cells) or all(DASH_RE.match(cell) or PAGE_NO_RE.match(cell) for cell in cells if cell):
+            continue
+        lines.append(" ".join(cell for cell in cells if cell))
+    return "\n".join(lines)
+
+
 def table_to_markdown(rows: list[list[str | None]]) -> str:
     """把表格行转成 Markdown，补齐列宽并去掉全空列。"""
     cleaned: list[list[str]] = []
@@ -129,6 +172,7 @@ def table_to_markdown(rows: list[list[str | None]]) -> str:
     for index in range(1, len(header)):
         if not header[index]:
             header[index] = header[index - 1]
+    _forward_fill_merged(normalized, header)
     lines = ["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * len(header)) + " |"]
     for row in normalized[1:]:
         lines.append("| " + " | ".join(row) + " |")
@@ -463,7 +507,12 @@ def build_pdf_documents(
 
     documents: list[Document] = []
     for index, section in enumerate(sections):
-        section_pages = [page for page in pages if section.start_page <= page.number <= section.end_page]
+        section_pages = [
+            page
+            for page in pages
+            if section.start_page <= page.number <= section.end_page
+            and not _is_toc_page(page.raw_text)
+        ]
         parts = [
             f"{PAGE_MARK.format(page=page.number)}\n{page.text}"
             for page in section_pages
@@ -493,6 +542,22 @@ def build_pdf_documents(
             elif rows and last_header and len(rows[0]) == len(last_header):
                 # 跨页续表的首行不是表头时，继承上一张表的表头
                 rows = [list(last_header), *rows]
+            if table_columns(rows) < 2:
+                # 单列表格多为排版或文本框误判，还原成正文避免被切成碎片
+                text = table_to_text(rows)
+                if text:
+                    documents.append(
+                        Document(
+                            page_content=text,
+                            metadata=dict(
+                                base,
+                                chunk_type="text",
+                                page=table.page,
+                                page_end=table.page_end,
+                            ),
+                        )
+                    )
+                continue
             markdown = table_to_markdown(rows)
             if not markdown:
                 continue
