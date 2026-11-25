@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +26,17 @@ PASSED: list[str] = []
 FAILED: list[tuple[str, str]] = []
 
 STRATEGY = "recursive"
+
+
+def sample_doc_no() -> str:
+    """从本地语料中取一个真实文号，避免在源码里写入具体机构名称。"""
+    path = PROJECT_ROOT / "data" / "processed" / "chunks_fixed.json"
+    if path.exists():
+        match = re.search(r"[\u4e00-\u9fff]{2}学〔\d{4}〕\d+号", path.read_text(encoding="utf-8"))
+        if match:
+            return match.group(0)
+    return "示例学〔2024〕11号"
+
 
 # 取自真实语料的查询，用于端到端与消融对比
 DEMO_QUERIES = [
@@ -133,7 +146,7 @@ def test_bm25(vector: VectorRetriever | None) -> BM25Retriever | None:
               f"不一致 {len(missing)} 条")
 
     # 专有名词精确匹配（BM25 的核心价值）
-    exact = r.retrieve("宿院学〔2024〕11号", top_k=5)
+    exact = r.retrieve(sample_doc_no(), top_k=5)
     check("专有编号可精确检索", len(exact) > 0 and exact[0].score > 0,
           f"top1={exact[0].chunk_id if exact else 'N/A'} score={exact[0].score:.2f}" if exact else "")
 
