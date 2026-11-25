@@ -30,8 +30,8 @@ def test_table_document_is_not_split_into_clauses():
     table = "| 项目 | 学分 |\n| --- | --- |\n| 必修 | 100 |"
     documents = [Document(page_content=table, metadata={"page": 3, "chunk_type": "table"})]
     chunks = split_documents(documents, strategy="clause", doc_meta={"document_id": 1, "version_id": 2})
-    assert len(chunks) == 1
-    assert chunks[0].metadata.get("chunk_type") == "table"
+    assert [chunk.metadata.get("chunk_type") for chunk in chunks] == ["table", "table_row"]
+    assert "项目：必修" in chunks[1].page_content
 
 
 def test_recursive_fallback_when_no_clause():
